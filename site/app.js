@@ -620,6 +620,7 @@ function handleAction(act, el) {
   else if (act === 'mine-del') { state.mine = state.mine.filter((x) => x.id !== el.dataset.id); store.set('ladoga-mine', state.mine); drawMine(); closeSheetOnPhone(); if (desktopLayout()) showTab('data'); }
   else if (act === 'show-zone') showZone(el.dataset.zone);
   else if (act === 'play-year') playYear();
+  else if (act === 'base-set') { setBase(el.dataset.base); toast(`Подложка: ${BASES[el.dataset.base]?.name || ''}`); }
   else if (act === 'pack-clear') { store.set(`ladoga-pack-${el.dataset.season}`, []); showTab('tackle'); }
   else if (act === 'sos-copy' && state.me) copy(`${fmtDM(state.me.lat, state.me.lon)} (${fmtDec(state.me.lat, state.me.lon)})`, 'Координаты');
   else if (act === 'sos-share' && state.me) { const txt = `Нужна помощь. Я на Ладоге: ${fmtDM(state.me.lat, state.me.lon)} (${fmtDec(state.me.lat, state.me.lon)}), ${sectorName(state.me)}`; if (navigator.share) navigator.share({ text: txt }).catch(() => {}); else copy(txt, 'Текст'); }
@@ -1059,7 +1060,16 @@ function depthHtml() {
     <div class="btns"><button type="button" class="btn small" data-act="gpx-filter">GPX: точки по фильтру</button><a class="btn small ghost" href="downloads/ladoga_points.gpx" download>GPX: все точки</a></div>
     ${main ? appCard(main, true) : ''}
     ${others.length ? `<details><summary class="small">Другие приложения: ${others.map((a) => esc(String(a.app).split(/[ (,]/)[0])).join(', ')}</summary>${others.map((a) => appCard(a, false)).join('')}</details>` : ''}
-    <h3>На этой карте — общий рельеф дна</h3>
+    <h3>На этой карте</h3>
+    <div class="card small">
+      <b>Банки и мели из лоции</b>: ${state.M.filter((m) => m.kind === 'structure' || m.kind === 'hazard').length} точек с наименьшими глубинами (Железница 1,2 м, Астречье 0,8 м, Варецкие Луды, Сухская 2,6 м…). Видны при приближении, подписи — с масштаба 13. В режиме «Вести к точке» навигатор предупреждает, если до мели меньше 400 м.
+      <div class="btns" style="margin-bottom:0">
+        ${BASES.ggc500 ? '<button type="button" class="btn small" data-act="base-set" data-base="ggc500">Карта 1:50 000 (мели, камни)</button>' : ''}
+        ${BASES.ggc250 ? '<button type="button" class="btn small ghost" data-act="base-set" data-base="ggc250">1:25 000</button>' : ''}
+        <button type="button" class="btn small ghost" data-act="base-set" data-base="sat">Спутник</button>
+      </div>
+    </div>
+    <h3>Общий рельеф дна</h3>
     <p class="small muted">Помогают понять, где свал, банка или яма. Точным цифрам не верьте: съёмка старая, уровень Ладоги меняется на ±1 м (в 2026 году он примерно на 90 см ниже нормы).</p>
     ${(d.overlays || []).length ? `<div class="card">
       <label class="check" style="padding-top:0"><input type="checkbox" data-overlay="genshtab" ${o.genshtab ? 'checked' : ''}> <b>Старая армейская карта (Генштаб 1:100 000)</b></label>
@@ -1647,13 +1657,26 @@ function updateNav() {
   }
   parts.push(`GPS ±${Math.round(state.me.acc || 0)} м`);
   if (heading == null) parts.push('стрелка: от севера');
-  $('#navSub').textContent = parts.join(' · ');
+  const shoal = nearestShoal(state.me);
+  $('#navSub').innerHTML = `${esc(parts.join(' · '))}${shoal ? `<div class="nav-warn">⚠ ${esc(shoal.name)} — ${fmtDist(shoal.d)} ${rumb(bearing(state.me, shoal))}</div>` : ''}`;
   if (state.follow) {
     if (d > 150) map.fitBounds(L.latLngBounds([[state.me.lat, state.me.lon], [t.lat, t.lon]]), { ...navPadding(), maxZoom: 17, animate: false });
     else map.setView([state.me.lat, state.me.lon], 17, { animate: false });
   }
   if (d < 25 && !state.arrived) { state.arrived = true; navigator.vibrate?.([200, 100, 200]); toast('Вы на точке 🎣', 4000); }
   if (d > 60) state.arrived = false;
+}
+// Banks, rocks, wrecks and reefs within 400 m of the boat: the sailing-directions shoals are 0,8–4 m deep.
+function nearestShoal(me) {
+  let best = null;
+  state.M.forEach((m) => {
+    if (m.kind !== 'hazard' && m.kind !== 'structure') return;
+    const r = state.R[m.r[0]];
+    if (r.kind === 'structure' && !/банк|мел|риф|кос[аы]|камн|луд|отмел|гряд/i.test(`${r.title} ${r.comment}`)) return;
+    const d = distM(me, m);
+    if (d < 400 && (!best || d < best.d)) best = { d, lat: m.lat, lon: m.lon, name: poiLabel(r) || r.title || 'опасность' };
+  });
+  return best;
 }
 // Keep both ends of the course clear of the HUD on top and the sheet (bottom on a phone, left on a desktop).
 function navPadding() {
