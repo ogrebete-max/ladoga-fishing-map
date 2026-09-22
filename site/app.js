@@ -62,7 +62,8 @@ const state = {
   fav: new Set(store.get('ladoga-fav', [])),
   mine: store.get('ladoga-mine', []),
   base: store.get('ladoga-base', 'sat'),
-  overlays: Object.assign({ seamarks: false, heat: false, cluster: true, radius: false, seasonZones: false, rules: false, lines: true, mine: true, genshtab: false, isobaths: false }, store.get('ladoga-overlays', {})),
+  overlays: Object.assign({ seamarks: false, heat: false, cluster: true, radius: false, seasonZones: false, rules: false, lines: true, mine: true, genshtab: false, isobaths: false, charts: false, chartIso: false }, store.get('ladoga-overlays', {})),
+  chartOpacity: store.get('ladoga-chart-opacity', 0.85),
   genshtabOpacity: store.get('ladoga-genshtab-opacity', 0.8),
   overlayOpacity: store.get('ladoga-overlay-opacity', 0.7),
 };
@@ -203,6 +204,9 @@ function applyOverlays() {
   toggle(layers.mine, o.mine);
   toggle(layers.genshtab, o.genshtab);
   toggle(layers.isobaths, o.isobaths);
+  toggle(chartState.isoLayer, o.chartIso);
+  if (o.chartIso) loadChartIsobaths();
+  updateCharts();
   if (o.isobaths) ensureIsobaths();
   if (o.genshtab) layers.genshtab.eachLayer((l) => l.setOpacity(state.genshtabOpacity));
   for (const [key, ov] of Object.entries(extraOverlays)) {
@@ -488,6 +492,8 @@ $('#sheetBody').addEventListener('input', (e) => {
     state.f.yearMin = v > min ? v : 0;
     $('#yearLabel').textContent = state.f.yearMin ? `отчёты с ${state.f.yearMin} года` : 'все годы';
     clearTimeout(t._timer); t._timer = setTimeout(render, 150);
+  } else if (t.id === 'chartOpacity') {
+    state.chartOpacity = +t.value; store.set('ladoga-chart-opacity', state.chartOpacity); updateCharts();
   } else if (t.id === 'genshtabOpacity') {
     state.genshtabOpacity = +t.value; store.set('ladoga-genshtab-opacity', state.genshtabOpacity);
     layers.genshtab.eachLayer((l) => l.setOpacity(state.genshtabOpacity));
@@ -522,6 +528,7 @@ function openPoint(idx) {
         <button type="button" class="btn small ghost" data-act="copy-dm">Копировать (ГГ°ММ.ммм)</button>
       </div>
       <div id="pointFromMe" class="small" style="margin-top:6px"></div>
+      <div id="pointDepth" class="small" style="margin-top:6px"></div>
     </div>
     <div class="btns">
       <button type="button" class="btn" data-act="nav">🧭 Вести к точке</button>
@@ -547,6 +554,7 @@ function openPoint(idx) {
   setSheet(desktopLayout() ? 'full' : 'half');
   keepInView(m.lat, m.lon);
   updatePointFromMe();
+  if (chartState.isoLines) updatePointDepth(); else loadChartIsobaths().then(updatePointDepth);
   history.replaceState(null, '', `#pt=${m.lat.toFixed(5)},${m.lon.toFixed(5)}`);
 }
 function reportHtml(r, ok) {
@@ -620,6 +628,7 @@ function handleAction(act, el) {
   else if (act === 'mine-del') { state.mine = state.mine.filter((x) => x.id !== el.dataset.id); store.set('ladoga-mine', state.mine); drawMine(); closeSheetOnPhone(); if (desktopLayout()) showTab('data'); }
   else if (act === 'show-zone') showZone(el.dataset.zone);
   else if (act === 'play-year') playYear();
+  else if (act === 'chart-show') { const parts = chartState.items.filter((c) => c.chart === el.dataset.chart); if (parts.length) { state.overlays.charts = true; applyOverlays(); const b = parts.reduce((acc, c) => acc.extend(c.b), L.latLngBounds(parts[0].bounds)); map.fitBounds(b, { maxZoom: parts[0].zmin + 1 }); map.setZoom(Math.max(map.getZoom(), parts[0].zmin)); closeSheetOnPhone(); } }
   else if (act === 'base-set') { setBase(el.dataset.base); toast(`Подложка: ${BASES[el.dataset.base]?.name || ''}`); }
   else if (act === 'pack-clear') { store.set(`ladoga-pack-${el.dataset.season}`, []); showTab('tackle'); }
   else if (act === 'sos-copy' && state.me) copy(`${fmtDM(state.me.lat, state.me.lon)} (${fmtDec(state.me.lat, state.me.lon)})`, 'Координаты');
@@ -1016,6 +1025,92 @@ function tackleHtml() {
       <button type="button" class="btn small ghost" data-act="pack-clear" data-season="${season}">Снять все отметки</button>` : ''}`;
 }
 
+/* ----- Navigation charts (ГУНиО 1:10 000–1:125 000) and depth from their isobaths ----- */
+map.createPane('charts');
+map.getPane('charts').style.zIndex = 250; // above the base map, below points, zones and the heat map
+map.getPane('charts').style.pointerEvents = 'none';
+const chartState = { items: [], iso: null, isoLines: null, isoLayer: L.layerGroup() };
+function buildCharts() {
+  chartState.items = (state.ctx.depth?.charts || []).map((c) => ({ ...c, layer: null, b: L.latLngBounds(c.bounds) }))
+    .sort((a, b) => b.scale - a.scale); // overview first, the most detailed on top
+}
+// Only the charts that suit the zoom and touch the view are on the map, so a phone loads a few files, not 32.
+function updateCharts() {
+  const on = state.overlays.charts;
+  const z = map.getZoom();
+  const view = map.getBounds().pad(0.3);
+  for (const c of chartState.items) {
+    const want = on && z >= c.zmin && z <= c.zmax && view.intersects(c.b);
+    if (want && !c.layer) c.layer = L.imageOverlay(c.url, c.bounds, { pane: 'charts', opacity: state.chartOpacity, interactive: false, attribution: c.attribution });
+    if (want && !map.hasLayer(c.layer)) c.layer.addTo(map);
+    if (!want && c.layer && map.hasLayer(c.layer)) map.removeLayer(c.layer);
+    if (c.layer) c.layer.setOpacity(state.chartOpacity);
+  }
+  chartState.items.filter((c) => c.layer && map.hasLayer(c.layer)).forEach((c) => c.layer.bringToFront());
+}
+map.on('moveend zoomend', updateCharts);
+
+async function loadChartIsobaths() {
+  const url = state.ctx.depth?.chart_isobaths;
+  if (!url) return null;
+  if (chartState.iso) return chartState.iso;
+  chartState.iso = fetch(url).then((r) => r.json()).then((gj) => {
+    const lines = [];
+    for (const f of gj.features || []) {
+      const depth = +f.properties.depth_m;
+      const parts = f.geometry.type === 'MultiLineString' ? f.geometry.coordinates : [f.geometry.coordinates];
+      for (const part of parts) {
+        const pts = part.map(([lon, lat]) => [lat, lon]);
+        let s = 90, w = 180, n = -90, e = -180;
+        for (const [la, lo] of pts) { s = Math.min(s, la); n = Math.max(n, la); w = Math.min(w, lo); e = Math.max(e, lo); }
+        lines.push({ depth, pts, s, w, n, e, chart: f.properties.chart });
+      }
+    }
+    chartState.isoLines = lines;
+    L.geoJSON(gj, {
+      style: (f) => {
+        const m = +f.properties.depth_m;
+        return { color: m <= 2 ? '#e8590c' : m <= 5 ? '#1c7ed6' : m <= 10 ? '#1864ab' : m <= 20 ? '#5f3dc4' : '#212529', weight: m === 5 || m === 10 ? 2.4 : 1.6, opacity: 0.9 };
+      },
+      onEachFeature: (f, l) => {
+        l.bindTooltip(`${f.properties.depth_m} м`, { sticky: true });
+        l.on('click', () => toast(`Изобата ${f.properties.depth_m} м — навигационная карта № ${f.properties.chart}`));
+      },
+    }).addTo(chartState.isoLayer);
+    if (state.selected != null) updatePointDepth();
+    return lines;
+  }).catch(() => { chartState.iso = null; return null; });
+  return chartState.iso;
+}
+// Depth at a place from the chart isobaths: on a line → "≈ 5 м"; between two → "5–10 м". null off the charts.
+function depthAt(p) {
+  const lines = chartState.isoLines;
+  if (!lines) return null;
+  const pad = 0.03;
+  const best = new Map();
+  for (const l of lines) {
+    if (p.lat < l.s - pad || p.lat > l.n + pad || p.lon < l.w - pad * 2 || p.lon > l.e + pad * 2) continue;
+    let d = Infinity;
+    for (let i = 0; i < l.pts.length - 1; i++) d = Math.min(d, distToSegmentM(p, l.pts[i], l.pts[i + 1]));
+    if (d < (best.get(l.depth) ?? Infinity)) best.set(l.depth, d);
+  }
+  const near = [...best.entries()].filter(([, d]) => d < 2500).sort((a, b) => a[1] - b[1]);
+  if (!near.length) return null;
+  const [d1, a] = near[0];
+  if (a < 80) return { text: `≈ ${d1} м`, min: d1, max: d1 };
+  const other = near.find(([dep]) => dep !== d1);
+  if (!other) return { text: `около ${d1} м`, min: d1, max: d1 };
+  const lo = Math.min(d1, other[0]), hi = Math.max(d1, other[0]);
+  return { text: `${lo}–${hi} м${a < other[1] ? `, ближе к ${d1}` : ''}`, min: lo, max: hi };
+}
+function updatePointDepth() {
+  const el = $('#pointDepth');
+  if (!el || state.selected == null) return;
+  const m = state.M[state.selected];
+  const d = depthAt(m);
+  el.innerHTML = d ? `🌊 <b>Глубина по навигационной карте: ${esc(d.text)}</b> <span class="muted">(от среднего уровня; в 2026 году вода примерно на 0,9 м ниже)</span>` : '';
+}
+
 /* ----- Depth tab ----- */
 const GENSHTAB_ATTR = 'Топокарта Генштаба СССР 1:100 000 (скан <a href="https://maps.vlasenko.net/soviet-military-topographic-map/map100k.html" target="_blank" rel="noopener">maps.vlasenko.net</a>)';
 const ISOBATH_ATTR = 'Изобаты (модель): GLDB v2, Kourzeneva &amp; Choulga, CC BY — не для навигации';
@@ -1056,7 +1151,18 @@ function depthHtml() {
     </details>`;
   return `
     <h2>Глубины</h2>
-    <p class="small">Самые свежие и точные глубины — у рыбаков с эхолотами: их изобаты собирает Garmin (Quickdraw) и показывает бесплатно в телефоне. На сайт эти данные переносить нельзя, поэтому схема такая: <b>глубины — в ActiveCaptain, наши точки — туда же файлом GPX</b>.</p>
+    ${chartState.items.length ? `<div class="card">
+      <label class="check" style="padding-top:0"><input type="checkbox" data-overlay="charts" ${o.charts ? 'checked' : ''}> <b>Навигационные карты ГУНиО — отметки глубин</b></label>
+      <div class="small">Официальные карты Ладоги 1:10 000–1:50 000 (1984–1999): тысячи отметок глубин, изобаты 2–30 м, камни, банки, фарватеры, створы. Наложены на GPS с точностью 3–12 м. Карта включается при приближении; самые подробные — устье Волхова и подходы к Шлиссельбургу (1:10 000).</div>
+      <div class="small muted" style="margin-top:6px">Прозрачность</div>
+      <input type="range" id="chartOpacity" min="0.3" max="1" step="0.05" value="${state.chartOpacity}">
+      <label class="check"><input type="checkbox" data-overlay="chartIso" ${o.chartIso ? 'checked' : ''}> Изобаты 2/5/10/15/20/30 м линиями (по картам Волховской и Свирской губ, Кареджи–Сухо)</label>
+      <details><summary class="small">Какие карты есть (${new Set(chartState.items.map((c) => c.chart)).size})</summary>
+        ${[...new Map(chartState.items.map((c) => [c.chart, c])).values()].sort((a, b) => a.scale - b.scale).map((c) => `<button type="button" class="card today-zone" data-act="chart-show" data-chart="${esc(c.chart)}"><b>№ ${esc(c.chart)} ${esc(c.title || '')}</b><br><span class="small">1:${Number(c.scale).toLocaleString('ru-RU')}, ${esc(c.year || '')}</span></button>`).join('')}
+      </details>
+      <p class="small muted" style="margin-bottom:0">Глубины на картах — от среднего многолетнего уровня озера. В 2026 году вода примерно на 0,9 м ниже, значит реально мельче. Съёмка 1930–70-х годов; не для судовождения.</p>
+    </div>` : ''}
+    <p class="small">У каждой точки на карте и в навигаторе теперь показана глубина по этим картам. Самые свежие глубины — у рыбаков с эхолотами: их изобаты собирает Garmin (Quickdraw) и показывает бесплатно в телефоне. На сайт эти данные переносить нельзя, поэтому схема такая: <b>глубины — в ActiveCaptain, наши точки — туда же файлом GPX</b>.</p>
     <div class="btns"><button type="button" class="btn small" data-act="gpx-filter">GPX: точки по фильтру</button><a class="btn small ghost" href="downloads/ladoga_points.gpx" download>GPX: все точки</a></div>
     ${main ? appCard(main, true) : ''}
     ${others.length ? `<details><summary class="small">Другие приложения: ${others.map((a) => esc(String(a.app).split(/[ (,]/)[0])).join(', ')}</summary>${others.map((a) => appCard(a, false)).join('')}</details>` : ''}
@@ -1393,6 +1499,8 @@ function layersHtml() {
     <h3>Поверх карты</h3>
     <label class="check"><input type="checkbox" data-overlay="cluster" ${o.cluster ? 'checked' : ''}> Группировать близкие точки</label>
     <label class="check"><input type="checkbox" data-overlay="heat" ${o.heat ? 'checked' : ''}> Тепловая карта активности</label>
+    <label class="check"><input type="checkbox" data-overlay="charts" ${o.charts ? 'checked' : ''}> <b>Навигационные карты с глубинами</b> (при приближении)</label>
+    <label class="check"><input type="checkbox" data-overlay="chartIso" ${o.chartIso ? 'checked' : ''}> Изобаты по навигационным картам</label>
     <label class="check"><input type="checkbox" data-overlay="seamarks" ${o.seamarks ? 'checked' : ''}> Морские знаки, буи, маяки (OpenSeaMap)</label>
     <label class="check"><input type="checkbox" data-overlay="lines" ${o.lines ? 'checked' : ''}> Фарватеры</label>
     <label class="check"><input type="checkbox" data-overlay="seasonZones" ${o.seasonZones ? 'checked' : ''}> Сезонные зоны рыбы (месяц — во вкладке «Сезон»)</label>
@@ -1655,6 +1763,8 @@ function updateNav() {
     const min = d / state.me.speed / 60;
     parts.push(`≈ ${min < 60 ? `${Math.max(1, Math.round(min))} мин` : `${(min / 60).toFixed(1).replace('.', ',')} ч`}`);
   }
+  const under = depthAt(state.me);
+  if (under) parts.push(`под вами по карте ${under.text}`);
   parts.push(`GPS ±${Math.round(state.me.acc || 0)} м`);
   if (heading == null) parts.push('стрелка: от севера');
   const shoal = nearestShoal(state.me);
@@ -1955,6 +2065,9 @@ async function downloadOffline(el) {
   // Our own layers: the old army maps, the model isobaths and the data.
   for (const o of state.ctx.depth?.overlays || []) urls.push(new URL(o.url, location.href).href);
   if (state.ctx.depth?.isobaths) urls.push(new URL(state.ctx.depth.isobaths, location.href).href);
+  if (state.ctx.depth?.chart_isobaths) urls.push(new URL(state.ctx.depth.chart_isobaths, location.href).href);
+  const view = map.getBounds();
+  for (const c of chartState.items) if (view.intersects(c.b)) urls.push(new URL(c.url, location.href).href);
   if (tiles.length > 2600) { toast(`Слишком большой район (${tiles.length} фрагментов). Приблизьте карту к месту рыбалки.`, 5000); return; }
   const mb = Math.round((tiles.length * 30) / 1024);
   if (!window.confirm(`Сохранить в телефон спутниковую карту видимого района (приближения ${z0}–${z1}, около ${mb} МБ)? Нужен Wi‑Fi или быстрый интернет.`)) return;
@@ -2103,6 +2216,7 @@ async function boot() {
   addExtraTileLayers();
   setBase(state.base);
   buildDepthLayers();
+  buildCharts();
   applyOverlays();
   drawLines(); drawMine(); drawRules(); drawSeasonZones();
   render();
@@ -2125,6 +2239,7 @@ async function boot() {
   if (state.track.on) startWatch(false);
   loadWeather();
   setInterval(() => loadWeather(), 30 * 60000);
+  loadChartIsobaths(); // for the depth of each point and under the boat
   const resume = store.get('ladoga-nav', null);
   if (resume && resume.lat) startNav(resume);
 }

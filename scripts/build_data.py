@@ -329,6 +329,20 @@ def curated_tiles(layers):
     return sorted(out, key=lambda t: order.index(t["key"]))
 
 
+def charts_context():
+    """Navigation charts (ГУНиО) as image overlays, with the zooms each one should show at."""
+    out = []
+    for o in load_json("charts2").get("image_overlays") or []:
+        if not (ROOT / "site" / o.get("file", "")).exists():
+            continue
+        zmin, zmax = (o.get("recommended_zoom") or [10, 16])[:2]
+        out.append({"name": o.get("name"), "url": o["file"], "bounds": o["bounds"], "group": o.get("group"),
+                    "chart": o.get("chart_number"), "title": o.get("chart_title"), "scale": o.get("scale"),
+                    "year": o.get("year"), "zmin": zmin, "zmax": zmax, "zone": o.get("zone"),
+                    "attribution": o.get("attribution"), "depth_content": o.get("depth_content")})
+    return out
+
+
 def tackle_context():
     t = load_json("tackle")
     if not t:
@@ -490,6 +504,8 @@ def main():
         "tackle": tackle_context(),
         "practical": {k: practical.get(k) for k in ("boat_rules", "ice_rules_general", "weather", "emergency", "coverage")},
         "depth": {
+            "charts": charts_context(),
+            "chart_isobaths": "data/depth_chart_isobaths.geojson" if (SITE_DATA / "depth_chart_isobaths.geojson").exists() else "",
             "overlays": overlays,
             "isobaths": "data/depth_isobaths.geojson" if (SITE_DATA / "depth_isobaths.geojson").exists() else "",
             "phone_workflows": depth.get("phone_workflows") or [],
