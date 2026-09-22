@@ -175,6 +175,7 @@ const layers = {
   heat: L.heatLayer([], { radius: 24, blur: 20, maxZoom: 13, minOpacity: 0.3, gradient: { 0.2: '#2c7fb8', 0.45: '#41b6c4', 0.65: '#ffffb2', 0.85: '#fd8d3c', 1: '#e31a1c' } }),
   cluster: L.markerClusterGroup({ showCoverageOnHover: false, maxClusterRadius: 44, spiderfyDistanceMultiplier: 1.4, disableClusteringAtZoom: 15, chunkedLoading: true }),
   plain: L.layerGroup(),
+  pois: L.layerGroup(),
   radius: L.circle([60.1037, 32.294], { radius: 55000, color: '#fff', weight: 1.5, dashArray: '6 8', fill: false, interactive: false }),
   seasonZones: L.layerGroup(),
   rules: L.layerGroup(),
@@ -212,6 +213,22 @@ function applyOverlays() {
 }
 
 /* ---------- filtering & rendering ---------- */
+// Points of interest show from zoom 11 (or at once when the filter asks only for them); names from 13.
+function updatePoiVisibility() {
+  const onlyPoi = ![...state.f.kinds].some((k) => CATCH_KINDS.has(k));
+  const show = map.getZoom() >= 11 || onlyPoi;
+  if (show && !map.hasLayer(layers.pois)) layers.pois.addTo(map);
+  if (!show && map.hasLayer(layers.pois)) map.removeLayer(layers.pois);
+  map.getContainer().classList.toggle('labels-on', map.getZoom() >= 13);
+}
+map.on('zoomend', () => updatePoiVisibility());
+// "Банка Железница (Железницкие банки)" + "1,2 м (наименьшая…)" → "Железница 1,2 м".
+function poiLabel(r) {
+  const name = String(r.title || '').replace(/^(Банка|Банки)\s+/i, '').replace(/\s*\(.*\)\s*/g, ' ').replace(/^Створный знак:\s*/, '').trim();
+  const depth = String(r.depth || '').match(/[\d,.]+(?:\s*[–-]\s*[\d,.]+)?\s*м/);
+  return `${name.slice(0, 28)}${depth ? ` ${depth[0]}` : ''}`;
+}
+
 function passes(r) {
   const f = state.f;
   if (!f.kinds.has(r.kind)) return false;
@@ -237,7 +254,8 @@ function markerIcon(m, rs) {
   if (!CATCH_KINDS.has(kind)) {
     const sub = state.R[m.r[0]].sub || '';
     const glyph = SERVICE_GLYPH[sub] || { launch: '⚓', ice_incident: '!', hazard: '' }[kind] || '';
-    return L.divIcon({ className: '', html: `<div class="shape ${kind} ${sub}">${glyph}</div>`, iconSize: [20, 20], iconAnchor: [10, 10] });
+    const label = ['structure', 'hazard', 'landmark'].includes(kind) ? `<span class="poi-label">${esc(poiLabel(state.R[m.r[0]]))}</span>` : '';
+    return L.divIcon({ className: 'poi', html: `<div class="shape ${kind} ${sub}">${glyph}</div>${label}`, iconSize: [20, 20], iconAnchor: [10, 10] });
   }
   const counts = {};
   for (const i of rs) for (const f of state.R[i].fish || []) counts[f] = (counts[f] || 0) + 1;
@@ -256,6 +274,7 @@ function markerIcon(m, rs) {
 function render() {
   state.pass = state.R.map(passes);
   const markers = [];
+  const pois = [];
   const heat = [];
   let nM = 0, nR = 0;
   state.M.forEach((m, idx) => {
@@ -264,11 +283,14 @@ function render() {
     nM += 1; nR += rs.length;
     const mk = L.marker([m.lat, m.lon], { icon: markerIcon(m, rs), keyboard: false, riseOnHover: true });
     mk.on('click', () => openPoint(idx));
-    markers.push(mk);
+    if (CATCH_KINDS.has(m.kind)) markers.push(mk); else pois.push(mk);
     if (CATCH_KINDS.has(m.kind)) heat.push([m.lat, m.lon, Math.min(1, 0.35 + rs.length * 0.2)]);
   });
   layers.cluster.clearLayers();
   layers.plain.clearLayers();
+  layers.pois.clearLayers();
+  pois.forEach((mk) => layers.pois.addLayer(mk));
+  updatePoiVisibility();
   if (state.overlays.cluster) layers.cluster.addLayers(markers); else markers.forEach((mk) => layers.plain.addLayer(mk));
   layers.heat.setLatLngs(heat);
   $('#counter').textContent = `${nM} ${plural(nM, 'точка', 'точки', 'точек')} · ${nR} ${plural(nR, 'запись', 'записи', 'записей')}`;
@@ -287,7 +309,8 @@ function renderActiveFilters() {
   if (f.yearMin) chips.push(['yearMin', `с ${f.yearMin} г.`]);
   if (f.fav) chips.push(['fav', '★ избранное']);
   if (f.depthOnly) chips.push(['depthOnly', 'с глубиной']);
-  if (f.kinds.size < Object.keys(KINDS).length) chips.push(['kinds', `${f.kinds.size} из ${Object.keys(KINDS).length} слоёв`]);
+  const dk = defaultFilters().kinds;
+  if (f.kinds.size !== dk.size || [...f.kinds].some((k) => !dk.has(k))) chips.push(['kinds', `слои: ${f.kinds.size} из ${Object.keys(KINDS).length}`]);
   $('#activeFilters').innerHTML = chips.map(([k, t]) => `<button type="button" data-clear="${k}">${esc(t)}</button>`).join('');
 }
 $('#activeFilters').addEventListener('click', (e) => {
@@ -327,12 +350,15 @@ $('#tabs').addEventListener('click', (e) => {
   if (sheet.dataset.state === 'peek') setSheet('half');
 });
 function showTab(tab) {
+  const toLayers = tab === 'layers';
+  if (toLayers) tab = 'filter';
   state.tab = tab;
   if (tab !== 'point') { state.selected = null; layers.select.clearLayers(); }
   $$('#tabs button').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
   const body = $('#sheetBody');
-  body.innerHTML = ({ today: todayHtml, filter: filterHtml, places: placesHtml, season: seasonHtml, fish: fishHtml, depth: depthHtml, rules: rulesHtml, layers: layersHtml, data: dataHtml }[tab] || (() => ''))();
+  body.innerHTML = ({ today: todayHtml, filter: filterHtml, places: placesHtml, season: seasonHtml, fish: fishHtml, tackle: tackleHtml, depth: depthHtml, rules: rulesHtml, layers: layersHtml, data: dataHtml }[tab] || (() => ''))();
   body.scrollTop = 0;
+  if (toLayers) setTimeout(() => $('#layersSection')?.scrollIntoView({ block: 'start' }), 50);
   if (tab === 'filter' || tab === 'data') refreshCounts();
 }
 
@@ -394,7 +420,8 @@ function filterHtml() {
     <label class="check"><input type="checkbox" id="favOnly" ${f.fav ? 'checked' : ''}> Только ★ избранное (${state.fav.size})</label>
     <div class="btns"><button type="button" class="btn ghost" id="resetFilters">Сбросить фильтры</button></div>
     <hr>
-    <p class="small muted">Крупная точка с числом — несколько отчётов в одном месте (в пределах 30 м). Точка с зелёной обводкой — точный GPS рыбака. Кольцо без заливки — наблюдение рыбы, а не рыбалка.</p>`;
+    <p class="small muted">Крупная точка с числом — несколько отчётов в одном месте (в пределах 30 м). Точка с зелёной обводкой — точный GPS рыбака. Кольцо без заливки — наблюдение рыбы, а не рыбалка.</p>
+    <hr><div id="layersSection"><h2>Слои карты</h2>${layersHtml()}</div>`;
 }
 function fishChip([name, n]) {
   return `<button type="button" class="chip ${state.f.fish.has(name) ? 'on' : ''}" data-fish="${esc(name)}"><span class="dot" style="background:${FISH_COLORS[name] || OTHER_COLOR}"></span>${esc(name)} <span class="n">${n}</span></button>`;
@@ -413,6 +440,15 @@ $('#sheetBody').addEventListener('click', (e) => {
   const toggleSet = (set, v) => (set.has(v) ? set.delete(v) : set.add(v));
   if (d.wxplace) { store.set('ladoga-wx-place', d.wxplace); loadWeather(true).then(() => { if (state.tab === 'weather') $('#sheetBody').innerHTML = weatherHtml(); }); $$('[data-wxplace]').forEach((b) => b.classList.toggle('on', b === t)); return; }
   if (d.tabLink) { e.preventDefault(); showTab(d.tabLink); setSheet(desktopLayout() ? 'full' : 'full'); return; }
+  if (d.search) {
+    const [type, n] = d.search.split(':');
+    if (type === 'zone') showPlace(+n);
+    else if (type === 'place') { const p = PLACES[+n]; map.setView([p[1], p[2]], p[3]); closeSheetOnPhone(); }
+    else { const m = state.M[+n]; state.f.kinds.add(m.kind); render(); map.setView([m.lat, m.lon], 15); openPoint(+n); }
+    return;
+  }
+  if (d.tseason) { state.tackleSeason = d.tseason; showTab('tackle'); return; }
+  if (d.tfish) { state.tackleFish = d.tfish; const top = $('#sheetBody').scrollTop; showTab('tackle'); $('#sheetBody').scrollTop = Math.min(top, 260); return; }
   if (d.openMarker != null) { e.preventDefault(); const m = state.M[+d.openMarker]; if (m) { map.setView([m.lat, m.lon], Math.max(map.getZoom(), 14)); openPoint(+d.openMarker); } return; }
   if (d.place != null) { const p = PLACES[+d.place]; map.setView([p[1], p[2]], p[3]); closeSheetOnPhone(); return; }
   if (d.fish) { toggleSet(f.fish, d.fish); t.classList.toggle('on'); render(); return; }
@@ -431,6 +467,12 @@ $('#sheetBody').addEventListener('change', (e) => {
   else if (t.id === 'coreOnly') { f.core = t.checked; render(); }
   else if (t.id === 'favOnly') { f.fav = t.checked; render(); }
   else if (t.id === 'depthOnly') { f.depthOnly = t.checked; render(); }
+  else if (t.dataset.pack) {
+    const [season, i] = t.dataset.pack.split(':');
+    const set = new Set(store.get(`ladoga-pack-${season}`, []));
+    t.checked ? set.add(+i) : set.delete(+i);
+    store.set(`ladoga-pack-${season}`, [...set]);
+  }
   else if (t.dataset.overlay) {
     state.overlays[t.dataset.overlay] = t.checked;
     if (t.dataset.overlay === 'cluster') render();
@@ -578,6 +620,7 @@ function handleAction(act, el) {
   else if (act === 'mine-del') { state.mine = state.mine.filter((x) => x.id !== el.dataset.id); store.set('ladoga-mine', state.mine); drawMine(); closeSheetOnPhone(); if (desktopLayout()) showTab('data'); }
   else if (act === 'show-zone') showZone(el.dataset.zone);
   else if (act === 'play-year') playYear();
+  else if (act === 'pack-clear') { store.set(`ladoga-pack-${el.dataset.season}`, []); showTab('tackle'); }
   else if (act === 'sos-copy' && state.me) copy(`${fmtDM(state.me.lat, state.me.lon)} (${fmtDec(state.me.lat, state.me.lon)})`, 'Координаты');
   else if (act === 'sos-share' && state.me) { const txt = `Нужна помощь. Я на Ладоге: ${fmtDM(state.me.lat, state.me.lon)} (${fmtDec(state.me.lat, state.me.lon)}), ${sectorName(state.me)}`; if (navigator.share) navigator.share({ text: txt }).catch(() => {}); else copy(txt, 'Текст'); }
   else if (act === 'sos-locate') { startWatch(true); toast('Определяю место…'); setTimeout(() => { if (state.tab === 'sos') openSos(); }, 4000); }
@@ -921,6 +964,57 @@ function fishHtml() {
 }
 function safeDecode(u) { try { return decodeURIComponent(u); } catch { return u; } }
 
+/* ----- Tackle tab: what anglers actually caught on, from ~23,000 reports, plus expert notes ----- */
+function tackleSpecies() { return state.ctx.tackle?.species || []; }
+function pct(x) { return `${Math.round((+x || 0) * 100)}%`; }
+function shareBars(items, n = 6) {
+  const list = (items || []).filter((x) => +x.share > 0).slice(0, n);
+  if (!list.length) return '<p class="small muted">Мало данных.</p>';
+  const max = Math.max(...list.map((x) => +x.share));
+  return `<div class="hbars">${list.map((x) => `<div class="hbar"><span class="hbar-name">${esc(x.name)}</span><span class="hbar-track"><span style="width:${Math.max(4, (x.share / max) * 100)}%"></span></span><span class="hbar-val">${pct(x.share)}</span></div>`).join('')}</div>`;
+}
+function tackleHtml() {
+  const list = tackleSpecies();
+  if (!list.length) return '<p class="muted">Справочник снастей ещё собирается.</p>';
+  const mo = new Date().getMonth() + 1;
+  if (!state.tackleSeason) state.tackleSeason = isIceMonth(mo) ? 'ice' : 'open_water';
+  if (!state.tackleFish || !list.some((s) => s.name_ru === state.tackleFish)) state.tackleFish = list[0].name_ru;
+  const s = list.find((x) => x.name_ru === state.tackleFish);
+  const season = state.tackleSeason;
+  const d = s[season] || {};
+  const ex = s.expert || {};
+  const gear = state.ctx.tackle?.gear_lists?.[season === 'ice' ? 'ice' : 'open_water'] || [];
+  const packed = new Set(store.get(`ladoga-pack-${season}`, []));
+  const monthRow = (s.by_month || []).find((m) => +m.month === mo);
+  return `
+    <p class="small muted">На что ловили — по ${Number(state.ctx.tackle?.total || 0).toLocaleString('ru-RU')} отчётам рыбаков южной Ладоги за 2004–2026 годы (fisher.spb.ru, Telegram, форумы) и советам опытных ладожских рыболовов. Проценты — как часто снасть упоминали в удачных отчётах.</p>
+    <div class="seg" style="margin:6px 0">${[['ice', '❄ Со льда'], ['open_water', '🌊 По открытой воде']].map(([k, t]) => `<button type="button" data-tseason="${k}" class="${season === k ? 'on' : ''}">${t}</button>`).join('')}</div>
+    <div class="chips" style="margin:8px 0">${list.map((x) => `<button type="button" class="chip ${x.name_ru === s.name_ru ? 'on' : ''}" data-tfish="${esc(x.name_ru)}"><span class="dot" style="background:${FISH_COLORS[x.name_ru.split(/[/ ]/)[0]] || OTHER_COLOR}"></span>${esc(x.name_ru)}</button>`).join('')}</div>
+    <h2>${esc(s.name_ru)} ${season === 'ice' ? 'со льда' : 'по воде'}</h2>
+    ${s.legal ? `<div class="card small wx-warn">⚖️ ${esc(s.legal)}</div>` : ''}
+    ${d.n_reports ? `<p class="small muted">${d.n_reports.toLocaleString('ru-RU')} ${plural(d.n_reports, 'отчёт', 'отчёта', 'отчётов')}${d.depth_m?.median ? ` · глубина обычно ${String(d.depth_m.p25).replace('.', ',')}–${String(d.depth_m.p75).replace('.', ',')} м` : ''}${d.fish_weight_g?.median ? ` · типичная рыба ${d.fish_weight_g.median >= 1000 ? `${String((d.fish_weight_g.median / 1000).toFixed(1)).replace('.', ',')} кг` : `${Math.round(d.fish_weight_g.median)} г`}` : ''}</p>` : '<p class="small muted">В этот сезон отчётов почти нет.</p>'}
+    ${(d.methods || []).length ? `<h3>Снасть</h3>${shareBars(d.methods)}` : ''}
+    ${(d.baits || []).length ? `<h3>Приманка и наживка</h3>${shareBars(d.baits)}` : ''}
+    ${(() => {
+      // A lure of 100 g is a fish weight read as a lure size: keep grams only up to 40.
+      const sizes = (d.lure_sizes || []).map((x) => ({ ...x, top: (x.top || []).filter((t) => x.unit !== 'г' || t.value <= 40) })).filter((x) => x.top.length);
+      return sizes.length ? `<p class="small"><b>Размеры, которые называли:</b> ${sizes.slice(0, 4).map((x) => `${esc(x.lure)} — ${x.top.slice(0, 3).map((t) => `${t.value} ${esc(x.unit)}`).join(', ')}`).join('; ')}</p>` : '';
+    })()}
+    ${(d.lure_colours || []).length ? `<p class="small"><b>Цвета:</b> ${d.lure_colours.slice(0, 6).map((x) => `${esc(x.lure)} — ${esc(x.colour)}`).join('; ')}</p>` : ''}
+    ${d.mormyshka_material ? `<p class="small"><b>Мормышки:</b> ${Object.entries(d.mormyshka_material).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${esc(k)} (${v})`).join(', ')}</p>` : ''}
+    ${d.groundbait_share >= 0.1 ? `<p class="small"><b>Прикормка:</b> упоминают в ${pct(d.groundbait_share)} отчётов</p>` : ''}
+    ${(d.time_of_day || []).length ? `<h3>Время суток</h3>${shareBars(d.time_of_day, 4)}` : ''}
+    ${(d.tips || []).length ? `<h3>Советы</h3>${d.tips.map((t) => `<p class="small">• ${esc(t)}</p>`).join('')}` : ''}
+    ${ex[season === 'ice' ? 'ice' : 'open_water'] ? `<details class="card small" open><summary><b>Как ловят ладожские рыболовы</b></summary><p>${esc(ex[season === 'ice' ? 'ice' : 'open_water'])}</p>${(ex.sources || []).filter(safeUrl).slice(0, 3).map((u, i) => `<a href="${esc(u)}" target="_blank" rel="noopener">источник ${i + 1}</a>`).join(' · ')}</details>` : ''}
+    ${(d.examples || []).length ? `<h3>Кто на что поймал</h3>${d.examples.map((e) => `<div class="card small"><b>${esc(fmtDate(e.date))}, ${esc(e.place || '')}</b><br>${esc(e.text)}${safeUrl(e.source_url) ? `<br><a href="${esc(e.source_url)}" target="_blank" rel="noopener">отчёт</a>` : ''}</div>`).join('')}` : ''}
+    ${monthRow && monthRow.n ? `<p class="small"><b>В ${MONTHS_IN[mo - 1]}</b> (${monthRow.n} ${plural(monthRow.n, 'отчёт', 'отчёта', 'отчётов')}): ${(monthRow.top_methods || []).slice(0, 3).map((m) => `${esc(m.name)} ${pct(m.share)}`).join(', ')}</p>` : ''}
+    ${(s.by_area || []).length ? `<details><summary class="small"><b>По районам</b></summary>${s.by_area.slice(0, 8).map((a) => `<p class="small"><b>${esc(a.area)}</b> (${a.n}): ${(a.top_methods || []).slice(0, 3).map((m) => `${esc(m.name)} ${pct(m.share)}`).join(', ')}${a.depth_median ? `; ~${String(a.depth_median).replace('.', ',')} м` : ''}</p>`).join('')}</details>` : ''}
+    ${gear.length ? `<h3>${season === 'ice' ? 'Что взять на лёд' : 'Что взять на воду'}</h3>
+      <p class="small muted">Отмечайте, что уже уложили — список запомнится в телефоне.</p>
+      ${gear.map((g, i) => `<label class="check pack"><input type="checkbox" data-pack="${season}:${i}" ${packed.has(i) ? 'checked' : ''}><span><b>${esc(g.item)}</b><br><span class="small muted">${esc(g.why || '')}</span></span></label>`).join('')}
+      <button type="button" class="btn small ghost" data-act="pack-clear" data-season="${season}">Снять все отметки</button>` : ''}`;
+}
+
 /* ----- Depth tab ----- */
 const GENSHTAB_ATTR = 'Топокарта Генштаба СССР 1:100 000 (скан <a href="https://maps.vlasenko.net/soviet-military-topographic-map/map100k.html" target="_blank" rel="noopener">maps.vlasenko.net</a>)';
 const ISOBATH_ATTR = 'Изобаты (модель): GLDB v2, Kourzeneva &amp; Choulga, CC BY — не для навигации';
@@ -1103,7 +1197,9 @@ function placesHtml() {
   const mo = new Date().getMonth() + 1;
   const sp = speciesList();
   const order = zones.map((z, i) => ({ z, i, n: placeStats(z).n })).sort((a, b) => b.n - a.n);
-  return `<p class="small muted">Районы южной Ладоги: что там за дно, какая рыба и когда, где спуститься на воду и чего опасаться. Цифры по рыбе — отчёты с этой карты внутри района.</p>
+  return `<input type="search" id="placeSearch" class="search" placeholder="Найти: слип, остров, мыс, база, деревня…" autocomplete="off">
+    <div id="searchResults"></div>
+    <p class="small muted">Районы южной Ладоги: что там за дно, какая рыба и когда, где спуститься на воду и чего опасаться. Цифры по рыбе — отчёты с этой карты внутри района.</p>
     ${order.map(({ z, i }) => {
       const st = placeStats(z);
       const max = Math.max(1, ...st.months);
@@ -1137,6 +1233,27 @@ function showPlace(i) {
   map.fitBounds(l.getBounds(), { padding: [30, 30], maxZoom: 13 });
   openZoneCard(z);
 }
+
+// Search across named things: zones, slips, bases, landmarks, banks, hazards and the quick places.
+function searchPlaces(q) {
+  const t = q.trim().toLowerCase().replace(/ё/g, 'е');
+  if (t.length < 2) return [];
+  const hit = (name) => String(name || '').toLowerCase().replace(/ё/g, 'е').includes(t);
+  const out = [];
+  (state.ctx.season_zones || []).forEach((z, i) => { if (hit(z.name)) out.push({ type: 'zone', i, name: z.name, note: 'район' }); });
+  PLACES.forEach((p, i) => { if (hit(p[0])) out.push({ type: 'place', i, name: p[0], note: 'перейти' }); });
+  state.M.forEach((m, idx) => {
+    if (CATCH_KINDS.has(m.kind)) return;
+    const r = state.R[m.r[0]];
+    if (hit(r.title) || hit(r.comment)) out.push({ type: 'marker', idx, name: r.title || KINDS[m.kind].short, note: KINDS[m.kind].short });
+  });
+  return out.slice(0, 25);
+}
+$('#sheetBody').addEventListener('input', (e) => {
+  if (e.target.id !== 'placeSearch') return;
+  const res = searchPlaces(e.target.value);
+  $('#searchResults').innerHTML = res.length ? res.map((r) => `<button type="button" class="card today-zone" data-search="${r.type}:${r.type === 'marker' ? r.idx : r.i}"><b>${esc(r.name)}</b> <span class="small muted">${esc(r.note)}</span></button>`).join('') : (e.target.value.trim().length >= 2 ? '<p class="small muted">Ничего не нашлось.</p>' : '');
+});
 
 /* ----- Rules tab ----- */
 // Which part of a closed-season text is in force on a date. The rules mix plain ranges ("1 мая – 15 июня")
@@ -1592,18 +1709,20 @@ function drawLines() {
   for (const line of state.ctx.lines || []) {
     const coords = (line.coords || []).map((p) => (Array.isArray(p) ? p : [p.lat, p.lon]));
     if (coords.length < 2) continue;
-    L.polyline(coords, { color: '#ffd43b', weight: 2, opacity: 0.9, dashArray: '10 6' })
-      .bindTooltip(line.name || 'Фарватер', { sticky: true }).addTo(layers.lines);
+    const reef = line.kind === 'reef';
+    L.polyline(coords, { color: reef ? '#fa5252' : '#ffd43b', weight: reef ? 4 : 2.5, opacity: 0.9, dashArray: reef ? '2 6' : '10 6', lineCap: 'round' })
+      .bindTooltip(`${reef ? '⚠ ' : ''}${line.name || 'Фарватер'}`, { sticky: true }).addTo(layers.lines);
   }
 }
 function addExtraTileLayers() {
-  for (const [i, t] of (state.ctx.tile_layers || []).entries()) {
-    if (!t || !t.url || String(t.works_in_browser).toLowerCase() === 'no') continue;
-    if (/arcgisonline|openstreetmap\.org|opentopomap|openseamap/i.test(t.url)) continue; // built in already
-    const opts = { maxZoom: 19, maxNativeZoom: +t.max_zoom || 17, minZoom: +t.min_zoom || 0, attribution: t.attribution || '', tms: !!t.tms, subdomains: t.subdomains || 'abc', zIndex: 4 };
-    const key = `extra${i}`;
-    extraOverlays[key] = { name: t.name || `Слой ${i + 1}`, note: t.note || t.description || '', layer: L.tileLayer(t.url, opts) };
+  for (const t of state.ctx.tile_layers || []) {
+    if (!t.url || BASES[t.key]) continue;
+    BASES[t.key] = {
+      name: t.name,
+      make: () => L.tileLayer(t.url, { maxZoom: 19, maxNativeZoom: +t.max_zoom || 14, tms: !!t.tms, subdomains: t.subdomains || 'abc', attribution: t.attribution || 'nakarte.me' }),
+    };
   }
+  if (!BASES[state.base]) state.base = 'sat';
 }
 
 /* ---------- weather: wind, waves, pressure, sun and moon (Open-Meteo, no key) ----------
@@ -1947,7 +2066,6 @@ $('[data-hint-legend]').addEventListener('click', () => { closeHint(); handleAct
 
 /* ---------- boot ---------- */
 async function boot() {
-  setBase(state.base);
   let points, ctx;
   try {
     [points, ctx] = await Promise.all([
@@ -1960,6 +2078,7 @@ async function boot() {
   }
   state.R = points.reports; state.M = points.markers; state.meta = points; state.ctx = ctx || {};
   addExtraTileLayers();
+  setBase(state.base);
   buildDepthLayers();
   applyOverlays();
   drawLines(); drawMine(); drawRules(); drawSeasonZones();

@@ -311,3 +311,21 @@ button.card { display: block; width: 100%; text-align: left; border: 0; color: v
 .phone-row { display: flex; gap: 10px; align-items: baseline; padding: 9px 2px; border-bottom: 1px solid var(--line); text-decoration: none; color: var(--ink); }
 .phone-row b { color: var(--accent); white-space: nowrap; font-size: 15px; }
 .phone-row span { font-size: 13px; color: var(--ink-2); }
+
+.search { width: 100%; font: inherit; font-size: 16px; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--paper); color: var(--ink); margin: 6px 0; }
+
+/* tackle */
+.hbars { display: grid; gap: 5px; margin: 4px 0 8px; }
+.hbar { display: grid; grid-template-columns: minmax(0, 11.5em) 1fr 3em; gap: 8px; align-items: center; font-size: 13px; }
+.hbar-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hbar-track { height: 10px; border-radius: 5px; background: var(--paper-2); overflow: hidden; }
+.hbar-track span { display: block; height: 100%; background: var(--accent); border-radius: 5px; }
+.hbar-val { text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
+label.check.pack { align-items: flex-start; border-bottom: 1px solid var(--line); padding: 8px 0; }
+label.check.pack input { margin-top: 2px; flex: none; }
+
+/* points of interest: names appear from zoom 13 */
+.poi { position: relative; }
+.poi-label { display: none; position: absolute; left: 22px; top: 1px; white-space: nowrap; font: 600 11px/1.2 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  color: #fff; text-shadow: 0 0 3px #000, 0 0 2px #000; pointer-events: none; }
+.labels-on .poi-label { display: block; }

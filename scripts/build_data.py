@@ -309,6 +309,36 @@ def timeseries():
     }
 
 
+# Map layers the research found working, with the zooms they really serve (nakarte: GGC and the General Staff mosaic).
+TILE_MAXZOOM = {"topomapper": 13, "ggc2000": 12, "ggc500": 14, "ggc250": 15}
+TILE_NAMES = {"topomapper": "Генштаб СССР (1:100 000, мозаика)", "ggc2000": "ГосГисЦентр 1:200 000",
+              "ggc500": "ГосГисЦентр 1:50 000 — мели, камни, отмели", "ggc250": "ГосГисЦентр 1:25 000 — самая подробная"}
+
+
+def curated_tiles(layers):
+    out = []
+    for t in layers:
+        url = t.get("url_template") or t.get("url") or ""
+        key = next((k for k in TILE_MAXZOOM if f"/{k}/" in url), None)
+        if not key or not str(t.get("works_in_browser", "")).startswith("yes"):
+            continue
+        out.append({"key": key, "name": TILE_NAMES[key], "url": url, "tms": bool(t.get("tms")) and str(t.get("tms")) != "False",
+                    "subdomains": t.get("subdomains") or "abc", "max_zoom": TILE_MAXZOOM[key],
+                    "attribution": t.get("attribution") or "nakarte.me"})
+    order = ["ggc250", "ggc500", "topomapper", "ggc2000"]
+    return sorted(out, key=lambda t: order.index(t["key"]))
+
+
+def tackle_context():
+    t = load_json("tackle")
+    if not t:
+        return {}
+    records = RESEARCH / "raw" / "tackle" / "records.jsonl"
+    total = sum(1 for _ in open(records, encoding="utf-8")) if records.exists() else 0
+    return {"species": t.get("species") or [], "gear_lists": t.get("gear_lists") or {},
+            "legal_common": t.get("legal_common"), "total": total}
+
+
 def load_json(name):
     path = RESEARCH / f"{name}.json"
     if name in SKIP or not path.exists():
@@ -457,6 +487,7 @@ def main():
         "regulations": rules.get("regulations") or {},
         "ice_rules": rules.get("ice_rules") or [],
         "timeseries": timeseries(),
+        "tackle": tackle_context(),
         "practical": {k: practical.get(k) for k in ("boat_rules", "ice_rules_general", "weather", "emergency", "coverage")},
         "depth": {
             "overlays": overlays,
@@ -464,7 +495,7 @@ def main():
             "phone_workflows": depth.get("phone_workflows") or [],
         },
         "lines": nav.get("lines") or [],
-        "tile_layers": nav.get("tile_layers") or [],
+        "tile_layers": curated_tiles(nav.get("tile_layers") or []),
         "sources": sources,
     }
     (SITE_DATA / "context.json").write_text(json.dumps(context, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
