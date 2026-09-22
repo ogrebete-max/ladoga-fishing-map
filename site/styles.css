@@ -294,3 +294,7 @@ button.card { display: block; width: 100%; text-align: left; border: 0; color: v
 .today-wx { display: flex !important; gap: 12px; align-items: center; }
 .today-wx .wx-arrow { font-size: 22px; color: var(--accent); }
 .today-zone { padding: 9px 12px; }
+
+.rules-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.rules-table th { text-align: left; color: var(--muted); font-weight: 600; padding: 4px 6px 4px 0; border-bottom: 1px solid var(--line); }
+.rules-table td { padding: 5px 6px 5px 0; border-bottom: 1px solid var(--line); vertical-align: top; }

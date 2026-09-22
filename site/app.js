@@ -997,15 +997,6 @@ function inRange(range, date = new Date()) {
   const a = range[0][0] * 100 + range[0][1], b = range[1][0] * 100 + range[1][1];
   return a <= b ? md >= a && md <= b : md >= a || md <= b;
 }
-function bansToday() {
-  const cs = state.ctx.regulations?.closed_seasons || [];
-  const out = [];
-  for (const c of cs) {
-    const range = parseDateRange(c.dates || c.period || '');
-    if (range && inRange(range)) out.push(c);
-  }
-  return out;
-}
 function todayHtml() {
   const mo = new Date().getMonth() + 1;
   const sp = speciesList();
@@ -1026,7 +1017,7 @@ function todayHtml() {
         <span><b>${Math.round(wx.fc.current.wind_speed_10m)} м/с ${rumb(wx.fc.current.wind_direction_10m)}</b>, порывы ${Math.round(wx.fc.current.wind_gusts_10m)} · ${Math.round(wx.fc.current.temperature_2m)}° · ${hPaToMm(wx.fc.current.pressure_msl)} мм<br><span class="muted small">${esc(wxPlace().name)} · прогноз и волна →</span></span>
       </button>` : '<p class="small muted">Погода загрузится, когда будет интернет.</p>'}
     ${warns.map((w) => `<div class="card small wx-${w.level}">${w.level === 'danger' ? '⚠️ ' : w.level === 'warn' ? '🌊 ' : 'ℹ️ '}${esc(w.text)}</div>`).join('')}
-    ${bans.length ? `<div class="card small wx-danger"><b>🚫 Сегодня действует запрет:</b>${bans.map((b) => `<div style="margin-top:4px">• ${esc(b.species || 'все виды')}: ${esc(b.dates || b.period || '')}${b.area ? ` — ${esc(b.area)}` : ''}</div>`).join('')}<div style="margin-top:4px"><a href="#" data-tab-link="rules">Все правила →</a></div></div>` : ''}
+    ${bans.length ? `<div class="card small wx-danger"><b>Сегодня действует:</b>${bans.map(banLine).join('')}<div style="margin-top:6px"><a href="#" data-tab-link="rules">Размеры, нормы и все правила →</a></div></div>` : `<p class="small">✅ Сезонных запретов на любительский лов сегодня нет. <a href="#" data-tab-link="rules">Размеры и нормы →</a></p>`}
     <h3>Что ловится в ${MONTHS_IN[mo - 1]}</h3>
     ${best.length ? `<div class="chips">${best.slice(0, 8).map((s) => `<button type="button" class="chip" data-act="filter-fish" data-name="${esc(speciesKey(s))}"><span class="dot" style="background:${speciesColor(s)}"></span>${esc(shortName(s))} ${dots(activity(s, mo))}</button>`).join('')}</div>` : '<p class="small muted">Справка по рыбе загружается…</p>'}
     ${best[0] && methodFor(best[0], ice) ? `<p class="small"><b>${esc(shortName(best[0]))}:</b> ${esc(methodFor(best[0], ice))}</p>` : ''}
@@ -1142,33 +1133,118 @@ function showPlace(i) {
 }
 
 /* ----- Rules tab ----- */
-function listOf(items, fn) { return (items || []).length ? items.map(fn).join('') : ''; }
-function objLine(o, keys) { return keys.map((k) => o[k]).filter((v) => v != null && v !== '').map((v) => (Array.isArray(v) ? v.join(', ') : typeof v === 'object' ? JSON.stringify(v) : v)).join(' · '); }
+// Which part of a closed-season text is in force on a date. The rules mix plain ranges ("1 мая – 15 июня")
+// with ice-bound ones ("с распаления льда до 20 июня", "с 15 сентября до ледостава"); ice dates are taken
+// as the typical ones for the south of Ladoga (break-up ~15 April, freeze-up ~15 December).
+const ICE_BREAKUP = [4, 15], FREEZE_UP = [12, 15];
+function monthDay(txt) {
+  const m = String(txt).toLowerCase().match(/(\d{1,2})\s+([а-яё]+)/);
+  if (!m) return null;
+  const mi = RU_MONTH_STEMS.findIndex((stem) => m[2].startsWith(stem) && !(stem === 'ма' && !/^ма[яй]/.test(m[2])));
+  return mi >= 0 ? [mi + 1, +m[1]] : null;
+}
+function activeParts(text, date = new Date()) {
+  const out = [];
+  // "Ладожское озеро: с … до 20 июня и с 15 сентября до ледостава" → both halves keep «Ладожское озеро:».
+  const parts = [];
+  for (const seg of String(text || '').split(';')) {
+    const m = seg.match(/^\s*([^:]{2,80}):\s*(.*)$/);
+    const prefix = m ? `${m[1].trim()}: ` : '';
+    for (const sub of (m ? m[2] : seg).split(/\sи\s(?=с\s)/)) parts.push(prefix + sub.trim());
+  }
+  for (const part of parts) {
+    const p = part.trim();
+    if (!p) continue;
+    if (/круглый год/i.test(p)) { out.push(p); continue; }
+    let range = null;
+    const fromIce = p.match(/распалени[яе] льда\s*(?:до|по)\s*(\d{1,2}\s+[а-яё]+)/i);
+    const toFreeze = p.match(/с\s+(\d{1,2}\s+[а-яё]+)\s+до\s+ледостава/i);
+    const plain = p.match(/(\d{1,2}\s+[а-яё]+)\s*[–—-]\s*(\d{1,2}\s+[а-яё]+)/);
+    if (fromIce) range = [ICE_BREAKUP, monthDay(fromIce[1])];
+    else if (toFreeze) range = [monthDay(toFreeze[1]), FREEZE_UP];
+    else if (plain) range = [monthDay(plain[1]), monthDay(plain[2])];
+    if (range && range[0] && range[1] && inRange(range, date)) out.push(p);
+  }
+  return out;
+}
+function bansToday(date = new Date()) {
+  const out = [];
+  for (const c of state.ctx.regulations?.closed_seasons || []) {
+    if (/круглый год \(запретные виды\)/i.test(c.dates || '')) continue; // shown apart as protected species
+    if (/вне рамки карты|северная часть Ладоги/i.test(`${c.area} ${c.species}`)) continue; // not this map's water
+    const parts = activeParts(c.dates || c.period || '', date);
+    if (parts.length) out.push({ ...c, now: parts.join('; ') });
+  }
+  return out;
+}
+const isMotorBan = (c) => /маломерных судов с моторами/i.test(c.species || '');
+function banLine(c) {
+  const motor = isMotorBan(c);
+  const who = motor ? `🚤 Моторы запрещены — ${(c.species.match(/\(([^)]+)\)/) || [])[1] || c.area || ''}` : `🚫 ${c.species || 'все виды'}`;
+  return `<div style="margin-top:4px">• <b>${esc(who)}</b>: ${esc(c.now || c.dates || '')}${!motor && c.area ? ` <span class="muted">(${esc(c.area)})</span>` : ''}</div>`;
+}
 function rulesHtml() {
   const g = state.ctx.regulations || {};
   const ice = state.ctx.ice_rules || [];
-  const incidents = state.R.filter((r) => r.kind === 'ice_incident').length;
   if (!Object.keys(g).length && !ice.length) return '<p class="muted">Правила ещё собираются.</p>';
+  const cs = g.closed_seasons || [];
+  const now = bansToday();
+  const forbidden = cs.filter((c) => /круглый год \(запретные виды\)/i.test(c.dates || ''));
+  const seasons = cs.filter((c) => !isMotorBan(c) && !forbidden.includes(c));
+  const motors = cs.filter(isMotorBan);
+  const sizes = g.size_limits || [], bags = g.bag_limits || [];
+  const species = [...new Set([...sizes.map((x) => x.species), ...bags.map((x) => x.species)])];
+  const amateurAreas = (g.prohibited_areas || []).filter((a) => !/^\[Промысел\]|справочно/i.test(`${a.name} ${a.applies_to}`));
+  const tradeAreas = (g.prohibited_areas || []).filter((a) => !amateurAreas.includes(a));
+  const incidents = state.R.filter((r) => r.kind === 'ice_incident').length;
   return `
-    <div class="card small">⚠️ Это выжимка для ориентира, а не юридический текст. Перед поездкой сверяйтесь с действующими Правилами рыболовства и сообщениями МЧС.</div>
-    ${g.document ? `<p><b>${esc(g.document)}</b>${safeUrl(g.url) ? ` — <a href="${esc(g.url)}" target="_blank" rel="noopener">текст</a>` : ''}</p>` : ''}
-    ${(g.amendments || []).length ? `<p class="small muted">Изменения: ${esc(g.amendments.map((a) => (typeof a === 'string' ? a : objLine(a, ['document', 'date', 'name', 'summary']))).join('; '))}</p>` : ''}
-    ${(g.closed_seasons || []).length ? `<h3>Запретные сроки</h3>${listOf(g.closed_seasons, (c) => `<div class="card small"><b>${esc(c.species || 'все виды')}</b>: ${esc(c.dates || '')}${c.area ? `<br>${esc(c.area)}` : ''}${c.article ? ` <span class="muted">(${esc(c.article)})</span>` : ''}${c.note ? `<br>${esc(c.note)}` : ''}</div>`)}` : ''}
-    ${(g.prohibited_areas || []).length ? `<h3>Запретные районы</h3>
-      <label class="check"><input type="checkbox" data-overlay="rules" ${state.overlays.rules ? 'checked' : ''}> Показать на карте (где известны границы)</label>
-      ${listOf(g.prohibited_areas, (a) => `<div class="card small"><b>${esc(a.name || '')}</b>${a.period ? ` — ${esc(a.period)}` : ''}<br>${esc(a.description || '')}${a.article ? ` <span class="muted">(${esc(a.article)})</span>` : ''}</div>`)}` : ''}
-    ${(g.size_limits || []).length ? `<h3>Минимальный размер</h3><table class="cal">${listOf(g.size_limits, (s) => `<tr><td>${esc(s.species)}</td><td style="text-align:right">${esc(s.min_cm)} см</td></tr>`)}</table>` : ''}
-    ${(g.bag_limits || []).length ? `<h3>Норма вылова</h3>${listOf(g.bag_limits, (b) => `<div class="small">• ${esc(typeof b === 'string' ? b : objLine(b, ['species', 'limit', 'per_day', 'note']))}</div>`)}` : ''}
-    ${(g.gear_rules || []).length ? `<h3>Снасти и способы</h3>${listOf(g.gear_rules, (b) => `<div class="small">• ${esc(typeof b === 'string' ? b : objLine(b, ['rule', 'text', 'description', 'article']))}</div>`)}` : ''}
-    ${ice.length ? `<h3>Лёд и безопасность</h3>${listOf(ice, (b) => `<div class="card small">${esc(typeof b === 'string' ? b : objLine(b, ['date', 'period', 'title', 'area', 'description', 'summary']))}${safeUrl(b.source_url || b.url) ? ` <a href="${esc(b.source_url || b.url)}" target="_blank" rel="noopener">источник</a>` : ''}</div>`)}` : ''}
-    ${incidents ? `<p class="small">На карте ${incidents} ${plural(incidents, 'происшествие', 'происшествия', 'происшествий')} на льду (оранжевые точки): отрывы льдин, провалы — это и опасные места, и места, куда массово выходят рыбаки.</p>` : ''}`;
+    <h2>Правила и запреты</h2>
+    <div class="card small">Выжимка из Правил рыболовства Западного бассейна (приказ № 620 в ред. № 747, действует с 01.09.2024 до 01.09.2027). Перед поездкой сверяйтесь с текстом: ${safeUrl(g.url) ? `<a href="${esc(g.url)}" target="_blank" rel="noopener">официальная публикация</a>` : ''}${(g.consolidated_text_urls || []).filter(safeUrl).map((u, i) => ` · <a href="${esc(u)}" target="_blank" rel="noopener">${i ? 'Гарант' : 'КонсультантПлюс'}</a>`).join('')}.</div>
+    <h3>Действует сегодня</h3>
+    ${now.length ? `<div class="card small wx-danger">${now.map(banLine).join('')}</div>` : '<p class="small">Сегодня сезонных запретов на любительский лов в этом районе нет — действуют только общие правила ниже.</p>'}
+    <h3>Размер и норма вылова</h3>
+    <table class="rules-table"><tr><th>Рыба</th><th>Не меньше</th><th>В сутки</th></tr>
+      ${species.map((sp) => { const sz = sizes.find((x) => x.species === sp); const bg = bags.find((x) => x.species === sp); return `<tr><td>${esc(sp)}</td><td>${sz ? `${esc(sz.min_cm)} см` : '—'}</td><td>${bg ? esc(bg.limit) : '—'}</td></tr>`; }).join('')}
+    </table>
+    ${bags.filter((b) => b.note).map((b) => `<p class="small muted">${esc(b.species)}: ${esc(b.note)}</p>`).join('')}
+    <h3>Запретные сроки</h3>
+    ${seasons.map((c) => `<div class="card small"><b>${esc(c.species)}</b>: ${esc(c.dates)}<br><span class="muted">${esc(c.area || '')}${c.article ? ` · ${esc(c.article)}` : ''}</span>${c.note ? `<br><span class="muted">${esc(c.note)}</span>` : ''}</div>`).join('')}
+    ${forbidden.length ? `<h3>Ловить нельзя никогда</h3>${forbidden.map((c) => `<div class="small" style="margin:4px 0">🚫 ${esc(c.species)} <span class="muted">(${esc(c.area || '')})</span></div>`).join('')}<p class="small muted">Случайно пойманную рыбу запрещённых видов и меньше разрешённого размера сразу отпускают.</p>` : ''}
+    ${motors.length ? `<h3>Лодки с мотором</h3>${motors.map((c) => `<div class="card small"><b>${esc((c.species.match(/\(([^)]+)\)/) || [])[1] || '')}</b>: ${esc(c.dates)}<br><span class="muted">${esc(c.area || '')}</span></div>`).join('')}<p class="small muted">Запрет на моторы касается рыболовства с моторных лодок в эти сроки; «до ледостава» и «с распаления льда» — по факту на водоёме.</p>` : ''}
+    ${(g.gear_rules || []).length ? `<h3>Снасти и способы</h3>${g.gear_rules.map((b) => `<div class="small" style="margin:5px 0">• ${esc(typeof b === 'string' ? b : b.rule || '')}</div>`).join('')}` : ''}
+    ${amateurAreas.length ? `<h3>Запретные места</h3>
+      <label class="check"><input type="checkbox" data-overlay="rules" ${state.overlays.rules ? 'checked' : ''}> Показать на карте</label>
+      ${amateurAreas.map((a) => `<div class="card small"><b>${esc(a.name)}</b>${a.period ? ` — ${esc(a.period)}` : ''}<br>${esc(a.description || '')}</div>`).join('')}` : ''}
+    ${tradeAreas.length ? `<details><summary class="small">Запреты для промысла (любителей не касаются, справочно): ${tradeAreas.length}</summary>${tradeAreas.map((a) => `<div class="small" style="margin:6px 0"><b>${esc(a.name.replace(/^\[Промысел\]\s*/, ''))}</b>${a.period ? ` — ${esc(a.period)}` : ''}. ${esc(a.description || '')}</div>`).join('')}</details>` : ''}
+    ${ice.length ? `<h3>Лёд: запреты и безопасность</h3>${ice.map((b) => `<details class="card small"><summary><b>${esc(b.title || b.type || '')}</b></summary><p>${esc(b.description || b.summary || '')}</p>${safeUrl(b.source_url) ? `<a href="${esc(b.source_url)}" target="_blank" rel="noopener">источник</a>` : ''}</details>`).join('')}` : ''}
+    ${incidents ? `<p class="small">На карте ${incidents} ${plural(incidents, 'случай', 'случая', 'случаев')} на льду (оранжевые точки) за 2009–2026: отрывы льдин, провалы, машины под лёд. Это и опасные места, и места, куда массово выходят рыбаки.</p>` : ''}`;
 }
+// Prohibited areas on the map: circles for zones, lines and polygons as drawn by the rules, markers for named points.
 function drawRules() {
   layers.rules.clearLayers();
   if (!state.overlays.rules) return;
   for (const a of state.ctx.regulations?.prohibited_areas || []) {
-    const l = zoneLayer(a, '#e03131', `Запрет: ${a.name || ''}`);
-    if (l) l.addTo(layers.rules);
+    const trade = /^\[Промысел\]|справочно/i.test(`${a.name} ${a.applies_to}`);
+    const color = trade ? '#868e96' : '#e03131';
+    const style = { color, weight: 2, fillColor: color, fillOpacity: trade ? 0.04 : 0.12, dashArray: trade ? '4 6' : null, interactive: false };
+    const label = a.name.replace(/^\[Промысел\]\s*/, trade ? 'Промысел: ' : '');
+    const shapes = [];
+    if (Array.isArray(a.polygon) && a.polygon.length > 2) shapes.push(L.polygon(a.polygon, style));
+    if (Array.isArray(a.line) && a.line.length > 1) shapes.push(L.polyline(a.line, { ...style, weight: 3 }));
+    for (const z of a.zones || []) if (z.lat != null) shapes.push(L.circle([z.lat, z.lon], { ...style, radius: z.radius_m || 1000 }));
+    if (!shapes.length) for (const r of a.reference_points || []) if (r.lat != null) shapes.push(L.circle([r.lat, r.lon], { ...style, radius: 500 }));
+    if (!shapes.length) continue;
+    shapes.forEach((s) => s.addTo(layers.rules));
+    const c = L.featureGroup(shapes).getBounds().getCenter();
+    const tag = L.marker(c, { icon: L.divIcon({ className: 'zone-tag-wrap', html: `<button type="button" class="zone-tag" style="--zc:${color}">🚫 ${esc(label.slice(0, 34))}</button>`, iconSize: null }), zIndexOffset: -400 });
+    tag.on('click', () => {
+      state.tab = 'rule';
+      $$('#tabs button').forEach((b) => b.classList.remove('active'));
+      $('#sheetBody').innerHTML = `<div class="row" style="justify-content:space-between;flex-wrap:nowrap"><h2>${esc(label)}</h2><button type="button" class="btn small ghost" data-act="close-card">✕</button></div>
+        <p class="small"><b>${esc(a.period || '')}</b>${a.applies_to ? ` · ${esc(a.applies_to)}` : ''}</p><p class="small">${esc(a.description || '')}</p>${a.article ? `<p class="small muted">${esc(a.article)}</p>` : ''}${safeUrl(a.source_url) ? `<a class="small" href="${esc(a.source_url)}" target="_blank" rel="noopener">текст правил</a>` : ''}`;
+      setSheet(desktopLayout() ? 'full' : 'half');
+    });
+    tag.addTo(layers.rules);
   }
 }
 

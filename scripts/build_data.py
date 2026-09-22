@@ -410,6 +410,15 @@ def main():
     (SITE_DATA / "points.json").write_text(json.dumps(points, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
 
     bio, rules, nav = load_json("biology_seasons"), load_json("rules_safety"), load_json("nav_structures")
+    # The species notes quote the ban dates before order № 747; since 01.09.2024 they are fixed dates.
+    fixes = {"запрет от распаления льда по 15 июня": "запрет с 1 мая по 15 июня",
+             "запрет от распаления льда до 31 мая": "запрет с 15 апреля по 31 мая"}
+    for sp in bio.get("species") or []:
+        for k, v in list(sp.items()):
+            if isinstance(v, str):
+                for old, new in fixes.items():
+                    v = v.replace(old, new)
+                sp[k] = v
     depth = load_json("depth")
     overlays = []
     for o in depth.get("image_overlays") or []:
