@@ -352,10 +352,26 @@ function filterHtml() {
   const years = state.R.map(yearOf).filter(Boolean);
   const minY = Math.min(...years), maxY = Math.max(...years);
   return `
+    <details class="card legend-card" id="legend" ${store.get('ladoga-hint-v1', false) ? '' : 'open'}><summary><b>Что на карте</b></summary>
+      <div class="legend">
+        <span><span class="pin" style="display:inline-block;width:14px;height:14px;background:#2f9e44"></span> отчёт рыбака, цвет = рыба</span>
+        <span><span class="pin multi" style="display:inline-grid;width:18px;height:18px;background:#e0b000">4</span> 4 отчёта в одном месте</span>
+        <span><span class="pin A" style="display:inline-block;width:14px;height:14px;background:#f08c00"></span> точный GPS рыбака</span>
+        <span><span class="pin obs" style="display:inline-block;width:14px;height:14px;border-color:#748ffc"></span> наблюдение рыбы</span>
+        <span>${kindSwatch('launch')} спуск, слип, парковка</span>
+        <span>${kindSwatch('structure')} банка, свал, гряда</span>
+        <span>${kindSwatch('hazard')} опасность</span>
+        <span>${kindSwatch('ice_incident')} случай на льду</span>
+        <span><span class="marker-cluster" style="display:inline-grid;width:22px;height:22px"><div style="width:18px;height:18px;margin:2px;font-size:10px">12</div></span> группа точек — нажмите</span>
+        <span><span class="zone-tag" style="--zc:#f08c00;pointer-events:none">Судак</span> зона сезона</span>
+      </div>
+      <p class="small muted" style="margin-bottom:0">Нажмите на точку — отчёты, координаты и «Вести к точке». Долгое нажатие на карту — поставить свою точку.</p>
+    </details>
     <h3>Перейти</h3>
     <div class="chips">${PLACES.map((p, i) => `<button type="button" class="chip" data-place="${i}">${esc(p[0])}</button>`).join('')}</div>
     <h3>Рыба</h3>
-    <div class="chips">${fish.map(([name, n]) => `<button type="button" class="chip ${f.fish.has(name) ? 'on' : ''}" data-fish="${esc(name)}"><span class="dot" style="background:${FISH_COLORS[name] || OTHER_COLOR}"></span>${esc(name)} <span class="n">${n}</span></button>`).join('')}</div>
+    <div class="chips">${fish.filter(([name, n], i) => i < 12 || f.fish.has(name)).map(fishChip).join('')}</div>
+    ${fish.length > 12 ? `<details><summary class="small">Ещё ${fish.length - 12} ${plural(fish.length - 12, 'вид', 'вида', 'видов')} (редкие)</summary><div class="chips">${fish.filter(([name], i) => i >= 12 && !f.fish.has(name)).map(fishChip).join('')}</div></details>` : ''}
     <h3>Месяц отчёта</h3>
     <div class="months">${MONTHS.map((m, i) => `<button type="button" class="chip ${f.months.has(i + 1) ? 'on' : ''}" data-month="${i + 1}">${m}<span class="n">${monthCounts[i + 1]}</span></button>`).join('')}</div>
     <div class="row" style="margin-top:8px">
@@ -377,6 +393,9 @@ function filterHtml() {
     <hr>
     <p class="small muted">Крупная точка с числом — несколько отчётов в одном месте (в пределах 30 м). Точка с зелёной обводкой — точный GPS рыбака. Кольцо без заливки — наблюдение рыбы, а не рыбалка.</p>`;
 }
+function fishChip([name, n]) {
+  return `<button type="button" class="chip ${state.f.fish.has(name) ? 'on' : ''}" data-fish="${esc(name)}"><span class="dot" style="background:${FISH_COLORS[name] || OTHER_COLOR}"></span>${esc(name)} <span class="n">${n}</span></button>`;
+}
 function kindSwatch(k) {
   if (CATCH_KINDS.has(k)) return `<span class="pin ${k === 'observation' ? 'obs' : ''}" style="display:inline-block;width:12px;height:12px;${k === 'observation' ? 'border-color:#2f9e44' : 'background:#2f9e44'}"></span>`;
   return `<span class="shape ${k}" style="display:inline-grid;width:12px;height:12px;font-size:8px">${k === 'launch' ? '⚓' : k === 'ice_incident' ? '!' : ''}</span>`;
@@ -397,7 +416,7 @@ $('#sheetBody').addEventListener('click', (e) => {
   if (d.src) { toggleSet(f.sources, d.src); t.classList.toggle('on'); render(); return; }
   if (t.id === 'thisMonth') { f.months = new Set([new Date().getMonth() + 1]); render(); showTab('filter'); return; }
   if (t.id === 'resetFilters') { state.f = defaultFilters(); render(); showTab('filter'); return; }
-  if (d.smonth) { if (state.playing) { clearInterval(state.playing); state.playing = null; } state.seasonMonth = +d.smonth; showTab('season'); drawSeasonZones(); return; }
+  if (d.smonth) { if (state.season) { setAutoplay(false); showSeasonMonth(+d.smonth); } else { state.seasonMonth = +d.smonth; showTab('season'); drawSeasonZones(); } return; }
   if (d.act) handleAction(d.act, t);
 });
 $('#sheetBody').addEventListener('change', (e) => {
@@ -479,6 +498,7 @@ function openPoint(idx) {
     ${rs.map(({ r, ok }) => reportHtml(r, ok)).join('')}`;
   $('#sheetBody').scrollTop = 0;
   setSheet(desktopLayout() ? 'full' : 'half');
+  keepInView(m.lat, m.lon);
   updatePointFromMe();
   history.replaceState(null, '', `#pt=${m.lat.toFixed(5)},${m.lon.toFixed(5)}`);
 }
@@ -492,6 +512,25 @@ function reportHtml(r, ok) {
     ${extra ? `<div class="small">${esc(extra)}</div>` : ''}
     <div class="meta">${links}${r.prec ? ` · точность ±${r.prec} м` : ''}${r.raw ? ` · в источнике: <span class="coord">${esc(r.raw)}</span>` : ''}</div>
   </div>`;
+}
+// On a phone the open panel covers the lower half: move the map so the chosen place sits above it.
+function keepInView(lat, lon) {
+  if (desktopLayout()) return;
+  // The panel may still be sliding, so use where it will end up rather than where it is now.
+  setTimeout(() => {
+    const p = map.latLngToContainerPoint([lat, lon]);
+    const size = map.getSize();
+    const st = sheet.dataset.state;
+    const sheetTop = size.y - (st === 'full' ? size.y - 64 : st === 'half' ? size.y * 0.52 : 104);
+    if (phoneLandscape()) {
+      const panelRight = st === 'peek' ? 0 : Math.min(360, size.x * 0.48);
+      const targetX = panelRight + (size.x - panelRight) / 2;
+      map.panBy([p.x - targetX, 0]);
+      return;
+    }
+    const targetY = Math.max(90, sheetTop / 2);
+    if (p.y > sheetTop - 30 || p.y < 70) map.panBy([p.x - size.x / 2, p.y - targetY]);
+  }, 260);
 }
 function nearestLaunch(m) {
   let best = null;
@@ -529,8 +568,9 @@ function handleAction(act, el) {
   else if (act === 'gpx-one' && m) download(`ladoga_${m.lat.toFixed(4)}_${m.lon.toFixed(4)}.gpx`, gpx([{ lat: m.lat, lon: m.lon, name: 'Ладога', desc: m.r.map((i) => state.R[i].comment || '').join('; ') }]));
   else if (act === 'gpx-filter') download('ladoga_filtered.gpx', gpx(filteredWaypoints()));
   else if (act === 'gpx-mine') download('ladoga_my_points.gpx', gpx(state.mine.map((p) => ({ lat: p.lat, lon: p.lon, name: p.name, desc: new Date(p.t).toLocaleString('ru-RU') }))));
-  else if (act === 'mine-nav') { const p = state.mine.find((x) => x.id === el.dataset.id); if (p) startNav({ lat: p.lat, lon: p.lon, title: p.name }); }
-  else if (act === 'mine-del') { state.mine = state.mine.filter((x) => x.id !== el.dataset.id); store.set('ladoga-mine', state.mine); drawMine(); showTab('data'); }
+  else if (act === 'mine-nav') { const p = state.mine.find((x) => x.id === el.dataset.id) || state.mineCard; if (p) startNav({ lat: p.lat, lon: p.lon, title: p.name }); }
+  else if (act === 'mine-share') { const p = state.mine.find((x) => x.id === el.dataset.id) || state.mineCard; if (p) sharePoint(p.lat, p.lon, p.name); }
+  else if (act === 'mine-del') { state.mine = state.mine.filter((x) => x.id !== el.dataset.id); store.set('ladoga-mine', state.mine); drawMine(); closeSheetOnPhone(); if (desktopLayout()) showTab('data'); }
   else if (act === 'show-zone') showZone(el.dataset.zone);
   else if (act === 'play-year') playYear();
   else if (act === 'place-show') showPlace(+el.dataset.zone);
@@ -538,7 +578,10 @@ function handleAction(act, el) {
   else if (act === 'copy-link') copy(location.href.split('#')[0], 'Ссылка');
   else if (act === 'locate-retry') { stopWatch(); startWatch(true); closeSheetOnPhone(); }
   else if (act === 'filter-fish') { state.f.fish = new Set([el.dataset.name]); render(); drawSeasonZones(); toast(`На карте: ${el.dataset.name}`); closeSheetOnPhone(); }
-  else if (act === 'month-filter') { state.f.months = new Set([state.seasonMonth]); render(); toast(`На карте отчёты за ${MONTHS_FULL[state.seasonMonth - 1]}`); closeSheetOnPhone(); }
+  else if (act === 'month-filter') enterSeasonMode(false);
+  else if (act === 'close-card') { closeSheetOnPhone(); if (desktopLayout()) showTab('filter'); }
+  else if (act === 'zone-nav') startNav({ lat: +el.dataset.lat, lon: +el.dataset.lon, title: el.dataset.name });
+  else if (act === 'hint-legend') { showTab('filter'); setSheet(desktopLayout() ? 'full' : 'half'); const l = $('#legend'); if (l) l.open = true; }
 }
 async function sharePoint(lat, lon, title) {
   const url = `${location.origin}${location.pathname}#pt=${lat.toFixed(5)},${lon.toFixed(5)}`;
@@ -608,7 +651,7 @@ function seasonHtml() {
   return `
     <div class="months" style="margin-top:6px">${MONTHS.map((m, i) => `<button type="button" class="chip ${mo === i + 1 ? 'on' : ''}" data-smonth="${i + 1}">${m}</button>`).join('')}</div>
     <div class="row" style="margin-top:8px">
-      <button type="button" class="btn small ${state.playing ? '' : 'ghost'}" data-act="play-year">${state.playing ? '⏸ Стоп' : '▶ Год по месяцам'}</button>
+      <button type="button" class="btn small ${state.season ? '' : 'ghost'}" data-act="play-year">${state.season ? '✕ Выйти из режима месяцев' : '▶ Год по месяцам'}</button>
       <label class="check" style="padding:0"><input type="checkbox" data-overlay="seasonZones" ${state.overlays.seasonZones ? 'checked' : ''}> зоны на карте</label>
     </div>
     <h2>Ладога в ${MONTHS_IN[mo - 1]} ${ice ? '❄' : '🌊'}</h2>
@@ -664,78 +707,163 @@ function calendarTable(sp, mo, field) {
   </table>`;
 }
 // A zone is a circle (lat/lon/radius_km), a polygon, or a line with a width (line_buffer).
-function zoneLayer(z, color, label, extraHtml = '') {
-  const style = { color, weight: 2, fillOpacity: 0.12, dashArray: '4 6' };
+// Its outline never catches taps — a tap on the water must reach the map and the points. Each drawn
+// zone gets a small label instead; the label opens the zone's card in the panel, which has a clear ✕.
+function zoneShape(z, color, dim = false) {
+  const style = { color, weight: dim ? 1.5 : 2.5, opacity: dim ? 0.6 : 0.95, fillColor: color, fillOpacity: dim ? 0.05 : 0.16, dashArray: dim ? '3 6' : null, interactive: false };
   const pts = (arr) => (arr || []).map((p) => (Array.isArray(p) ? [+p[0], +p[1]] : [+p.lat, +p.lon]));
-  let layer = null;
-  if (Array.isArray(z.polygon) && z.polygon.length > 2) layer = L.polygon(pts(z.polygon), style);
-  else if (Array.isArray(z.line) && z.line.length > 1) {
+  if (Array.isArray(z.polygon) && z.polygon.length > 2) return L.polygon(pts(z.polygon), style);
+  if (Array.isArray(z.line) && z.line.length > 1) {
     const km = +z.buffer_width_km || 1;
-    layer = L.polyline(pts(z.line), { color, weight: Math.max(6, Math.min(26, km * 7)), opacity: 0.35, lineCap: 'round' });
-  } else if (z.lat != null && z.lon != null) layer = L.circle([+z.lat, +z.lon], { ...style, radius: (+z.radius_km || 1) * 1000 });
-  if (!layer) return null;
-  const src = [].concat(z.sources || [], z.source_url || []).filter(safeUrl);
-  layer.bindTooltip(label, { sticky: true });
-  layer.bindPopup(`<b>${esc(label)}</b>${z.depth_m ? `<br>Глубины: ${esc(z.depth_m)} м` : ''}${monthsText(z.months) ? `<br>Месяцы: ${esc(monthsText(z.months))}` : ''}${z.description || z.note ? `<br>${esc(z.description || z.note)}` : ''}${extraHtml}${z.precision_m ? `<br><span style="color:#888">Граница условная, ±${String(Math.round(z.precision_m / 100) / 10).replace('.', ',')} км</span>` : ''}${src.length ? `<br>${src.slice(0, 3).map((u, i) => `<a href="${esc(u)}" target="_blank" rel="noopener">источник ${i + 1}</a>`).join(' · ')}` : ''}`, { maxWidth: 300 });
-  return layer;
+    return L.polyline(pts(z.line), { color, weight: Math.max(6, Math.min(26, km * 7)), opacity: dim ? 0.25 : 0.4, lineCap: 'round', interactive: false });
+  }
+  if (z.lat != null && z.lon != null) return L.circle([+z.lat, +z.lon], { ...style, radius: (+z.radius_km || 1) * 1000 });
+  return null;
+}
+function zoneAnchor(z) {
+  if (Array.isArray(z.line) && z.line.length > 1) { const p = z.line[Math.floor(z.line.length / 2)]; return [+p[0], +p[1]]; }
+  const c = zoneCenter(z);
+  return [c.lat, c.lon];
+}
+function zoneTag(z, color, text, onClick) {
+  const html = `<button type="button" class="zone-tag" style="--zc:${color}">${esc(text)}</button>`;
+  const m = L.marker(zoneAnchor(z), { icon: L.divIcon({ className: 'zone-tag-wrap', html, iconSize: null }), keyboard: false, zIndexOffset: -500 });
+  m.on('click', onClick);
+  return m;
+}
+// Kept for the species buttons: outline plus label, both leading to the zone card.
+function zoneLayer(z, color, label) {
+  const shape = zoneShape(z, color);
+  if (!shape) return null;
+  return L.featureGroup([shape, zoneTag(z, color, label, () => openZoneCard(z))]);
+}
+const shortName = (s) => String(s.name_ru || '').replace(/\s*\(.*\)/, '').replace(/ озёрный.*| озерный.*/, '');
+function activity(s, mo) { return +(s.activity_by_month || [])[mo - 1] || 0; }
+function zoneSpecies(z, mo) {
+  const sp = speciesList().filter((s) => (s.zones || []).some((sz) => sz.zone_id === z.id && (!monthList(sz.months).length || monthList(sz.months).includes(mo))));
+  const open = sp.filter((s) => activity(s, mo) > 0).sort((a, b) => activity(b, mo) - activity(a, mo));
+  const closed = sp.filter((s) => activity(s, mo) === 0);
+  return { open, closed };
 }
 // A species zone borrows the outline of the season zone it refers to (zone_id), keeping its own months and note.
 function speciesZoneGeo(z) {
   const base = seasonZoneById(z.zone_id);
-  return base ? { ...base, ...z, polygon: base.polygon, line: base.line, buffer_width_km: base.buffer_width_km, radius_km: z.radius_km || base.radius_km } : z;
+  return base ? { ...base, ...z, polygon: base.polygon, line: base.line, buffer_width_km: base.buffer_width_km, radius_km: z.radius_km || base.radius_km, description: base.description, id: base.id } : z;
 }
+// What the zones say for the month: colour = the fish that bites best there now, label = up to two fish.
 function drawSeasonZones() {
   layers.seasonZones.clearLayers();
   if (!state.overlays.seasonZones) return;
   const mo = state.seasonMonth;
-  const sp = speciesList();
-  if (state.f.fish.size) {
-    for (const s of sp) {
-      if (!state.f.fish.has(speciesKey(s))) continue;
-      for (const z of zonesFor(s, mo)) {
-        const l = zoneLayer(speciesZoneGeo(z), speciesColor(s), `${s.name_ru}: ${z.name || ''}`);
-        if (l) l.addTo(layers.seasonZones);
-      }
-    }
-    return;
-  }
+  const chosen = state.f.fish;
   for (const z of state.ctx.season_zones || []) {
-    const ms = monthList(z.months);
-    if (ms.length && !ms.includes(mo)) continue;
-    const here = sp.filter((s) => (s.zones || []).some((sz) => sz.zone_id === z.id && (!monthList(sz.months).length || monthList(sz.months).includes(mo))));
-    const extra = here.length ? `<br><b>В ${MONTHS_IN[mo - 1]}:</b> ${here.map((s) => esc(s.name_ru)).join(', ')}` : '';
-    const l = zoneLayer(z, '#fab005', z.name || 'Сезонная зона', extra);
-    if (l) l.addTo(layers.seasonZones);
+    let { open, closed } = zoneSpecies(z, mo);
+    if (chosen.size) { open = open.filter((s) => chosen.has(speciesKey(s))); closed = closed.filter((s) => chosen.has(speciesKey(s))); }
+    if (!open.length && !closed.length) continue;
+    const color = open.length ? speciesColor(open[0]) : '#868e96';
+    const shape = zoneShape(z, color, !open.length);
+    if (!shape) continue;
+    shape.addTo(layers.seasonZones);
+    const text = open.length ? open.slice(0, 2).map(shortName).join(', ') + (open.length > 2 ? ` +${open.length - 2}` : '') : `🚫 ${closed.slice(0, 2).map(shortName).join(', ')}`;
+    zoneTag(z, color, text, () => openZoneCard(z)).addTo(layers.seasonZones);
   }
+}
+function openZoneCard(z) {
+  const mo = state.seasonMonth;
+  const { open, closed } = zoneSpecies(z, mo);
+  const st = placeStats(z);
+  const src = [].concat(z.sources || [], z.source_url || []).filter(safeUrl);
+  state.tab = 'zone';
+  $$('#tabs button').forEach((b) => b.classList.remove('active'));
+  $('#sheetBody').innerHTML = `
+    <div class="row" style="justify-content:space-between;align-items:flex-start;flex-wrap:nowrap">
+      <h2 style="margin-right:8px">${esc(z.name || 'Район')}</h2>
+      <button type="button" class="btn small ghost" data-act="close-card">✕ Закрыть</button>
+    </div>
+    <p class="small muted">${z.depth_m ? `Глубины ${esc(z.depth_m)} м. ` : ''}${monthsText(z.months) ? `Сезон: ${esc(monthsText(z.months))}.` : ''}</p>
+    ${open.length ? `<p><b>В ${MONTHS_IN[mo - 1]} ловят:</b> ${open.map((s) => `${esc(shortName(s))} ${dots(activity(s, mo))}`).join(', ')}</p>` : ''}
+    ${closed.length ? `<p class="small">🚫 <b>Есть, но ловить нельзя:</b> ${closed.map((s) => esc(shortName(s))).join(', ')}</p>` : ''}
+    ${z.description || z.note ? `<p class="small">${esc(z.description || z.note)}</p>` : ''}
+    ${st.n ? `<p class="small"><b>Отчётов на карте внутри:</b> ${st.n} — ${st.fish.slice(0, 6).map(([f, c]) => `${esc(f)} ${c}`).join(', ')}</p>` : ''}
+    ${st.access.length ? `<p class="small">⚓ ${st.access.slice(0, 3).map((a) => `<a href="#" data-open-marker="${a.idx}">${esc(a.title.replace(/^Слип \/ старт на воду: |^Парковка \/ выход к воде: /, ''))}</a>${a.d > 0 ? ` (${fmtDist(a.d)})` : ''}`).join(' · ')}</p>` : ''}
+    ${z.precision_m ? `<p class="small muted">Граница района условная, ±${String(Math.round(z.precision_m / 100) / 10).replace('.', ',')} км.</p>` : ''}
+    <div class="btns">
+      <button type="button" class="btn" data-act="zone-nav" data-lat="${zoneAnchor(z)[0]}" data-lon="${zoneAnchor(z)[1]}" data-name="${esc(z.name || 'Район')}">🧭 Вести сюда</button>
+      <button type="button" class="btn ghost" data-act="close-card">Закрыть</button>
+    </div>
+    ${src.length ? `<p class="small">${src.slice(0, 4).map((u, i) => `<a href="${esc(u)}" target="_blank" rel="noopener">источник ${i + 1}</a>`).join(' · ')}</p>` : ''}`;
+  $('#sheetBody').scrollTop = 0;
+  setSheet(desktopLayout() ? 'full' : 'half');
+  const [la, lo] = zoneAnchor(z);
+  keepInView(la, lo);
 }
 function showZone(id) {
   const [si, zi] = id.split(':').map(Number);
   const s = speciesList()[si];
   const z = s?.zones?.[zi];
   if (!z) return;
-  const l = zoneLayer(speciesZoneGeo(z), speciesColor(s), `${s.name_ru}: ${z.name || ''}`);
+  const geo = speciesZoneGeo(z);
+  const l = zoneLayer(geo, speciesColor(s), `${shortName(s)}: ${(z.name || '').slice(0, 28)}`);
   if (!l) return;
   layers.seasonZones.clearLayers();
   l.addTo(layers.seasonZones);
   state.overlays.seasonZones = true; applyOverlays();
   map.fitBounds(l.getBounds(), { padding: [40, 40], maxZoom: 13 });
-  closeSheetOnPhone();
-  l.openPopup();
+  openZoneCard(geo);
 }
-function playYear() {
-  if (state.playing) { clearInterval(state.playing); state.playing = null; showTab('season'); return; }
-  state.overlays.seasonZones = true; applyOverlays();
-  closeSheetOnPhone();
-  const step = () => {
-    state.seasonMonth = state.seasonMonth % 12 + 1;
-    drawSeasonZones();
-    const name = MONTHS_FULL[state.seasonMonth - 1];
-    toast(`${name[0].toUpperCase()}${name.slice(1)}${state.f.fish.size ? ` · ${[...state.f.fish].join(', ')}` : ''}`, 1500);
-  };
-  step();
-  state.playing = setInterval(step, 1800);
-  showTab('season');
+
+/* Season mode: the whole map follows one month — its reports, where they cluster, and the zones of the
+   fish that bite then. A banner on the map steps through the year (◀ ▶) or plays it. */
+function seasonSummary(mo) {
+  const sp = speciesList();
+  const best = sp.filter((s) => activity(s, mo) >= 2).sort((a, b) => activity(b, mo) - activity(a, mo)).map(shortName);
+  const n = state.R.filter((r) => CATCH_KINDS.has(r.kind) && monthOf(r) === mo).length;
+  return { best, n };
 }
+function enterSeasonMode(autoplay) {
+  if (!state.season) {
+    state.season = { months: new Set(state.f.months), heat: state.overlays.heat, zones: state.overlays.seasonZones };
+  }
+  state.overlays.heat = true; state.overlays.seasonZones = true; applyOverlays();
+  document.body.classList.add('season-mode');
+  $('#monthBanner').hidden = false;
+  closeSheetOnPhone();
+  showSeasonMonth(state.seasonMonth);
+  setAutoplay(autoplay);
+}
+function showSeasonMonth(mo) {
+  state.seasonMonth = mo;
+  state.f.months = new Set([mo]);
+  render();
+  drawSeasonZones();
+  const { best, n } = seasonSummary(mo);
+  const name = MONTHS_FULL[mo - 1];
+  $('#mbMonth').textContent = `${name[0].toUpperCase()}${name.slice(1)}`;
+  $('#mbFish').textContent = `${best.length ? `Клюёт: ${best.slice(0, 5).join(', ').toLowerCase()}` : 'Клёв слабый'}. На карте ${n} ${plural(n, 'отчёт', 'отчёта', 'отчётов')} за ${MONTHS_FULL[mo - 1]} (все годы); цветные зоны — где эта рыба держится.`;
+  if (state.tab === 'season') showTab('season');
+}
+function setAutoplay(on) {
+  clearInterval(state.playing);
+  state.playing = on ? setInterval(() => showSeasonMonth(state.seasonMonth % 12 + 1), 2600) : null;
+  $('#mbPlay').textContent = on ? '⏸' : '▶︎';
+  $('#mbPlay').setAttribute('aria-label', on ? 'Пауза' : 'Играть');
+}
+function exitSeasonMode() {
+  setAutoplay(false);
+  const saved = state.season;
+  state.season = null;
+  document.body.classList.remove('season-mode');
+  $('#monthBanner').hidden = true;
+  if (saved) { state.f.months = saved.months; state.overlays.heat = saved.heat; state.overlays.seasonZones = saved.zones; }
+  applyOverlays();
+  render();
+  drawSeasonZones();
+}
+function playYear() { if (state.season) exitSeasonMode(); else enterSeasonMode(true); }
+$('#mbPrev').addEventListener('click', () => { setAutoplay(false); showSeasonMonth((state.seasonMonth + 10) % 12 + 1); });
+$('#mbNext').addEventListener('click', () => { setAutoplay(false); showSeasonMonth(state.seasonMonth % 12 + 1); });
+$('#mbPlay').addEventListener('click', () => setAutoplay(!state.playing));
+$('#mbClose').addEventListener('click', exitSeasonMode);
 
 /* ----- Fish tab ----- */
 function fishHtml() {
@@ -747,27 +875,32 @@ function fishHtml() {
     const mx = Math.max(1, ...vals);
     return `<div class="bars" style="height:30px">${vals.map((v, i) => `<div class="${i + 1 === mo ? 'cur' : ''}" style="height:${v ? Math.max(8, (v / mx) * 100) : 4}%;${v ? '' : 'opacity:.3;'}${dim ? 'background:#91a7b3' : ''}"></div>`).join('')}</div>`;
   };
-  return `<p class="small muted">Где держится, когда нерест и как ловить. «Показать» оставляет на карте только отчёты с этой рыбой, кнопки 📍 рисуют её зоны.</p>
-    ${sp.map((s, si) => {
+  // Allowed fish first, then the protected ones; each card is short, the details fold out.
+  const ordered = [...sp].sort((a, b) => (!!a.protected - !!b.protected));
+  return `<p class="small muted">Когда и где ловится каждая рыба. Столбики — клёв по месяцам (тёмный — сейчас). «Подробнее» — где держится, нерест, перемещения, как ловить и её зоны на карте.</p>
+    ${ordered.map((s) => {
+      const si = sp.indexOf(s);
       const mentions = s.forum_evidence?.mentions_by_month || [];
       const total = mentions.reduce((a, b) => a + (+b || 0), 0);
       return `<div class="card">
-      <h4><span class="dot" style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${speciesColor(s)}"></span> ${esc(s.name_ru)} <span class="muted small"><i>${esc(s.latin || '')}</i></span></h4>
-      ${s.status ? `<div class="small">${s.protected ? '🚫 ' : ''}${esc(s.status)}</div>` : ''}
-      <div class="small muted" style="margin-top:6px">Клёв по месяцам</div>
+      <h4><span class="dot" style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${speciesColor(s)}"></span> ${esc(s.name_ru)} ${s.protected ? '<span class="badge" style="background:#ffe3e3;color:#a61e1e">🚫 охраняется</span>' : ''}</h4>
       ${miniBars(s.activity_by_month)}
-      ${total ? `<div class="small muted">Упоминания в отчётах fisher.spb.ru: ${total}</div>${miniBars(mentions, true)}` : ''}
       <div class="bars-labels">${MONTHS.map((m) => `<span>${m[0]}</span>`).join('')}</div>
-      ${s.ice_vs_open ? `<p class="small">${esc(s.ice_vs_open)}</p>` : ''}
-      ${s.habitat_summary ? `<p class="small"><b>Где держится:</b> ${esc(s.habitat_summary)}</p>` : ''}
-      ${s.spawning ? `<p class="small"><b>Нерест:</b> ${esc([monthsText(s.spawning.months), s.spawning.place, s.spawning.temp_c ? `вода ${s.spawning.temp_c}${/°/.test(s.spawning.temp_c) ? '' : ' °C'}` : ''].filter((x) => x && typeof x === 'string').join('; '))}</p>` : ''}
-      ${s.migration_summary ? `<p class="small"><b>Перемещения по сезонам:</b> ${esc(s.migration_summary)}</p>` : ''}
-      ${s.best_methods ? `<p class="small">${s.best_methods.ice ? `<b>❄ Со льда:</b> ${esc(s.best_methods.ice)}<br>` : ''}${s.best_methods.open_water ? `<b>🌊 По воде:</b> ${esc(s.best_methods.open_water)}` : ''}</p>` : ''}
-      <div class="btns">
-        ${s.protected ? '' : `<button type="button" class="btn small" data-act="filter-fish" data-name="${esc(speciesKey(s))}">Показать: ${esc(speciesKey(s))}</button>`}
-        ${(s.zones || []).map((z, zi) => `<button type="button" class="btn small ghost" data-act="show-zone" data-zone="${si}:${zi}">📍 ${esc((z.name || 'зона').slice(0, 42))}${monthsText(z.months) ? ` · ${esc(monthsText(z.months))}` : ''}</button>`).join('')}
+      ${s.ice_vs_open ? `<p class="small" style="margin-bottom:0">${esc(s.ice_vs_open)}</p>` : ''}
+      <div class="btns" style="margin:8px 0 0">
+        ${s.protected ? '' : `<button type="button" class="btn small" data-act="filter-fish" data-name="${esc(speciesKey(s))}">На карте</button>`}
       </div>
-      ${(s.sources || []).length ? `<details><summary class="small">Источники (${s.sources.length})</summary>${s.sources.map((u) => (safeUrl(u) ? `<div class="small"><a href="${esc(u)}" target="_blank" rel="noopener">${esc(safeDecode(u.replace(/^https?:\/\//, '')).slice(0, 70))}</a></div>` : `<div class="small">${esc(u)}</div>`)).join('')}</details>` : ''}
+      <details><summary class="small"><b>Подробнее</b></summary>
+        ${s.latin ? `<p class="small muted"><i>${esc(s.latin)}</i></p>` : ''}
+        ${s.status ? `<p class="small"><b>Статус:</b> ${esc(s.status)}</p>` : ''}
+        ${s.habitat_summary ? `<p class="small"><b>Где держится:</b> ${esc(s.habitat_summary)}</p>` : ''}
+        ${s.spawning ? `<p class="small"><b>Нерест:</b> ${esc([monthsText(s.spawning.months), s.spawning.place, s.spawning.temp_c ? `вода ${s.spawning.temp_c}${/°/.test(s.spawning.temp_c) ? '' : ' °C'}` : ''].filter((x) => x && typeof x === 'string').join('; '))}</p>` : ''}
+        ${s.migration_summary ? `<p class="small"><b>Перемещения по сезонам:</b> ${esc(s.migration_summary)}</p>` : ''}
+        ${s.best_methods ? `<p class="small">${s.best_methods.ice ? `<b>❄ Со льда:</b> ${esc(s.best_methods.ice)}<br>` : ''}${s.best_methods.open_water ? `<b>🌊 По воде:</b> ${esc(s.best_methods.open_water)}` : ''}</p>` : ''}
+        ${total ? `<div class="small muted">Сколько раз упоминали в отчётах fisher.spb.ru по месяцам (всего ${total}):</div>${miniBars(mentions, true)}<div class="bars-labels">${MONTHS.map((m) => `<span>${m[0]}</span>`).join('')}</div>` : ''}
+        ${(s.zones || []).length ? `<p class="small" style="margin-bottom:0"><b>Зоны на карте:</b></p><div class="btns" style="margin-top:4px">${(s.zones || []).map((z, zi) => `<button type="button" class="btn small ghost" data-act="show-zone" data-zone="${si}:${zi}">📍 ${esc((z.name || 'зона').slice(0, 42))}${monthsText(z.months) ? ` · ${esc(monthsText(z.months))}` : ''}</button>`).join('')}</div>` : ''}
+        ${(s.sources || []).length ? `<details><summary class="small">Источники (${s.sources.length})</summary>${s.sources.map((u) => (safeUrl(u) ? `<div class="small"><a href="${esc(u)}" target="_blank" rel="noopener">${esc(safeDecode(u.replace(/^https?:\/\//, '')).slice(0, 70))}</a></div>` : `<div class="small">${esc(u)}</div>`)).join('')}</details>` : ''}
+      </details>
     </div>`;
     }).join('')}`;
 }
@@ -930,13 +1063,13 @@ function placesHtml() {
 function showPlace(i) {
   const z = (state.ctx.season_zones || [])[i];
   if (!z) return;
-  const l = zoneLayer(z, '#fab005', z.name || 'Район');
+  const l = zoneLayer(z, '#fab005', (z.name || 'Район').slice(0, 30));
   if (!l) return;
   layers.seasonZones.clearLayers();
   l.addTo(layers.seasonZones);
   state.overlays.seasonZones = true; applyOverlays();
   map.fitBounds(l.getBounds(), { padding: [30, 30], maxZoom: 13 });
-  closeSheetOnPhone();
+  openZoneCard(z);
 }
 
 /* ----- Rules tab ----- */
@@ -1038,14 +1171,26 @@ function drawMine() {
   layers.mine.clearLayers();
   for (const p of state.mine) {
     L.marker([p.lat, p.lon], { icon: L.divIcon({ className: '', html: '<div class="shape mine"><b>★</b></div>', iconSize: [20, 20], iconAnchor: [10, 20] }) })
-      .bindPopup(`<b>${esc(p.name)}</b><br><span class="coord">${fmtDec(p.lat, p.lon)}</span><br>${new Date(p.t).toLocaleString('ru-RU')}<br><a href="#" data-mine-nav="${esc(p.id)}">🧭 Вести сюда</a>`)
+      .on('click', () => openMineCard(p))
       .addTo(layers.mine);
   }
 }
-map.on('popupopen', (e) => {
-  const a = e.popup.getElement()?.querySelector('[data-mine-nav]');
-  if (a) a.addEventListener('click', (ev) => { ev.preventDefault(); const p = state.mine.find((x) => x.id === a.dataset.mineNav); if (p) { map.closePopup(); startNav({ lat: p.lat, lon: p.lon, title: p.name }); } });
-});
+function openMineCard(p) {
+  state.tab = 'mine';
+  $$('#tabs button').forEach((b) => b.classList.remove('active'));
+  $('#sheetBody').innerHTML = `
+    <div class="row" style="justify-content:space-between;flex-wrap:nowrap"><h2>★ ${esc(p.name)}</h2><button type="button" class="btn small ghost" data-act="close-card">✕ Закрыть</button></div>
+    <div class="card"><div class="coord">${fmtDec(p.lat, p.lon)}</div><div class="coord">${fmtDM(p.lat, p.lon)}</div>
+      <div class="small muted">${p.t ? new Date(p.t).toLocaleString('ru-RU') : 'точка по ссылке'}</div></div>
+    <div class="btns">
+      <button type="button" class="btn" data-act="mine-nav" data-id="${esc(p.id)}">🧭 Вести сюда</button>
+      <a class="btn ghost" href="${esc(yandexRoute(p))}" target="_blank" rel="noopener">🚗 Доехать</a>
+      <button type="button" class="btn ghost" data-act="mine-share" data-id="${esc(p.id)}">↗ Поделиться</button>
+      ${p.link ? '' : `<button type="button" class="btn ghost" data-act="mine-del" data-id="${esc(p.id)}">Удалить</button>`}
+    </div>`;
+  state.mineCard = p;
+  setSheet(desktopLayout() ? 'full' : 'half');
+}
 function addMine(lat, lon, suggested) {
   const name = window.prompt('Название точки (сохранится только в этом телефоне):', suggested);
   if (name == null) return;
@@ -1055,6 +1200,7 @@ function addMine(lat, lon, suggested) {
   drawMine();
   toast('Точка сохранена');
 }
+map.on('click', () => { if (!desktopLayout() && sheet.dataset.state !== 'peek') setSheet('peek'); });
 map.on('contextmenu', (e) => addMine(e.latlng.lat, e.latlng.lng, `Моя точка ${new Date().toLocaleDateString('ru-RU')}`));
 
 /* ---------- location & navigator ---------- */
@@ -1295,6 +1441,11 @@ function addExtraTileLayers() {
   }
 }
 
+/* ---------- first-visit hint ---------- */
+function closeHint() { $('#hint').hidden = true; store.set('ladoga-hint-v1', true); }
+$('#hintOk').addEventListener('click', closeHint);
+$('[data-hint-legend]').addEventListener('click', () => { closeHint(); handleAction('hint-legend'); });
+
 /* ---------- boot ---------- */
 async function boot() {
   setBase(state.base);
@@ -1321,8 +1472,14 @@ async function boot() {
     let best = -1, bd = Infinity;
     state.M.forEach((x, i) => { const d = distM(p, x); if (d < bd) { bd = d; best = i; } });
     if (best >= 0 && bd < 60) { map.setView([state.M[best].lat, state.M[best].lon], 14); openPoint(best); }
-    else { map.setView([p.lat, p.lon], 14); L.marker([p.lat, p.lon]).addTo(layers.select).bindPopup(`Точка по ссылке<br>${fmtDec(p.lat, p.lon)}`).openPopup(); }
+    else {
+      map.setView([p.lat, p.lon], 14);
+      const shared = { id: 'link', lat: p.lat, lon: p.lon, name: 'Точка по ссылке', link: true };
+      L.marker([p.lat, p.lon]).on('click', () => openMineCard(shared)).addTo(layers.select);
+      openMineCard(shared);
+    }
   }
+  if (!store.get('ladoga-hint-v1', false)) $('#hint').hidden = false;
   const resume = store.get('ladoga-nav', null);
   if (resume && resume.lat) startNav(resume);
 }
