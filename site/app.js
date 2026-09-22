@@ -25,7 +25,9 @@ const KINDS = {
   landmark: { label: 'Ориентиры: маяки, мысы, острова', short: 'Ориентир' },
   launch: { label: 'Спуски лодок, гавани, базы', short: 'Спуск / гавань' },
   ice_incident: { label: 'Происшествия на льду (МЧС)', short: 'Происшествие на льду' },
+  service: { label: 'Базы, магазины, заправки, больницы, спасатели', short: 'Сервис' },
 };
+const SERVICE_GLYPH = { base: '⌂', shop: '🎣', fuel: '⛽', hospital: '✚', rescue: '⛑', parking: 'P' };
 const CATCH_KINDS = new Set(['fishing', 'observation']);
 const DATED_KINDS = new Set(['fishing', 'observation', 'ice_incident']);
 const CLASS_TEXT = {
@@ -66,7 +68,7 @@ const state = {
 };
 
 function defaultFilters() {
-  return { fish: new Set(), months: new Set(), season: 'all', cls: new Set(['A', 'B', 'C']), kinds: new Set(Object.keys(KINDS)), sources: new Set(), core: false, yearMin: 0, fav: false, depthOnly: false };
+  return { fish: new Set(), months: new Set(), season: 'all', cls: new Set(['A', 'B', 'C']), kinds: new Set(Object.keys(KINDS).filter((k) => k !== 'service')), sources: new Set(), core: false, yearMin: 0, fav: false, depthOnly: false };
 }
 
 /* ---------- utilities ---------- */
@@ -233,8 +235,9 @@ function passes(r) {
 function markerIcon(m, rs) {
   const kind = m.kind;
   if (!CATCH_KINDS.has(kind)) {
-    const glyph = { launch: '⚓', ice_incident: '!', hazard: '' }[kind] ?? '';
-    return L.divIcon({ className: '', html: `<div class="shape ${kind}">${glyph}</div>`, iconSize: [20, 20], iconAnchor: [10, 10] });
+    const sub = state.R[m.r[0]].sub || '';
+    const glyph = SERVICE_GLYPH[sub] || { launch: '⚓', ice_incident: '!', hazard: '' }[kind] || '';
+    return L.divIcon({ className: '', html: `<div class="shape ${kind} ${sub}">${glyph}</div>`, iconSize: [20, 20], iconAnchor: [10, 10] });
   }
   const counts = {};
   for (const i of rs) for (const f of state.R[i].fish || []) counts[f] = (counts[f] || 0) + 1;
@@ -398,7 +401,7 @@ function fishChip([name, n]) {
 }
 function kindSwatch(k) {
   if (CATCH_KINDS.has(k)) return `<span class="pin ${k === 'observation' ? 'obs' : ''}" style="display:inline-block;width:12px;height:12px;${k === 'observation' ? 'border-color:#2f9e44' : 'background:#2f9e44'}"></span>`;
-  return `<span class="shape ${k}" style="display:inline-grid;width:12px;height:12px;font-size:8px">${k === 'launch' ? '⚓' : k === 'ice_incident' ? '!' : ''}</span>`;
+  return `<span class="shape ${k}" style="display:inline-grid;width:12px;height:12px;font-size:8px">${k === 'launch' ? '⚓' : k === 'ice_incident' ? '!' : k === 'service' ? '⌂' : ''}</span>`;
 }
 function refreshCounts() { /* counts are static per dataset; the counter in the top bar shows the filtered total */ }
 
@@ -575,6 +578,9 @@ function handleAction(act, el) {
   else if (act === 'mine-del') { state.mine = state.mine.filter((x) => x.id !== el.dataset.id); store.set('ladoga-mine', state.mine); drawMine(); closeSheetOnPhone(); if (desktopLayout()) showTab('data'); }
   else if (act === 'show-zone') showZone(el.dataset.zone);
   else if (act === 'play-year') playYear();
+  else if (act === 'sos-copy' && state.me) copy(`${fmtDM(state.me.lat, state.me.lon)} (${fmtDec(state.me.lat, state.me.lon)})`, 'Координаты');
+  else if (act === 'sos-share' && state.me) { const txt = `Нужна помощь. Я на Ладоге: ${fmtDM(state.me.lat, state.me.lon)} (${fmtDec(state.me.lat, state.me.lon)}), ${sectorName(state.me)}`; if (navigator.share) navigator.share({ text: txt }).catch(() => {}); else copy(txt, 'Текст'); }
+  else if (act === 'sos-locate') { startWatch(true); toast('Определяю место…'); setTimeout(() => { if (state.tab === 'sos') openSos(); }, 4000); }
   else if (act === 'open-weather') openWeather();
   else if (act === 'zone-open') { const z = (state.ctx.season_zones || []).find((x) => x.id === el.dataset.zoneId); if (z) { const l = zoneLayer(z, '#fab005', (z.name || '').slice(0, 30)); if (l) { layers.seasonZones.clearLayers(); l.addTo(layers.seasonZones); state.overlays.seasonZones = true; applyOverlays(); map.fitBounds(l.getBounds(), { padding: [30, 30], maxZoom: 13 }); } openZoneCard(z); } }
   else if (act === 'offline') downloadOffline(el);
@@ -1216,6 +1222,8 @@ function rulesHtml() {
       <label class="check"><input type="checkbox" data-overlay="rules" ${state.overlays.rules ? 'checked' : ''}> Показать на карте</label>
       ${amateurAreas.map((a) => `<div class="card small"><b>${esc(a.name)}</b>${a.period ? ` — ${esc(a.period)}` : ''}<br>${esc(a.description || '')}</div>`).join('')}` : ''}
     ${tradeAreas.length ? `<details><summary class="small">Запреты для промысла (любителей не касаются, справочно): ${tradeAreas.length}</summary>${tradeAreas.map((a) => `<div class="small" style="margin:6px 0"><b>${esc(a.name.replace(/^\[Промысел\]\s*/, ''))}</b>${a.period ? ` — ${esc(a.period)}` : ''}. ${esc(a.description || '')}</div>`).join('')}</details>` : ''}
+    ${(state.ctx.practical?.boat_rules || []).length ? `<h3>Лодка и мотор (ГИМС, 2026)</h3>${state.ctx.practical.boat_rules.map((b) => `<details class="card small"><summary><b>${esc(b.title)}</b></summary><p>${esc(b.text)}</p>${safeUrl(b.source_url) ? `<a href="${esc(b.source_url)}" target="_blank" rel="noopener">источник</a>` : ''}</details>`).join('')}` : ''}
+    ${(state.ctx.practical?.ice_rules_general || []).length ? `<h3>Выход на лёд</h3>${state.ctx.practical.ice_rules_general.map((b) => `<details class="card small"><summary><b>${esc(b.title)}</b></summary><p>${esc(b.text)}</p>${safeUrl(b.source_url) ? `<a href="${esc(b.source_url)}" target="_blank" rel="noopener">источник</a>` : ''}</details>`).join('')}` : ''}
     ${ice.length ? `<h3>Лёд: запреты и безопасность</h3>${ice.map((b) => `<details class="card small"><summary><b>${esc(b.title || b.type || '')}</b></summary><p>${esc(b.description || b.summary || '')}</p>${safeUrl(b.source_url) ? `<a href="${esc(b.source_url)}" target="_blank" rel="noopener">источник</a>` : ''}</details>`).join('')}` : ''}
     ${incidents ? `<p class="small">На карте ${incidents} ${plural(incidents, 'случай', 'случая', 'случаев')} на льду (оранжевые точки) за 2009–2026: отрывы льдин, провалы, машины под лёд. Это и опасные места, и места, куда массово выходят рыбаки.</p>` : ''}`;
 }
@@ -1731,6 +1739,8 @@ function weatherHtml() {
       ${h.precipitation_probability?.[k] >= 30 ? `<span class="rain">💧${h.precipitation_probability[k]}%</span>` : '<span class="rain"></span>'}
     </div>`).join('')}</div>
     <p class="small muted">Ветер в м/с: крупно — средний, мелко — порывы; стрелка — куда дует. Прогноз <a href="https://open-meteo.com" target="_blank" rel="noopener">Open-Meteo</a>, обновлён ${age < 1 ? 'только что' : `${age} мин назад`}. Отжимной для южного берега — ветер с юго-востока, юга и юго-запада.</p>
+    ${(state.ctx.practical?.weather?.hazards || []).length ? `<details><summary><b>Опасная погода на Ладоге</b></summary>${state.ctx.practical.weather.hazards.map((h2) => `<div class="card small"><b>${esc(h2.title)}</b><br>${esc(h2.text)}</div>`).join('')}</details>` : ''}
+    ${(state.ctx.practical?.weather?.thresholds || []).length ? `<details><summary><b>Цифры: ветер, волна, лёд</b></summary><table class="rules-table">${state.ctx.practical.weather.thresholds.map((t2) => `<tr><td>${esc(t2.what)}</td><td>${esc(t2.value)}</td></tr>`).join('')}</table></details>` : ''}
     <div class="btns"><button type="button" class="btn small ghost" data-act="wx-refresh">Обновить</button></div>`;
 }
 function openWeather() {
@@ -1826,6 +1836,59 @@ async function downloadOffline(el) {
   toast(failed ? `Сохранено ${done} из ${urls.length}; часть не скачалась — попробуйте ещё раз` : `Готово: карта района сохранена (${done} фрагментов). Она откроется и без интернета.`, 6000);
   store.set('ladoga-offline-at', Date.now());
 }
+
+/* ---------- SOS: phones, where I am in words a rescuer can take down, what to do on a drifting floe ---------- */
+function telHref(phone) { return `tel:${String(phone).replace(/[^\d+]/g, '')}`; }
+function nearestServices(from, subs, n = 3) {
+  const out = [];
+  state.M.forEach((m, idx) => {
+    const r = state.R[m.r[0]];
+    if (m.kind !== 'service' || !subs.includes(r.sub)) return;
+    out.push({ idx, d: distM(from, m), title: r.title || '', comment: r.comment || '', sub: r.sub, lat: m.lat, lon: m.lon });
+  });
+  return out.sort((a, b) => a.d - b.d).slice(0, n);
+}
+function openSos() {
+  const pr = state.ctx.practical || {};
+  const em = pr.emergency || {};
+  const phones = em.phones || [{ name: 'Единый номер экстренных служб', phone: '112' }];
+  const me = state.me;
+  const from = me || { lat: map.getCenter().lat, lon: map.getCenter().lng };
+  const rescue = nearestServices(from, ['rescue'], 3);
+  const hosp = nearestServices(from, ['hospital'], 3);
+  state.tab = 'sos';
+  $$('#tabs button').forEach((b) => b.classList.remove('active'));
+  $('#sheetBody').innerHTML = `
+    <div class="row" style="justify-content:space-between;flex-wrap:nowrap"><h2>🆘 Экстренная помощь</h2><button type="button" class="btn small ghost" data-act="close-card">✕</button></div>
+    <a class="btn sos-call" href="tel:112">📞 Позвонить 112</a>
+    <p class="small muted">112 работает без SIM-карты и без денег на счёте, через любую сеть, которая ловит.</p>
+    <div class="card">
+      <b>Где я — продиктуйте спасателям</b>
+      ${me ? `<div class="coord" style="font-size:16px;margin-top:4px">${fmtDM(me.lat, me.lon)}</div>
+        <div class="coord">${fmtDec(me.lat, me.lon)} · точность ±${Math.round(me.acc || 0)} м</div>
+        <div class="small"><b>${esc(sectorName(me))}</b>; до Новой Ладоги ${fmtDist(distM(me, { lat: 60.1037, lon: 32.294 }))}</div>
+        <div class="btns" style="margin-bottom:0"><button type="button" class="btn small" data-act="sos-copy">Скопировать</button><button type="button" class="btn small ghost" data-act="sos-share">Отправить координаты</button></div>`
+      : `<p class="small">Геопозиция не включена.</p><div class="btns" style="margin-bottom:0"><button type="button" class="btn small" data-act="sos-locate">📍 Определить, где я</button></div>`}
+    </div>
+    <h3>Телефоны</h3>
+    ${phones.map((p) => `<a class="phone-row" href="${esc(telHref(p.phone))}"><b>${esc(p.phone)}</b><span>${esc(p.name || '')}</span></a>`).join('')}
+    ${(em.what_to_do || []).length ? `<h3>Что делать</h3>${em.what_to_do.map((w, i) => `<details class="card small" ${i === 0 ? 'open' : ''}><summary><b>${esc(w.title)}</b></summary><p>${esc(w.text)}</p></details>`).join('')}` : ''}
+    ${rescue.length ? `<h3>Спасатели рядом</h3>${rescue.map((s) => `<div class="card small"><b>${esc(s.title)}</b> · ${fmtDist(s.d)}<br>${esc(s.comment)}<div class="btns" style="margin-bottom:0"><a class="btn small ghost" href="${esc(yandexRoute(s))}" target="_blank" rel="noopener">🚗 Маршрут</a></div></div>`).join('')}` : ''}
+    ${hosp.length ? `<h3>Больницы</h3>${hosp.map((s) => `<div class="card small"><b>${esc(s.title)}</b> · ${fmtDist(s.d)}<br>${esc(s.comment)}<div class="btns" style="margin-bottom:0"><a class="btn small ghost" href="${esc(yandexRoute(s))}" target="_blank" rel="noopener">🚗 Маршрут</a></div></div>`).join('')}` : ''}
+    ${(pr.coverage || []).length ? `<h3>Связь на воде</h3>${pr.coverage.map((c) => `<p class="small"><b>${esc(c.operator)}</b>: ${esc(c.note)}</p>`).join('')}` : ''}`;
+  $('#sheetBody').scrollTop = 0;
+  setSheet('full');
+}
+// "3,2 км к СЗ от о. Птинов" — the way a rescuer on the phone can find a place on their own map.
+function sectorName(p) {
+  const places = PLACES.concat([['Сясьстрой', 60.14, 32.56], ['Лаврово', 59.96, 31.52], ['Леднево', 60.1, 31.53], ['Кареджи', 60.12, 31.39], ['Осиновец', 60.12, 31.07], ['Свирица', 60.47, 32.9], ['Сторожно', 60.53, 32.62]]);
+  let best = null;
+  for (const [name, lat, lon] of places) { const d = distM({ lat, lon }, p); if (!best || d < best.d) best = { d, name, lat, lon }; }
+  if (!best) return '';
+  if (best.d < 400) return `у места «${best.name}»`;
+  return `${fmtDist(best.d)} к ${rumb(bearing(best, p))} от «${best.name}»`;
+}
+$('#btnSos').addEventListener('click', openSos);
 
 /* ---------- install on the phone, as the fuel app does ---------- */
 let installPrompt = null;

@@ -298,3 +298,16 @@ button.card { display: block; width: 100%; text-align: left; border: 0; color: v
 .rules-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 .rules-table th { text-align: left; color: var(--muted); font-weight: 600; padding: 4px 6px 4px 0; border-bottom: 1px solid var(--line); }
 .rules-table td { padding: 5px 6px 5px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+
+/* services and SOS */
+.shape.service { background: #495057; border-radius: 6px; font-size: 11px; }
+.shape.service.hospital { background: #c92a2a; }
+.shape.service.rescue { background: #e8590c; }
+.shape.service.fuel { background: #5f3dc4; }
+.shape.service.shop { background: #2b8a3e; font-size: 10px; }
+.shape.launch.parking { background: #1864ab; font-weight: 800; }
+.fab.sos { background: #c92a2a; color: #fff; font-weight: 800; font-size: 13px; letter-spacing: .5px; }
+.sos-call { display: flex; justify-content: center; background: #c92a2a !important; color: #fff !important; font-size: 18px; padding: 14px; margin: 6px 0; }
+.phone-row { display: flex; gap: 10px; align-items: baseline; padding: 9px 2px; border-bottom: 1px solid var(--line); text-decoration: none; color: var(--ink); }
+.phone-row b { color: var(--accent); white-space: nowrap; font-size: 15px; }
+.phone-row span { font-size: 13px; color: var(--ink-2); }

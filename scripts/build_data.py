@@ -33,7 +33,9 @@ CORE_KM = 55
 BBOX = (59.85, 30.90, 60.80, 33.40)
 MERGE_M = 30
 
-KINDS = {"fishing", "observation", "structure", "launch", "hazard", "landmark", "ice_incident"}
+KINDS = {"fishing", "observation", "structure", "launch", "hazard", "landmark", "ice_incident", "service"}
+# Kinds of the practical guide that become a "service" point with a subtype icon.
+SERVICE = {"base", "shop", "fuel", "hospital", "rescue"}
 
 SECTORS = [
     ("Новая Ладога / устье Волхова", 60.118, 32.32),
@@ -210,8 +212,14 @@ def canon_source(name: str) -> str:
     return name
 
 
+# Research files still being written can be held back: SKIP_AGENTS=nav_structures,charts2
+SKIP = {x.strip() for x in __import__("os").environ.get("SKIP_AGENTS", "").split(",") if x.strip()}
+
+
 def research_reports():
     for path in sorted(RESEARCH.glob("*.json")):
+        if path.stem in SKIP:
+            continue
         try:
             payload = json.loads(path.read_text(encoding="utf-8-sig"))
         except Exception as error:  # a broken agent file must not stop the build
@@ -241,7 +249,8 @@ def research_reports():
                 lat, lon = float(p["latitude"]), float(p["longitude"])
             except (KeyError, TypeError, ValueError):
                 continue
-            kind = p.get("kind") if p.get("kind") in KINDS else "fishing"
+            sub = p.get("kind") if p.get("kind") in SERVICE else ""
+            kind = "service" if sub else ("launch" if p.get("kind") == "parking" else (p.get("kind") if p.get("kind") in KINDS else "fishing"))
             title_text = str(p.get("title") or "")
             if kind in ("landmark", "observation") and re.search(r"Парковк|выход|Ледовая обстановка|Слип", title_text, re.I):
                 kind = "launch"
@@ -262,6 +271,7 @@ def research_reports():
                 "wb": short(p.get("waterbody"), 80),
                 "raw": short(p.get("raw_coordinate_text"), 80), "agent": slug,
                 "doubt": bool(p.get("location_doubtful")),
+                "sub": sub or ("parking" if p.get("kind") == "parking" else ""),
             }
 
 
@@ -301,7 +311,7 @@ def timeseries():
 
 def load_json(name):
     path = RESEARCH / f"{name}.json"
-    if not path.exists():
+    if name in SKIP or not path.exists():
         return {}
     try:
         return json.loads(path.read_text(encoding="utf-8-sig"))
@@ -328,8 +338,9 @@ def main():
         # The same card reached through two routes (e.g. FisherMap city + lake page, or the first
         # research and a research agent). A catalogue page lists many places under one URL, so a
         # repeat is the same link *and* the same place, not the link alone.
-        keys = [k for k in (("sid", r["src"], r["sid"]) if r["sid"] else None,
-                            ("url", r["url"].rstrip("/").lower()) if r["url"] else None) if k]
+        # A slip and the parking next to it may share a page: the kind is part of the key.
+        keys = [k for k in (("sid", r["src"], r["sid"], r.get("sub") or r["kind"]) if r["sid"] else None,
+                            ("url", r["url"].rstrip("/").lower(), r.get("sub") or r["kind"]) if r["url"] else None) if k]
         if any(haversine_m(r["lat"], r["lon"], la, lo) < 150 for k in keys for la, lo in seen.get(k, [])):
             dropped["повтор источника"] += 1
             continue
@@ -420,6 +431,7 @@ def main():
                     v = v.replace(old, new)
                 sp[k] = v
     depth = load_json("depth")
+    practical = load_json("practical")
     overlays = []
     for o in depth.get("image_overlays") or []:
         name = Path(str(o.get("file") or o.get("url") or "")).stem
@@ -445,6 +457,7 @@ def main():
         "regulations": rules.get("regulations") or {},
         "ice_rules": rules.get("ice_rules") or [],
         "timeseries": timeseries(),
+        "practical": {k: practical.get(k) for k in ("boat_rules", "ice_rules_general", "weather", "emergency", "coverage")},
         "depth": {
             "overlays": overlays,
             "isobaths": "data/depth_isobaths.geojson" if (SITE_DATA / "depth_isobaths.geojson").exists() else "",
@@ -466,7 +479,7 @@ def xml(s):
 
 def write_downloads(reports, markers):
     kind_ru = {"fishing": "Рыбалка", "observation": "Наблюдение", "structure": "Структура", "launch": "Спуск/база",
-               "hazard": "Опасность", "landmark": "Ориентир", "ice_incident": "Происшествие на льду"}
+               "hazard": "Опасность", "landmark": "Ориентир", "ice_incident": "Происшествие на льду", "service": "Сервис"}
     wpts = []
     for n, m in enumerate(markers, 1):
         rs = [reports[i] for i in m["r"]]
