@@ -51,7 +51,7 @@ const state = {
   R: [], M: [], ctx: {}, meta: {},
   pass: [],
   f: defaultFilters(),
-  tab: 'filter',
+  tab: 'today',
   seasonMonth: new Date().getMonth() + 1,
   selected: null,
   me: null, watchId: null, follow: false, centerOnFix: false,
@@ -328,7 +328,7 @@ function showTab(tab) {
   if (tab !== 'point') { state.selected = null; layers.select.clearLayers(); }
   $$('#tabs button').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
   const body = $('#sheetBody');
-  body.innerHTML = ({ filter: filterHtml, places: placesHtml, season: seasonHtml, fish: fishHtml, depth: depthHtml, rules: rulesHtml, layers: layersHtml, data: dataHtml }[tab] || (() => ''))();
+  body.innerHTML = ({ today: todayHtml, filter: filterHtml, places: placesHtml, season: seasonHtml, fish: fishHtml, depth: depthHtml, rules: rulesHtml, layers: layersHtml, data: dataHtml }[tab] || (() => ''))();
   body.scrollTop = 0;
   if (tab === 'filter' || tab === 'data') refreshCounts();
 }
@@ -409,6 +409,7 @@ $('#sheetBody').addEventListener('click', (e) => {
   const f = state.f;
   const toggleSet = (set, v) => (set.has(v) ? set.delete(v) : set.add(v));
   if (d.wxplace) { store.set('ladoga-wx-place', d.wxplace); loadWeather(true).then(() => { if (state.tab === 'weather') $('#sheetBody').innerHTML = weatherHtml(); }); $$('[data-wxplace]').forEach((b) => b.classList.toggle('on', b === t)); return; }
+  if (d.tabLink) { e.preventDefault(); showTab(d.tabLink); setSheet(desktopLayout() ? 'full' : 'full'); return; }
   if (d.openMarker != null) { e.preventDefault(); const m = state.M[+d.openMarker]; if (m) { map.setView([m.lat, m.lon], Math.max(map.getZoom(), 14)); openPoint(+d.openMarker); } return; }
   if (d.place != null) { const p = PLACES[+d.place]; map.setView([p[1], p[2]], p[3]); closeSheetOnPhone(); return; }
   if (d.fish) { toggleSet(f.fish, d.fish); t.classList.toggle('on'); render(); return; }
@@ -574,6 +575,8 @@ function handleAction(act, el) {
   else if (act === 'mine-del') { state.mine = state.mine.filter((x) => x.id !== el.dataset.id); store.set('ladoga-mine', state.mine); drawMine(); closeSheetOnPhone(); if (desktopLayout()) showTab('data'); }
   else if (act === 'show-zone') showZone(el.dataset.zone);
   else if (act === 'play-year') playYear();
+  else if (act === 'open-weather') openWeather();
+  else if (act === 'zone-open') { const z = (state.ctx.season_zones || []).find((x) => x.id === el.dataset.zoneId); if (z) { const l = zoneLayer(z, '#fab005', (z.name || '').slice(0, 30)); if (l) { layers.seasonZones.clearLayers(); l.addTo(layers.seasonZones); state.overlays.seasonZones = true; applyOverlays(); map.fitBounds(l.getBounds(), { padding: [30, 30], maxZoom: 13 }); } openZoneCard(z); } }
   else if (act === 'offline') downloadOffline(el);
   else if (act === 'track-toggle') { setTracking(!state.track.on); showTab('data'); }
   else if (act === 'track-gpx') { if (state.track.pts.length > 1) download(`ladoga_track_${new Date().toISOString().slice(0, 10)}.gpx`, trackGpx()); else toast('Трек пуст'); }
@@ -974,6 +977,66 @@ function depthHtml() {
     <details><summary class="small">А можно Navionics прямо на эту карту?</summary>
       <p class="small">Только с ключом Garmin Navionics Web API (заявку подаёт владелец сайта на garmin.com, из России могут отказать). Бесплатный тариф разрешает лишь отдельное окно с картой Navionics без наших точек, поверх — только платный. Для «глубины + точки» проще ActiveCaptain или Navionics Boating в телефоне.</p>
     </details>`;
+}
+
+/* ----- Today tab: the first screen — weather, what bites now and where, bans in force, ice ----- */
+const RU_MONTH_STEMS = ['январ', 'феврал', 'март', 'апрел', 'ма', 'июн', 'июл', 'август', 'сентябр', 'октябр', 'ноябр', 'декабр'];
+// "с 1 апреля по 15 июня", "01.04–15.06", "1 апреля — 15 июня" → [[m,d],[m,d]]; null when the text has no dates.
+function parseDateRange(text) {
+  const t = String(text || '').toLowerCase();
+  const num = t.match(/(\d{1,2})\.(\d{1,2})\s*(?:[-–—]|по|до)\s*(\d{1,2})\.(\d{1,2})/);
+  if (num) return [[+num[2], +num[1]], [+num[4], +num[3]]];
+  const words = [...t.matchAll(/(\d{1,2})\s+([а-яё]+)/g)].map((m) => {
+    const mi = RU_MONTH_STEMS.findIndex((stem) => m[2].startsWith(stem) && !(stem === 'ма' && !/^ма[яй]/.test(m[2])));
+    return mi >= 0 ? [mi + 1, +m[1]] : null;
+  }).filter(Boolean);
+  return words.length >= 2 ? [words[0], words[1]] : null;
+}
+function inRange(range, date = new Date()) {
+  const md = (date.getMonth() + 1) * 100 + date.getDate();
+  const a = range[0][0] * 100 + range[0][1], b = range[1][0] * 100 + range[1][1];
+  return a <= b ? md >= a && md <= b : md >= a || md <= b;
+}
+function bansToday() {
+  const cs = state.ctx.regulations?.closed_seasons || [];
+  const out = [];
+  for (const c of cs) {
+    const range = parseDateRange(c.dates || c.period || '');
+    if (range && inRange(range)) out.push(c);
+  }
+  return out;
+}
+function todayHtml() {
+  const mo = new Date().getMonth() + 1;
+  const sp = speciesList();
+  const best = sp.filter((s) => activity(s, mo) >= 1).sort((a, b) => activity(b, mo) - activity(a, mo));
+  const ice = isIceMonth(mo);
+  const hydro = (state.ctx.hydro_calendar || []).find((h) => +h.month === mo);
+  const wx = state.wx?.fc?.current ? state.wx : null;
+  const warns = wx ? wxWarnings(wx) : [];
+  const bans = bansToday();
+  const zones = (state.ctx.season_zones || []).map((z) => ({ z, ...zoneSpecies(z, mo) })).filter((x) => x.open.length)
+    .sort((a, b) => activity(b.open[0], mo) - activity(a.open[0], mo)).slice(0, 5);
+  const n = state.R.filter((r) => CATCH_KINDS.has(r.kind) && monthOf(r) === mo).length;
+  const date = new Date().toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
+  return `
+    <h2>Сегодня, ${esc(date)} ${ice ? '❄' : '🌊'}</h2>
+    ${wx ? `<button type="button" class="card today-wx" data-act="open-weather">
+        <span>${windArrow(wx.fc.current.wind_direction_10m, 22)}</span>
+        <span><b>${Math.round(wx.fc.current.wind_speed_10m)} м/с ${rumb(wx.fc.current.wind_direction_10m)}</b>, порывы ${Math.round(wx.fc.current.wind_gusts_10m)} · ${Math.round(wx.fc.current.temperature_2m)}° · ${hPaToMm(wx.fc.current.pressure_msl)} мм<br><span class="muted small">${esc(wxPlace().name)} · прогноз и волна →</span></span>
+      </button>` : '<p class="small muted">Погода загрузится, когда будет интернет.</p>'}
+    ${warns.map((w) => `<div class="card small wx-${w.level}">${w.level === 'danger' ? '⚠️ ' : w.level === 'warn' ? '🌊 ' : 'ℹ️ '}${esc(w.text)}</div>`).join('')}
+    ${bans.length ? `<div class="card small wx-danger"><b>🚫 Сегодня действует запрет:</b>${bans.map((b) => `<div style="margin-top:4px">• ${esc(b.species || 'все виды')}: ${esc(b.dates || b.period || '')}${b.area ? ` — ${esc(b.area)}` : ''}</div>`).join('')}<div style="margin-top:4px"><a href="#" data-tab-link="rules">Все правила →</a></div></div>` : ''}
+    <h3>Что ловится в ${MONTHS_IN[mo - 1]}</h3>
+    ${best.length ? `<div class="chips">${best.slice(0, 8).map((s) => `<button type="button" class="chip" data-act="filter-fish" data-name="${esc(speciesKey(s))}"><span class="dot" style="background:${speciesColor(s)}"></span>${esc(shortName(s))} ${dots(activity(s, mo))}</button>`).join('')}</div>` : '<p class="small muted">Справка по рыбе загружается…</p>'}
+    ${best[0] && methodFor(best[0], ice) ? `<p class="small"><b>${esc(shortName(best[0]))}:</b> ${esc(methodFor(best[0], ice))}</p>` : ''}
+    ${zones.length ? `<h3>Где искать сейчас</h3>${zones.map(({ z, open }) => `<button type="button" class="card today-zone" data-act="zone-open" data-zone-id="${esc(z.id)}"><b>${esc(z.name)}</b><br><span class="small">${open.slice(0, 3).map((s) => esc(shortName(s))).join(', ')}${z.depth_m ? ` · ${esc(z.depth_m)} м` : ''}</span></button>`).join('')}` : ''}
+    ${hydro ? `<h3>Вода и лёд</h3><p class="small">${esc(hydro.events || '')}</p>` : ''}
+    <div class="btns">
+      <button type="button" class="btn" data-act="month-filter">Отчёты за ${MONTHS_FULL[mo - 1]} на карте (${n})</button>
+      <button type="button" class="btn ghost" data-tab-link="places">Места</button>
+      <button type="button" class="btn ghost" data-tab-link="depth">Глубины</button>
+    </div>`;
 }
 
 /* ----- Places tab: a guide to the named areas, built from the season zones and the reports inside them ----- */
@@ -1548,6 +1611,8 @@ function renderWxPill() {
   pill.hidden = false;
   pill.classList.toggle('danger', warn);
   pill.innerHTML = `${warn ? '⚠️ ' : ''}${windArrow(c.wind_direction_10m, 13)} ${Math.round(c.wind_speed_10m)} м/с ${rumb(c.wind_direction_10m)} · ${Math.round(c.temperature_2m)}°`;
+  // The Today tab shows the same forecast.
+  if (state.tab === 'today') { const b = $('#sheetBody'), top = b.scrollTop; b.innerHTML = todayHtml(); b.scrollTop = top; }
 }
 function weatherHtml() {
   const wx = state.wx;
@@ -1760,7 +1825,7 @@ async function boot() {
   applyOverlays();
   drawLines(); drawMine(); drawRules(); drawSeasonZones();
   render();
-  showTab('filter');
+  showTab('today');
   const m = location.hash.match(/pt=(-?\d+\.\d+),(-?\d+\.\d+)/);
   if (m) {
     const p = { lat: +m[1], lon: +m[2] };

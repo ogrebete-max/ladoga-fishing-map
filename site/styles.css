@@ -288,3 +288,9 @@ body.season-mode .active-filters { display: none; }
 .wx-danger { background: #ffe3e3 !important; color: #7d1a1a; }
 .wx-warn { background: #fff3bf !important; color: #5c4400; }
 .wx-info { background: #e7f5ff !important; color: #0b4a7a; }
+
+/* Today tab */
+button.card { display: block; width: 100%; text-align: left; border: 0; color: var(--ink); font: inherit; }
+.today-wx { display: flex !important; gap: 12px; align-items: center; }
+.today-wx .wx-arrow { font-size: 22px; color: var(--accent); }
+.today-zone { padding: 9px 12px; }
