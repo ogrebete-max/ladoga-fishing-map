@@ -1,11 +1,11 @@
 // Offline support: the app shell and data come from the cache when the lake has
 // no signal; map tiles that were viewed once are kept for later (up to TILE_MAX).
-const VERSION = 'ladoga-v4';
+const VERSION = 'ladoga-v5';
 const SHELL = ['./', 'index.html', 'app.js', 'styles.css', 'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png',
   'vendor/leaflet.js', 'vendor/leaflet.css', 'vendor/leaflet.markercluster.js', 'vendor/MarkerCluster.css', 'vendor/leaflet-heat.js',
   'data/points.json', 'data/context.json'];
 const TILE_CACHE = 'ladoga-tiles-v1';
-const TILE_MAX = 4000;
+const TILE_MAX = 9000;
 const TILE_HOSTS = /arcgisonline\.com|tile\.openstreetmap\.org|tile\.opentopomap\.org|tiles\.openseamap\.org|nakarte|marshruty|tiles?\./i;
 
 self.addEventListener('install', (event) => {

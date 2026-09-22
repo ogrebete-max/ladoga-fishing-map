@@ -15,7 +15,7 @@
   <link rel="apple-touch-icon" href="icons/icon-180.png">
   <link rel="stylesheet" href="vendor/leaflet.css">
   <link rel="stylesheet" href="vendor/MarkerCluster.css">
-  <link rel="stylesheet" href="styles.css?v=9">
+  <link rel="stylesheet" href="styles.css?v=11">
 </head>
 <body>
   <div id="map" aria-label="Карта южной Ладоги"></div>
@@ -26,6 +26,7 @@
         <strong>Ладога</strong>
         <span id="counter" class="counter">загрузка…</span>
       </div>
+      <button type="button" class="wx-pill" id="wxPill" hidden></button>
       <button type="button" class="install-button" id="installButton" hidden>Установить</button>
     </div>
     <div class="active-filters" id="activeFilters"></div>
@@ -75,7 +76,8 @@
     <div class="nav-buttons">
       <button type="button" id="navCenter">◎ За мной</button>
       <button type="button" id="navCompass">🧭 Компас</button>
-      <button type="button" id="navMark">📍 Отметить</button>
+      <button type="button" id="navMark">📍 Метка</button>
+      <button type="button" id="navTrack">⏺ Трек</button>
       <button type="button" id="navStop" class="danger">✕ Стоп</button>
     </div>
   </div>
@@ -103,6 +105,6 @@
   <script src="vendor/leaflet.js"></script>
   <script src="vendor/leaflet.markercluster.js"></script>
   <script src="vendor/leaflet-heat.js"></script>
-  <script src="app.js?v=9"></script>
+  <script src="app.js?v=11"></script>
 </body>
 </html>

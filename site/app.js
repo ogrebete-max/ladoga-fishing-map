@@ -408,6 +408,7 @@ $('#sheetBody').addEventListener('click', (e) => {
   const d = t.dataset;
   const f = state.f;
   const toggleSet = (set, v) => (set.has(v) ? set.delete(v) : set.add(v));
+  if (d.wxplace) { store.set('ladoga-wx-place', d.wxplace); loadWeather(true).then(() => { if (state.tab === 'weather') $('#sheetBody').innerHTML = weatherHtml(); }); $$('[data-wxplace]').forEach((b) => b.classList.toggle('on', b === t)); return; }
   if (d.openMarker != null) { e.preventDefault(); const m = state.M[+d.openMarker]; if (m) { map.setView([m.lat, m.lon], Math.max(map.getZoom(), 14)); openPoint(+d.openMarker); } return; }
   if (d.place != null) { const p = PLACES[+d.place]; map.setView([p[1], p[2]], p[3]); closeSheetOnPhone(); return; }
   if (d.fish) { toggleSet(f.fish, d.fish); t.classList.toggle('on'); render(); return; }
@@ -573,6 +574,11 @@ function handleAction(act, el) {
   else if (act === 'mine-del') { state.mine = state.mine.filter((x) => x.id !== el.dataset.id); store.set('ladoga-mine', state.mine); drawMine(); closeSheetOnPhone(); if (desktopLayout()) showTab('data'); }
   else if (act === 'show-zone') showZone(el.dataset.zone);
   else if (act === 'play-year') playYear();
+  else if (act === 'offline') downloadOffline(el);
+  else if (act === 'track-toggle') { setTracking(!state.track.on); showTab('data'); }
+  else if (act === 'track-gpx') { if (state.track.pts.length > 1) download(`ladoga_track_${new Date().toISOString().slice(0, 10)}.gpx`, trackGpx()); else toast('Трек пуст'); }
+  else if (act === 'track-clear') { if (window.confirm('Стереть записанный трек?')) { state.track = { on: false, pts: [] }; store.set(TRACK_KEY, state.track); drawTrack(); showTab('data'); } }
+  else if (act === 'wx-refresh') { el.textContent = 'Обновляю…'; loadWeather(true).then(() => { if (state.tab === 'weather') $('#sheetBody').innerHTML = weatherHtml(); }); }
   else if (act === 'place-show') showPlace(+el.dataset.zone);
   else if (act === 'place-nav') { const z = (state.ctx.season_zones || [])[+el.dataset.zone]; if (z) startNav({ ...zoneCenter(z), title: z.name || 'Район' }); }
   else if (act === 'copy-link') copy(location.href.split('#')[0], 'Ссылка');
@@ -1123,7 +1129,11 @@ function layersHtml() {
       ${extra.map(([k, ov]) => `<label class="check"><input type="checkbox" data-overlay="${k}" ${o[k] ? 'checked' : ''}> ${esc(ov.name)}</label>${ov.note ? `<div class="small muted" style="margin:-4px 0 4px 26px">${esc(ov.note)}</div>` : ''}`).join('')}
       <div class="small">Прозрачность старых карт</div>
       <input type="range" id="overlayOpacity" min="0.2" max="1" step="0.05" value="${state.overlayOpacity}">` : ''}
-    <p class="small muted">Просмотренные участки карты сохраняются в телефоне и открываются без интернета, пока кэш не очистится.</p>`;
+    <h3>Без интернета</h3>
+    <p class="small">На воде связь пропадает. Приблизьте карту к месту рыбалки и сохраните спутниковую подложку этого района в телефон — она откроется и без сети. Точки, справочники и старые карты сохраняются вместе с ней.</p>
+    <div class="btns"><button type="button" class="btn" data-act="offline">📥 Сохранить карту этого района</button></div>
+    ${store.get('ladoga-offline-at', 0) ? `<p class="small muted">Последний раз сохраняли ${new Date(store.get('ladoga-offline-at', 0)).toLocaleString('ru-RU')}.</p>` : ''}
+    <p class="small muted">Просмотренные участки тоже остаются в телефоне, пока браузер не очистит память.</p>`;
 }
 
 /* ----- Data tab ----- */
@@ -1154,6 +1164,9 @@ function dataHtml() {
       <a class="btn small ghost" href="downloads/ladoga_reports.geojson" download>GeoJSON</a>
     </div>
     <p class="small muted">GPX открывается в Navionics, Garmin (эхолоты/картплоттеры через ActiveCaptain или карту памяти), OsmAnd, Locus, Яндекс Навигаторе — через «Открыть в…».</p>
+    <h3>Мой трек</h3>
+    <p class="small">${state.track.pts.length > 1 ? `Записано ${fmtDist(trackLength(state.track.pts))}, ${state.track.pts.length} точек${state.track.on ? ' — запись идёт' : ''}.` : (state.track.on ? 'Запись идёт — жду GPS.' : 'Трек показывает на карте, где вы прошли на лодке или по льду; его можно сохранить в GPX. Запись идёт, пока карта открыта.')}</p>
+    <div class="btns"><button type="button" class="btn small" data-act="track-toggle">${state.track.on ? '⏹ Остановить запись' : '⏺ Записывать трек'}</button>${state.track.pts.length > 1 ? '<button type="button" class="btn small ghost" data-act="track-gpx">Скачать GPX</button><button type="button" class="btn small ghost" data-act="track-clear">Стереть</button>' : ''}</div>
     <h3>Мои точки (${state.mine.length})</h3>
     <p class="small muted">Долгое нажатие на карту или «📍 Отметить» в навигаторе сохраняет вашу точку в этом телефоне.</p>
     ${state.mine.map((p) => `<div class="card small"><b>${esc(p.name)}</b> <span class="coord">${fmtDec(p.lat, p.lon)}</span><div class="btns"><button type="button" class="btn small" data-act="mine-nav" data-id="${esc(p.id)}">🧭 Вести</button><button type="button" class="btn small ghost" data-act="mine-del" data-id="${esc(p.id)}">Удалить</button></div></div>`).join('')}
@@ -1256,6 +1269,7 @@ function onFix(pos) {
   meMarker.setLatLng([c.latitude, c.longitude]);
   meCircle.setLatLng([c.latitude, c.longitude]).setRadius(c.accuracy || 1);
   if (state.centerOnFix) { map.setView([c.latitude, c.longitude], Math.max(map.getZoom(), 13)); state.centerOnFix = false; }
+  addTrackPoint(state.me);
   updateNav();
   updatePointFromMe();
 }
@@ -1386,6 +1400,7 @@ function navPadding() {
 map.on('dragstart', () => { if (state.nav) { state.follow = false; $('#navCenter').classList.remove('on'); } });
 $('#navCenter').addEventListener('click', () => { state.follow = !state.follow; $('#navCenter').classList.toggle('on', state.follow); updateNav(); });
 $('#navStop').addEventListener('click', stopNav);
+$('#navTrack').addEventListener('click', () => setTracking(!state.track.on));
 $('#navMark').addEventListener('click', () => {
   if (!state.me) { toast('Ещё нет GPS'); return; }
   addMine(state.me.lat, state.me.lon, `Метка ${new Date().toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}`);
@@ -1442,6 +1457,233 @@ function addExtraTileLayers() {
     const key = `extra${i}`;
     extraOverlays[key] = { name: t.name || `Слой ${i + 1}`, note: t.note || t.description || '', layer: L.tileLayer(t.url, opts) };
   }
+}
+
+/* ---------- weather: wind, waves, pressure, sun and moon (Open-Meteo, no key) ----------
+   The wind matters most on Ladoga: an offshore wind (south-east to west) pushes the ice off the south
+   shore with anglers on it, and any strong wind raises a steep wave in the shallow bays. */
+const WX_PLACES = [
+  { id: 'volkhov', name: 'Волховская губа', lat: 60.2, lon: 32.25 },
+  { id: 'kobona', name: 'Кобона, Леднево', lat: 60.07, lon: 31.5 },
+  { id: 'shlis', name: 'Шлиссельбург', lat: 59.97, lon: 31.1 },
+  { id: 'svir', name: 'Свирская губа', lat: 60.5, lon: 32.85 },
+];
+const WX_KEY = 'ladoga-wx-v1';
+const hPaToMm = (h) => Math.round(h * 0.750062);
+function windArrow(dir, size = 16) {
+  // Meteorological direction is where the wind comes FROM; the arrow shows where it blows.
+  return `<span class="wx-arrow" style="width:${size}px;height:${size}px;transform:rotate(${Math.round(dir + 180)}deg)">↑</span>`;
+}
+function moonInfo(date = new Date()) {
+  const synodic = 29.530588853;
+  const known = Date.UTC(2000, 0, 6, 18, 14);
+  const age = (((date - known) / 86400000) % synodic + synodic) % synodic;
+  const phase = age / synodic;
+  const illum = Math.round(((1 - Math.cos(2 * Math.PI * phase)) / 2) * 100);
+  const names = [[0.03, 'новолуние', '🌑'], [0.22, 'растущий серп', '🌒'], [0.28, 'первая четверть', '🌓'], [0.47, 'растущая луна', '🌔'],
+    [0.53, 'полнолуние', '🌕'], [0.72, 'убывающая луна', '🌖'], [0.78, 'последняя четверть', '🌗'], [0.97, 'убывающий серп', '🌘'], [1.01, 'новолуние', '🌑']];
+  const [, name, icon] = names.find(([edge]) => phase < edge);
+  return { name, icon, illum, age: Math.round(age) };
+}
+function wxPlace() { return WX_PLACES.find((p) => p.id === store.get('ladoga-wx-place', 'volkhov')) || WX_PLACES[0]; }
+async function loadWeather(force = false) {
+  const place = wxPlace();
+  const cached = store.get(WX_KEY, null);
+  if (!force && cached && cached.place === place.id && Date.now() - cached.at < 30 * 60000) { state.wx = cached; renderWxPill(); return cached; }
+  const q = `latitude=${place.lat}&longitude=${place.lon}&timezone=Europe%2FMoscow&forecast_days=3`;
+  try {
+    const [fc, sea] = await Promise.all([
+      fetch(`https://api.open-meteo.com/v1/forecast?${q}&wind_speed_unit=ms&current=temperature_2m,wind_speed_10m,wind_direction_10m,wind_gusts_10m,pressure_msl,cloud_cover,precipitation,weather_code&hourly=temperature_2m,wind_speed_10m,wind_direction_10m,wind_gusts_10m,pressure_msl,precipitation_probability&daily=sunrise,sunset&past_days=1`).then((r) => r.json()),
+      fetch(`https://marine-api.open-meteo.com/v1/marine?${q}&hourly=wave_height&past_days=1`).then((r) => r.json()).catch(() => null),
+    ]);
+    if (!fc || !fc.current) throw new Error('no data');
+    state.wx = { at: Date.now(), place: place.id, fc, sea };
+    store.set(WX_KEY, state.wx);
+  } catch {
+    if (cached) state.wx = cached;
+  }
+  renderWxPill();
+  return state.wx;
+}
+// Hour index of "now" in the hourly arrays.
+function wxNowIndex(fc) {
+  const now = fc.current?.time?.slice(0, 13);
+  const i = fc.hourly.time.findIndex((t) => t.slice(0, 13) === now);
+  return i < 0 ? 0 : i;
+}
+function wxWarnings(wx) {
+  const fc = wx.fc, h = fc.hourly, i0 = wxNowIndex(fc);
+  const out = [];
+  const month = new Date().getMonth() + 1;
+  const ice = isIceMonth(month) || [11, 12, 4].includes(month);
+  const next = (n) => Array.from({ length: n }, (_, k) => i0 + k).filter((k) => k < h.time.length);
+  const offshore = (d) => d >= 112 && d <= 260; // SE, S, SW, WSW — from the land for the south shore
+  if (ice) {
+    const risky = next(24).filter((k) => offshore(h.wind_direction_10m[k]) && (h.wind_speed_10m[k] >= 6 || h.wind_gusts_10m[k] >= 10));
+    if (risky.length) {
+      const k = risky[0];
+      out.push({ level: 'danger', text: `Отжимной ветер ${rumb(h.wind_direction_10m[k])} ${Math.round(h.wind_speed_10m[k])} м/с (порывы ${Math.round(h.wind_gusts_10m[k])}) с ${h.time[k].slice(11, 16)}: у южного берега (Кобона, Леднево, Креницы, Сухо) может оторвать лёд. Далеко от берега не уходите, следите за трещинами.` });
+    }
+  } else {
+    const windy = next(12).filter((k) => h.wind_speed_10m[k] >= 8 || h.wind_gusts_10m[k] >= 13);
+    const waves = wx.sea?.hourly?.wave_height ? next(12).map((k) => wx.sea.hourly.wave_height[k] ?? 0) : [];
+    const maxWave = waves.length ? Math.max(...waves) : 0;
+    if (windy.length || maxWave >= 0.7) {
+      out.push({ level: 'warn', text: `Ближайшие 12 ч: ветер до ${Math.round(Math.max(...next(12).map((k) => h.wind_gusts_10m[k])))} м/с в порывах${maxWave ? `, волна до ${maxWave.toFixed(1).replace('.', ',')} м` : ''}. В мелких губах волна короткая и крутая — на надувной лодке далеко не уходите.` });
+    }
+    const northStorm = next(24).filter((k) => (h.wind_direction_10m[k] >= 300 || h.wind_direction_10m[k] <= 60) && h.wind_speed_10m[k] >= 10);
+    if (northStorm.length) out.push({ level: 'warn', text: 'Сильный северный ветер: нагон воды и высокая волна у южного берега, выход из устьев и каналов опасен.' });
+  }
+  // Pressure trend over 3 hours.
+  const p0 = h.pressure_msl[i0], p3 = h.pressure_msl[Math.max(0, i0 - 3)];
+  if (p0 != null && p3 != null && Math.abs(p0 - p3) >= 3) out.push({ level: 'info', text: `Давление ${p0 > p3 ? 'быстро растёт' : 'быстро падает'} (${p0 > p3 ? '+' : '−'}${Math.abs(Math.round((p0 - p3) * 0.75))} мм за 3 ч) — клёв в такие часы часто хуже.` });
+  return out;
+}
+function renderWxPill() {
+  const pill = $('#wxPill');
+  const wx = state.wx;
+  if (!pill || !wx?.fc?.current) return;
+  const c = wx.fc.current;
+  const warn = wxWarnings(wx).some((w) => w.level === 'danger');
+  pill.hidden = false;
+  pill.classList.toggle('danger', warn);
+  pill.innerHTML = `${warn ? '⚠️ ' : ''}${windArrow(c.wind_direction_10m, 13)} ${Math.round(c.wind_speed_10m)} м/с ${rumb(c.wind_direction_10m)} · ${Math.round(c.temperature_2m)}°`;
+}
+function weatherHtml() {
+  const wx = state.wx;
+  const place = wxPlace();
+  const header = `<div class="row" style="justify-content:space-between;flex-wrap:nowrap"><h2>Погода на Ладоге</h2><button type="button" class="btn small ghost" data-act="close-card">✕</button></div>
+    <div class="chips">${WX_PLACES.map((p) => `<button type="button" class="chip ${p.id === place.id ? 'on' : ''}" data-wxplace="${p.id}">${esc(p.name)}</button>`).join('')}</div>`;
+  if (!wx?.fc?.current) return `${header}<p class="muted">Загружаю прогноз… Нужен интернет.</p>`;
+  const fc = wx.fc, c = fc.current, h = fc.hourly, i0 = wxNowIndex(fc);
+  const p3 = h.pressure_msl[Math.max(0, i0 - 3)], p24 = h.pressure_msl[Math.max(0, i0 - 24)];
+  const trend = (a, b) => {
+    if (a == null || b == null) return '';
+    const mm = Math.round((a - b) * 0.75);
+    return mm === 0 ? 'без изменений' : `${mm > 0 ? '+' : '−'}${Math.abs(mm)} мм`;
+  };
+  const wave = wx.sea?.hourly?.wave_height?.[i0];
+  const moon = moonInfo();
+  const sunrise = fc.daily?.sunrise?.find((t) => t.slice(0, 10) === c.time.slice(0, 10)) || fc.daily?.sunrise?.[1];
+  const sunset = fc.daily?.sunset?.find((t) => t.slice(0, 10) === c.time.slice(0, 10)) || fc.daily?.sunset?.[1];
+  const warnings = wxWarnings(wx);
+  const hours = Array.from({ length: 48 }, (_, k) => i0 + k).filter((k) => k < h.time.length && (k - i0) % 3 === 0);
+  const age = Math.round((Date.now() - wx.at) / 60000);
+  return `${header}
+    ${warnings.map((w) => `<div class="card small wx-${w.level}">${w.level === 'danger' ? '⚠️ ' : w.level === 'warn' ? '🌊 ' : 'ℹ️ '}${esc(w.text)}</div>`).join('')}
+    <div class="wx-now">
+      <div class="wx-big">${windArrow(c.wind_direction_10m, 30)}<div><b>${Math.round(c.wind_speed_10m)} м/с</b><span>${rumb(c.wind_direction_10m)}, порывы ${Math.round(c.wind_gusts_10m)}</span></div></div>
+      <div class="wx-big"><div><b>${Math.round(c.temperature_2m)}°</b><span>облачность ${Math.round(c.cloud_cover)}%</span></div></div>
+    </div>
+    <dl class="kv">
+      <dt>Давление</dt><dd>${hPaToMm(c.pressure_msl)} мм рт. ст.; за 3 ч ${trend(h.pressure_msl[i0], p3)}, за сутки ${trend(h.pressure_msl[i0], p24)}</dd>
+      ${wave != null ? `<dt>Волна</dt><dd>${String(wave.toFixed(1)).replace('.', ',')} м (модель; в губах круче, чем в открытом озере)</dd>` : ''}
+      ${sunrise ? `<dt>Солнце</dt><dd>восход ${sunrise.slice(11, 16)}, закат ${sunset ? sunset.slice(11, 16) : '—'}</dd>` : ''}
+      <dt>Луна</dt><dd>${moon.icon} ${moon.name}, освещена на ${moon.illum}%</dd>
+    </dl>
+    <h3>Ближайшие 2 суток</h3>
+    <div class="wx-hours">${hours.map((k) => `<div class="wx-h ${h.wind_speed_10m[k] >= 8 ? 'windy' : ''}">
+      <span class="t">${k - i0 < 24 ? '' : 'завтра '}${h.time[k].slice(11, 16)}</span>
+      ${windArrow(h.wind_direction_10m[k], 16)}
+      <b>${Math.round(h.wind_speed_10m[k])}</b><span class="g">${Math.round(h.wind_gusts_10m[k])}</span>
+      <span>${Math.round(h.temperature_2m[k])}°</span>
+      ${h.precipitation_probability?.[k] >= 30 ? `<span class="rain">💧${h.precipitation_probability[k]}%</span>` : '<span class="rain"></span>'}
+    </div>`).join('')}</div>
+    <p class="small muted">Ветер в м/с: крупно — средний, мелко — порывы; стрелка — куда дует. Прогноз <a href="https://open-meteo.com" target="_blank" rel="noopener">Open-Meteo</a>, обновлён ${age < 1 ? 'только что' : `${age} мин назад`}. Отжимной для южного берега — ветер с юго-востока, юга и юго-запада.</p>
+    <div class="btns"><button type="button" class="btn small ghost" data-act="wx-refresh">Обновить</button></div>`;
+}
+function openWeather() {
+  state.tab = 'weather';
+  $$('#tabs button').forEach((b) => b.classList.remove('active'));
+  $('#sheetBody').innerHTML = weatherHtml();
+  $('#sheetBody').scrollTop = 0;
+  setSheet(desktopLayout() ? 'full' : 'full');
+  if (!state.wx) loadWeather().then(() => { if (state.tab === 'weather') $('#sheetBody').innerHTML = weatherHtml(); });
+}
+$('#wxPill').addEventListener('click', openWeather);
+
+/* ---------- track: where the boat or the walk on the ice went, saved on the phone ---------- */
+const TRACK_KEY = 'ladoga-track-v1';
+state.track = store.get(TRACK_KEY, { on: false, pts: [] });
+const trackLine = L.polyline(state.track.pts.map((p) => [p[0], p[1]]), { color: '#ffd43b', weight: 3, opacity: 0.9, interactive: false });
+function trackLength(pts) {
+  let m = 0;
+  for (let i = 1; i < pts.length; i++) m += distM({ lat: pts[i - 1][0], lon: pts[i - 1][1] }, { lat: pts[i][0], lon: pts[i][1] });
+  return m;
+}
+function drawTrack() {
+  trackLine.setLatLngs(state.track.pts.map((p) => [p[0], p[1]]));
+  if (state.track.pts.length && !map.hasLayer(trackLine)) trackLine.addTo(map);
+  const btn = $('#navTrack');
+  if (btn) { btn.classList.toggle('on', state.track.on); btn.textContent = state.track.on ? '⏹ Трек' : '⏺ Трек'; }
+}
+function setTracking(on) {
+  state.track.on = on;
+  store.set(TRACK_KEY, state.track);
+  if (on) { startWatch(false); requestWakeLock(); toast('Пишу трек. Держите карту открытой — телефон не пишет трек из фона.', 4500); }
+  else toast(`Трек остановлен: ${fmtDist(trackLength(state.track.pts))}`);
+  drawTrack();
+}
+function addTrackPoint(me) {
+  if (!state.track.on || !me || me.acc > 60) return;
+  const last = state.track.pts[state.track.pts.length - 1];
+  if (last && distM({ lat: last[0], lon: last[1] }, me) < 12) return;
+  state.track.pts.push([+me.lat.toFixed(6), +me.lon.toFixed(6), Date.now()]);
+  if (state.track.pts.length % 5 === 0) store.set(TRACK_KEY, state.track);
+  drawTrack();
+}
+function trackGpx() {
+  const pts = state.track.pts;
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="ladoga-fishing-map" xmlns="http://www.topografix.com/GPX/1/1">\n<trk><name>Ладога ${new Date(pts[0]?.[2] || Date.now()).toLocaleDateString('ru-RU')}</name><trkseg>\n${pts.map((p) => `<trkpt lat="${p[0]}" lon="${p[1]}"><time>${new Date(p[2]).toISOString()}</time></trkpt>`).join('\n')}\n</trkseg></trk>\n</gpx>\n`;
+}
+
+/* ---------- offline: save the satellite map of the visible area into the phone ---------- */
+const SAT_URL = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+const LABELS_URL = 'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}';
+function tilesFor(bounds, z0, z1) {
+  const out = [];
+  const lon2x = (lon, z) => Math.floor(((lon + 180) / 360) * 2 ** z);
+  const lat2y = (lat, z) => { const r = toRad(lat); return Math.floor(((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2) * 2 ** z); };
+  for (let z = z0; z <= z1; z++) {
+    const x0 = lon2x(bounds.getWest(), z), x1 = lon2x(bounds.getEast(), z);
+    const y0 = lat2y(bounds.getNorth(), z), y1 = lat2y(bounds.getSouth(), z);
+    for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) out.push({ z, x, y });
+  }
+  return out;
+}
+async function downloadOffline(el) {
+  if (!('caches' in window)) { toast('Этот браузер не умеет хранить карту без сети'); return; }
+  const z0 = Math.max(9, map.getZoom());
+  const z1 = Math.min(16, z0 + 3);
+  const tiles = tilesFor(map.getBounds(), z0, z1);
+  const urls = [];
+  for (const t of tiles) urls.push(L.Util.template(SAT_URL, t));
+  for (const t of tiles.filter((t) => t.z <= 14)) urls.push(L.Util.template(LABELS_URL, t));
+  // Our own layers: the old army maps, the model isobaths and the data.
+  for (const o of state.ctx.depth?.overlays || []) urls.push(new URL(o.url, location.href).href);
+  if (state.ctx.depth?.isobaths) urls.push(new URL(state.ctx.depth.isobaths, location.href).href);
+  if (tiles.length > 2600) { toast(`Слишком большой район (${tiles.length} фрагментов). Приблизьте карту к месту рыбалки.`, 5000); return; }
+  const mb = Math.round((tiles.length * 30) / 1024);
+  if (!window.confirm(`Сохранить в телефон спутниковую карту видимого района (приближения ${z0}–${z1}, около ${mb} МБ)? Нужен Wi‑Fi или быстрый интернет.`)) return;
+  const cache = await caches.open('ladoga-tiles-v1');
+  let done = 0, failed = 0, i = 0;
+  const status = () => { el.textContent = `Сохраняю… ${Math.round(((done + failed) / urls.length) * 100)}%`; };
+  const worker = async () => {
+    while (i < urls.length) {
+      const url = urls[i++];
+      try {
+        const same = url.startsWith(location.origin);
+        const res = await fetch(url, same ? {} : { mode: 'cors' });
+        if (res.ok) { await cache.put(url, res); done += 1; } else failed += 1;
+      } catch { failed += 1; }
+      if ((done + failed) % 20 === 0) status();
+    }
+  };
+  status();
+  await Promise.all(Array.from({ length: 6 }, worker));
+  el.textContent = '📥 Сохранить карту этого района';
+  toast(failed ? `Сохранено ${done} из ${urls.length}; часть не скачалась — попробуйте ещё раз` : `Готово: карта района сохранена (${done} фрагментов). Она откроется и без интернета.`, 6000);
+  store.set('ladoga-offline-at', Date.now());
 }
 
 /* ---------- install on the phone, as the fuel app does ---------- */
@@ -1533,6 +1775,10 @@ async function boot() {
     }
   }
   if (!store.get('ladoga-hint-v1', false)) $('#hint').hidden = false;
+  drawTrack();
+  if (state.track.on) startWatch(false);
+  loadWeather();
+  setInterval(() => loadWeather(), 30 * 60000);
   const resume = store.get('ladoga-nav', null);
   if (resume && resume.lat) startNav(resume);
 }
