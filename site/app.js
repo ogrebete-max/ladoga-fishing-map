@@ -1215,11 +1215,14 @@ const desktopLayout = () => window.matchMedia('(min-width: 900px) and (min-heigh
 const closeSheetOnPhone = () => { if (!desktopLayout()) setSheet('peek'); };
 
 // Telegram, VK and other apps open links in their own browser, which seldom passes a site the location.
-function inAppBrowser() {
+function platformInfo() {
   const ua = navigator.userAgent;
-  if (/Telegram|FBAN|FBAV|Instagram|VKClient|Line\/|; wv\)/i.test(ua)) return true;
-  return /iPhone|iPad/.test(ua) && !/Safari\//.test(ua);
+  const iOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const inApp = (iOS && typeof navigator.standalone === 'undefined') || /Telegram|FBAN|FBAV|Instagram|VKClient|Line\/|; wv\)/i.test(ua);
+  const installed = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+  return { iOS, inApp, installed };
 }
+function inAppBrowser() { return platformInfo().inApp; }
 
 // Location: a quick coarse fix first (Safari answers it in a second or two from Wi-Fi), then a
 // high-accuracy watch that keeps improving. No timeout on the watch — on the water GPS may need a minute.
@@ -1440,6 +1443,56 @@ function addExtraTileLayers() {
     extraOverlays[key] = { name: t.name || `Слой ${i + 1}`, note: t.note || t.description || '', layer: L.tileLayer(t.url, opts) };
   }
 }
+
+/* ---------- install on the phone, as the fuel app does ---------- */
+let installPrompt = null;
+function showInstallHelp() {
+  const { iOS, inApp } = platformInfo();
+  const url = location.href.split('#')[0].split('?')[0];
+  const steps = inApp
+    ? [iOS ? 'Нажмите «Открыть в Safari». Не открылось — скопируйте ссылку и вставьте её в адресную строку <b>Safari</b>.' : 'Нажмите «⋮» в углу экрана → «Открыть в браузере» (Chrome).',
+       iOS ? 'В Safari нажмите «Поделиться» — квадрат со стрелкой вверх внизу экрана.' : 'В Chrome откройте меню «⋮».',
+       iOS ? 'Выберите <b>«На экран „Домой“»</b> и нажмите «Добавить».' : 'Выберите <b>«Установить приложение»</b> или «Добавить на главный экран».']
+    : iOS
+      ? ['Нажмите «Поделиться» — квадрат со стрелкой вверх внизу экрана (в Safari).',
+         'Прокрутите список и выберите <b>«На экран „Домой“»</b>.',
+         'Нажмите «Добавить». Иконка «Ладога» появится на экране как обычное приложение.']
+      : ['Откройте меню браузера (три точки ⋮).',
+         'Выберите <b>«Установить приложение»</b> или «Добавить на главный экран».',
+         'Подтвердите установку.'];
+  state.tab = 'install';
+  $$('#tabs button').forEach((b) => b.classList.remove('active'));
+  $('#sheetBody').innerHTML = `
+    <div class="row" style="justify-content:space-between;flex-wrap:nowrap"><h2>Установить на телефон</h2><button type="button" class="btn small ghost" data-act="close-card">✕</button></div>
+    <p class="small">После установки карта открывается с иконки без адресной строки, на весь экран. Точки, справочники и просмотренные участки карты работают и без интернета — на воде это важно.</p>
+    ${inApp ? '<div class="card small"><b>Сейчас открыто не в браузере.</b> Это встроенный браузер Telegram или другого приложения: в нём нет пункта «На экран „Домой“» и не работает геопозиция. Нужен Safari (iPhone) или Chrome (Android).</div>' : ''}
+    <ol class="install-steps small">${steps.map((x) => `<li>${x}</li>`).join('')}</ol>
+    <div class="btns">
+      ${inApp && iOS ? `<a class="btn" href="x-safari-${esc(url)}">Открыть в Safari</a>` : ''}
+      <button type="button" class="btn ${inApp && iOS ? 'ghost' : ''}" data-act="copy-link">Скопировать ссылку</button>
+    </div>`;
+  $('#sheetBody').scrollTop = 0;
+  setSheet('full');
+}
+(() => {
+  const btn = $('#installButton');
+  const { installed, inApp } = platformInfo();
+  // iOS Safari never fires beforeinstallprompt, so the button stays visible everywhere
+  // except inside an already installed window.
+  btn.hidden = installed;
+  if (inApp) btn.textContent = 'Открыть в браузере';
+  window.addEventListener('beforeinstallprompt', (event) => { event.preventDefault(); installPrompt = event; btn.hidden = false; });
+  window.addEventListener('appinstalled', () => { installPrompt = null; btn.hidden = true; toast('Установлено — ищите иконку «Ладога»'); });
+  btn.addEventListener('click', async () => {
+    if (installPrompt) {
+      installPrompt.prompt();
+      await installPrompt.userChoice;
+      installPrompt = null;
+      return;
+    }
+    showInstallHelp();
+  });
+})();
 
 /* ---------- first-visit hint ---------- */
 function closeHint() { $('#hint').hidden = true; store.set('ladoga-hint-v1', true); }

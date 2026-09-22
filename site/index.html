@@ -7,6 +7,7 @@
   <meta name="description" content="Публичные рыболовные геометки южной Ладоги: Волховская губа, Птинов, Варецкие банки, Сухо, Кобона. Сезоны, рыба, правила, навигатор к точке.">
   <meta name="theme-color" content="#0b2533">
   <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Ладога">
   <link rel="manifest" href="manifest.webmanifest">
@@ -14,15 +15,18 @@
   <link rel="apple-touch-icon" href="icons/icon-180.png">
   <link rel="stylesheet" href="vendor/leaflet.css">
   <link rel="stylesheet" href="vendor/MarkerCluster.css">
-  <link rel="stylesheet" href="styles.css?v=7">
+  <link rel="stylesheet" href="styles.css?v=9">
 </head>
 <body>
   <div id="map" aria-label="Карта южной Ладоги"></div>
 
   <header class="topbar">
-    <div class="brand">
-      <strong>Ладога</strong>
-      <span id="counter" class="counter">загрузка…</span>
+    <div class="brand-row">
+      <div class="brand">
+        <strong>Ладога</strong>
+        <span id="counter" class="counter">загрузка…</span>
+      </div>
+      <button type="button" class="install-button" id="installButton" hidden>Установить</button>
     </div>
     <div class="active-filters" id="activeFilters"></div>
   </header>
@@ -99,6 +103,6 @@
   <script src="vendor/leaflet.js"></script>
   <script src="vendor/leaflet.markercluster.js"></script>
   <script src="vendor/leaflet-heat.js"></script>
-  <script src="app.js?v=7"></script>
+  <script src="app.js?v=9"></script>
 </body>
 </html>
