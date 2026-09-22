@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Ладога · рыболовная карта</title>
+  <meta name="description" content="Публичные рыболовные геометки южной Ладоги: Волховская губа, Птинов, Варецкие банки, Сухо, Кобона. Сезоны, рыба, правила, навигатор к точке.">
+  <meta name="theme-color" content="#0b2533">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Ладога">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/icon-180.png">
+  <link rel="stylesheet" href="vendor/leaflet.css">
+  <link rel="stylesheet" href="vendor/MarkerCluster.css">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="map" aria-label="Карта южной Ладоги"></div>
+
+  <header class="topbar">
+    <div class="brand">
+      <strong>Ладога</strong>
+      <span id="counter" class="counter">загрузка…</span>
+    </div>
+    <div class="active-filters" id="activeFilters"></div>
+  </header>
+
+  <div class="fabs">
+    <button type="button" class="fab" id="btnLayers" title="Слои карты" aria-label="Слои карты">
+      <svg viewBox="0 0 24 24"><path d="M12 3 2 8.5 12 14l10-5.5L12 3Zm-8.2 9.4L2 13.5 12 19l10-5.5-1.8-1.1L12 17l-8.2-4.6Z"/></svg>
+    </button>
+    <button type="button" class="fab" id="btnLocate" title="Где я" aria-label="Где я">
+      <svg viewBox="0 0 24 24"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Zm9 3h-2.07A7 7 0 0 0 13 5.07V3h-2v2.07A7 7 0 0 0 5.07 11H3v2h2.07A7 7 0 0 0 11 18.93V21h2v-2.07A7 7 0 0 0 18.93 13H21v-2Zm-9 6a5 5 0 1 1 0-10 5 5 0 0 1 0 10Z"/></svg>
+    </button>
+  </div>
+
+  <section class="sheet" id="sheet" data-state="peek" aria-label="Панель">
+    <button type="button" class="sheet-handle" id="sheetHandle" aria-label="Развернуть или свернуть панель"><span></span></button>
+    <nav class="tabs" id="tabs" role="tablist">
+      <button type="button" role="tab" data-tab="filter" class="active">Фильтр</button>
+      <button type="button" role="tab" data-tab="season">Сезон</button>
+      <button type="button" role="tab" data-tab="fish">Рыба</button>
+      <button type="button" role="tab" data-tab="rules">Правила</button>
+      <button type="button" role="tab" data-tab="layers">Слои</button>
+      <button type="button" role="tab" data-tab="data">Данные</button>
+    </nav>
+    <div class="sheet-body" id="sheetBody"></div>
+  </section>
+
+  <div class="nav-hud" id="navHud" hidden>
+    <div class="nav-top">
+      <div class="nav-arrow" id="navArrow" aria-hidden="true">
+        <svg viewBox="0 0 100 100"><path d="M50 6 80 88 50 70 20 88Z"/></svg>
+      </div>
+      <div class="nav-main">
+        <div class="nav-title" id="navTitle">—</div>
+        <div class="nav-dist" id="navDist">—</div>
+        <div class="nav-sub" id="navSub">Жду GPS…</div>
+      </div>
+    </div>
+    <div class="nav-buttons">
+      <button type="button" id="navCenter">◎ За мной</button>
+      <button type="button" id="navCompass">🧭 Компас</button>
+      <button type="button" id="navMark">📍 Отметить</button>
+      <button type="button" id="navStop" class="danger">✕ Стоп</button>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="vendor/leaflet.js"></script>
+  <script src="vendor/leaflet.markercluster.js"></script>
+  <script src="vendor/leaflet-heat.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
