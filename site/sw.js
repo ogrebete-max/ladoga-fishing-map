@@ -1,6 +1,6 @@
 // Offline support: the app shell and data come from the cache when the lake has
 // no signal; map tiles that were viewed once are kept for later (up to TILE_MAX).
-const VERSION = 'ladoga-v1';
+const VERSION = 'ladoga-v2';
 const SHELL = ['./', 'index.html', 'app.js', 'styles.css', 'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-192.png',
   'vendor/leaflet.js', 'vendor/leaflet.css', 'vendor/leaflet.markercluster.js', 'vendor/MarkerCluster.css', 'vendor/leaflet-heat.js',
   'data/points.json', 'data/context.json'];

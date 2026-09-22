@@ -158,8 +158,7 @@ def baseline_reports():
     rows = list(csv.DictReader(open(BASELINE / "ladoga_reports.csv", encoding="utf-8-sig")))
     for row in rows:
         src = row["source"]
-        if src.startswith("Предыдущее"):
-            src = "Прежнее исследование (ChatGPT)"
+        src = "Прежнее исследование (ChatGPT)" if src.startswith("Предыдущее") else canon_source(src)
         comment = row["comment"]
         yield {
             "lat": float(row["latitude"]), "lon": float(row["longitude"]),
@@ -181,6 +180,36 @@ def baseline_reports():
            "src": "Прежнее исследование (ChatGPT)", "url": "", "sid": "landmark-varetskie", "agent": "baseline"}
 
 
+SOURCE_NAMES = [
+    (re.compile(r"fishermap", re.I), "FisherMap"),
+    (re.compile(r"fishing-report", re.I), "fishing-report.ru"),
+    (re.compile(r"inaturalist", re.I), "iNaturalist"),
+    (re.compile(r"gbif", re.I), "GBIF"),
+    (re.compile(r"openstreetmap|overpass|osm", re.I), "OpenStreetMap"),
+    (re.compile(r"wikimapia", re.I), "Wikimapia"),
+    (re.compile(r"wikimedia|commons", re.I), "Wikimedia Commons"),
+    (re.compile(r"rybalka_spb_lenoblasti|Рыболовная сводка", re.I), "Telegram: Рыболовная сводка СПб"),
+    (re.compile(r"fishingspb1", re.I), "Telegram: Отчёты Рыбалка СПб"),
+    (re.compile(r"damfishspb", re.I), "Telegram: @damfishspb"),
+    (re.compile(r"gumchslo|МЧС", re.I), "МЧС Ленинградской области"),
+    (re.compile(r"fisher\.spb|ПКР", re.I), "fisher.spb.ru (Питерский клуб рыбаков)"),
+    (re.compile(r"iv70\.narod|Схема сетей", re.I), "iv70.narod.ru"),
+    (re.compile(r"fishing-club\.ru|rapala\.ru", re.I), "fishing-club.ru (точки 2001 г.)"),
+    (re.compile(r"flickr", re.I), "Flickr"),
+    (re.compile(r"pastvu", re.I), "PastVu (старые фото)"),
+    (re.compile(r"rusfishing", re.I), "rusfishing.ru"),
+    (re.compile(r"barque", re.I), "barque.ru"),
+    (re.compile(r"boatfisher", re.I), "boatfisher.ru (слипы)"),
+]
+
+
+def canon_source(name: str) -> str:
+    for rx, canon in SOURCE_NAMES:
+        if rx.search(name or ""):
+            return canon
+    return name
+
+
 def research_reports():
     for path in sorted(RESEARCH.glob("*.json")):
         try:
@@ -189,12 +218,33 @@ def research_reports():
             print(f"skip {path.name}: {error}")
             continue
         slug = payload.get("agent") or path.stem
-        for p in payload.get("points") or []:
+        points = list(payload.get("points") or [])
+        singles = [w for w in payload.get("dated_reports_with_coords") or [] if w.get("latitude") is not None]
+        if singles:
+            # The file also lists every report at its own coordinate: keep those instead of the
+            # merged points, so each report keeps its date and fish for the season statistics.
+            points = [p for p in points if not (p.get("kind") == "fishing" and p.get("confidence_class") == "A")]
+            for w in singles:
+                bits = [w.get("catch"), w.get("method"), f"глубина {w['depth']}" if w.get("depth") else ""]
+                points.append({
+                    "latitude": w["latitude"], "longitude": w["longitude"], "kind": w.get("kind") or "fishing",
+                    "confidence_class": "A", "coord_precision_m": 20, "fish": w.get("fish") or [],
+                    "date": w.get("date"), "season": w.get("season"), "title": w.get("place_text"),
+                    "comment": "; ".join(b for b in bits if b) or "Отчёт с координатами места ловли.",
+                    "depth": w.get("depth"), "method": w.get("method"), "catch": w.get("catch"),
+                    "source": w.get("source"), "source_url": w.get("source_url"), "source_id": w.get("source_url"),
+                })
+        for p in points:
+            if p.get("separate_waterbody"):
+                continue
             try:
                 lat, lon = float(p["latitude"]), float(p["longitude"])
             except (KeyError, TypeError, ValueError):
                 continue
             kind = p.get("kind") if p.get("kind") in KINDS else "fishing"
+            title_text = str(p.get("title") or "")
+            if kind in ("landmark", "observation") and re.search(r"Парковк|выход|Ледовая обстановка|Слип", title_text, re.I):
+                kind = "launch"
             fish = norm_fish(p.get("fish") or [])
             if not fish and p.get("latin_name"):
                 fish = norm_fish([p["latin_name"]])
@@ -205,10 +255,48 @@ def research_reports():
                 "fish": fish, "date": clean_date(p.get("date")), "season_given": p.get("season") or "",
                 "title": short(p.get("title"), 90), "comment": short(p.get("comment")),
                 "depth": short(p.get("depth"), 40), "method": short(p.get("method"), 80), "catch": short(p.get("catch"), 80),
-                "src": short(p.get("source") or slug, 60), "url": p.get("source_url") or "", "sid": str(p.get("source_id") or ""),
+                "src": canon_source(short(p.get("source") or slug, 60)),
+                "srcd": short(p.get("source"), 120) if canon_source(short(p.get("source") or slug, 60)) != short(p.get("source"), 60) else "",
+                "url": p.get("source_url") or "", "sid": str(p.get("source_id") or ""),
+                "orig": p.get("original_source_url") or "",
+                "wb": short(p.get("waterbody"), 80),
                 "raw": short(p.get("raw_coordinate_text"), 80), "agent": slug,
-                "dup": bool(p.get("dup_of_baseline")),
+                "doubt": bool(p.get("location_doubtful")),
             }
+
+
+def timeseries():
+    """Monthly counts of dated reports (Telegram, YouTube, forums) by fish and by area."""
+    by_fish, by_sector, by_source = defaultdict(lambda: [0] * 12), defaultdict(lambda: [0] * 12), Counter()
+    by_month = [0] * 12
+    sector_fish = defaultdict(Counter)
+    total = 0
+    for path in sorted(RESEARCH.glob("*.json")):
+        payload = load_json(path.stem)
+        rows = list(payload.get("dated_reports_without_coords") or []) + list(payload.get("dated_reports_with_coords") or [])
+        for row in rows:
+            d = clean_date(row.get("date"))
+            if len(d) < 7 or row.get("date_basis") == "publication":
+                continue  # an upload date can lag the trip by months
+            if row.get("dup_of_baseline") is True:
+                continue
+            m = int(d[5:7]) - 1
+            total += 1
+            by_month[m] += 1
+            sector = (row.get("sector") or "").strip() or "место не уточнено"
+            by_sector[sector][m] += 1
+            by_source[canon_source(row.get("source") or path.stem)] += 1
+            for f in norm_fish(row.get("fish") or []):
+                by_fish[f][m] += 1
+                sector_fish[sector][f] += 1
+    top_sectors = sorted(by_sector, key=lambda k: -sum(by_sector[k]))[:25]
+    return {
+        "total": total,
+        "by_month": by_month,
+        "by_fish": dict(sorted(by_fish.items(), key=lambda kv: -sum(kv[1]))),
+        "by_sector": {k: {"by_month": by_sector[k], "fish": dict(sector_fish[k].most_common(6))} for k in top_sectors},
+        "by_source": by_source.most_common(),
+    }
 
 
 def load_json(name):
@@ -226,29 +314,51 @@ def main():
     SITE_DATA.mkdir(parents=True, exist_ok=True)
     DOWNLOADS.mkdir(parents=True, exist_ok=True)
 
-    reports, seen = [], set()
+    reports, seen = [], {}
     dropped = Counter()
-    for r in list(baseline_reports()) + list(research_reports()):
+    excluded = {u.rstrip("/").lower() for u in (load_json("exclude").get("urls") or {})}
+    # Research files first: for a card both collected, the fresher, richer copy wins.
+    for r in list(research_reports()) + list(baseline_reports()):
         if not in_area(r["lat"], r["lon"]):
             dropped["вне района"] += 1
             continue
-        # The same card reached through two routes (e.g. FisherMap city + lake page).
-        key = (r["src"].split(":")[0].lower().replace("ru.", ""), r["sid"]) if r["sid"] else None
-        url_key = r["url"].rstrip("/").lower() if r["url"] else None
-        if (key and key in seen) or (url_key and url_key in seen):
+        if r["url"] and r["url"].rstrip("/").lower() in excluded:
+            dropped["исключено вручную"] += 1
+            continue
+        # The same card reached through two routes (e.g. FisherMap city + lake page, or the first
+        # research and a research agent). A catalogue page lists many places under one URL, so a
+        # repeat is the same link *and* the same place, not the link alone.
+        keys = [k for k in (("sid", r["src"], r["sid"]) if r["sid"] else None,
+                            ("url", r["url"].rstrip("/").lower()) if r["url"] else None) if k]
+        if any(haversine_m(r["lat"], r["lon"], la, lo) < 150 for k in keys for la, lo in seen.get(k, [])):
             dropped["повтор источника"] += 1
             continue
-        if key:
-            seen.add(key)
-        if url_key:
-            seen.add(url_key)
+        for k in keys:
+            seen.setdefault(k, []).append((r["lat"], r["lon"]))
         text = " ".join(str(r.get(k) or "") for k in ("comment", "method", "title"))
         r["season"] = season_of(r["date"], text, r.pop("season_given", ""))
         r["dist"] = round(haversine_m(CENTER[0], CENTER[1], r["lat"], r["lon"]) / 1000, 1)
         r["zone"] = "core" if r["dist"] <= CORE_KM else "ext"
         r["sector"] = sector_of(r["lat"], r["lon"])
-        r.pop("dup", None)
+        if r.pop("doubt", False):
+            r["comment"] = f"{r.get('comment', '')} Место под сомнением: координата легла на сушу.".strip()
         reports.append(r)
+
+    # The club catalogue's area pins (fisher.spb.ru) reached us three times: from the catalogue itself,
+    # from the forum crawl and from the first research. One pin per area, the richest copy first.
+    order = {"report_sites": 0, "forums_old": 1, "baseline": 2}
+    pins = [r for r in reports if r["cls"] == "C" and re.search(r"ПКР|fisher\.spb", f"{r.get('title', '')} {r['src']}")]
+    pins.sort(key=lambda r: order.get(r["agent"], 3))
+    drop = set()
+    for i, a in enumerate(pins):
+        if id(a) in drop:
+            continue
+        for b in pins[i + 1:]:
+            if id(b) not in drop and haversine_m(a["lat"], a["lon"], b["lat"], b["lon"]) < 400:
+                drop.add(id(b))
+    if drop:
+        dropped["повтор метки района ПКР"] += len(drop)
+        reports = [r for r in reports if id(r) not in drop]
 
     # Markers: reports of the same kind family within MERGE_M share one marker.
     family = lambda k: "catch" if k in ("fishing", "observation") else k
@@ -300,6 +410,17 @@ def main():
     (SITE_DATA / "points.json").write_text(json.dumps(points, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
 
     bio, rules, nav = load_json("biology_seasons"), load_json("rules_safety"), load_json("nav_structures")
+    depth = load_json("depth")
+    overlays = []
+    for o in depth.get("image_overlays") or []:
+        name = Path(str(o.get("file") or o.get("url") or "")).stem
+        if not (ROOT / "site" / "overlays" / f"{name}.webp").exists():
+            continue  # scripts/prepare_overlays step not run for this sheet
+        bounds = o.get("bounds")
+        if isinstance(bounds, str):
+            bounds = json.loads(bounds)
+        overlays.append({"name": o.get("name"), "url": f"overlays/{name}.webp", "bounds": bounds,
+                         "depth_content": o.get("depth_content"), "source_url": o.get("source_url")})
     sources = []
     for path in sorted(RESEARCH.glob("*.json")):
         payload = load_json(path.stem)
@@ -310,8 +431,16 @@ def main():
         "species": bio.get("species") or [],
         "hydro_calendar": bio.get("hydro_calendar") or [],
         "season_zones": bio.get("season_zones") or [],
+        "ice_from_angler_reports": bio.get("ice_from_angler_reports") or {},
+        "wind_effects": bio.get("wind_effects") or [],
         "regulations": rules.get("regulations") or {},
         "ice_rules": rules.get("ice_rules") or [],
+        "timeseries": timeseries(),
+        "depth": {
+            "overlays": overlays,
+            "isobaths": "data/depth_isobaths.geojson" if (SITE_DATA / "depth_isobaths.geojson").exists() else "",
+            "phone_workflows": depth.get("phone_workflows") or [],
+        },
         "lines": nav.get("lines") or [],
         "tile_layers": nav.get("tile_layers") or [],
         "sources": sources,

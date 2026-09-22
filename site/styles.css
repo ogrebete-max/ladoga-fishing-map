@@ -12,7 +12,7 @@
   --ok: #2b8a3e;
   --shadow: 0 6px 24px rgba(8, 30, 42, .22);
   --radius: 14px;
-  --sheet-peek: 108px;
+  --sheet-peek: 104px;
   --safe-b: env(safe-area-inset-bottom, 0px);
   --safe-t: env(safe-area-inset-top, 0px);
   color-scheme: light;
@@ -25,6 +25,8 @@
   }
 }
 * { box-sizing: border-box; }
+html { height: 100%; }
+body { position: fixed; inset: 0; }
 html, body { margin: 0; height: 100%; background: var(--deep); color: var(--ink);
   font: 15px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   -webkit-text-size-adjust: 100%; overflow: hidden; }
@@ -50,30 +52,67 @@ a { color: var(--accent); }
 .fab svg { width: 24px; height: 24px; fill: var(--ink); }
 .fab.on { background: var(--accent); }
 .fab.on svg { fill: var(--accent-ink); }
+.fab.busy { animation: busy 1.2s ease-in-out infinite; }
+@keyframes busy { 50% { box-shadow: 0 0 0 8px rgba(76, 192, 220, .35); } }
 
-/* bottom sheet (phone) / sidebar (desktop) */
+/* Bottom sheet on a phone held upright, side panel in landscape and on a desktop.
+   The sheet gets an explicit height per state (never a transform): its scrolling body then
+   ends exactly at the screen edge, and iOS Safari can scroll every tab to its last line. */
 .sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 1000; background: var(--paper); color: var(--ink);
   border-radius: 18px 18px 0 0; box-shadow: 0 -8px 30px rgba(8, 30, 42, .25);
-  display: flex; flex-direction: column; max-height: 78vh; transition: transform .22s ease;
-  padding-bottom: var(--safe-b); }
-.sheet[data-state="peek"] { transform: translateY(calc(100% - var(--sheet-peek) - var(--safe-b))); }
-.sheet[data-state="half"] { transform: translateY(calc(100% - 50vh)); }
-.sheet[data-state="full"] { transform: none; }
-.sheet-handle { border: 0; background: none; padding: 8px 0 4px; display: grid; place-items: center; }
+  display: flex; flex-direction: column; height: var(--sheet-h); transition: height .22s ease;
+  padding-bottom: var(--safe-b); padding-left: env(safe-area-inset-left, 0px); padding-right: env(safe-area-inset-right, 0px); }
+.sheet[data-state="peek"] { --sheet-h: calc(var(--sheet-peek) + var(--safe-b)); }
+.sheet[data-state="half"] { --sheet-h: 52vh; --sheet-h: 52dvh; }
+.sheet[data-state="full"] { --sheet-h: calc(100vh - 64px - var(--safe-t)); --sheet-h: calc(100dvh - 64px - var(--safe-t)); }
+.sheet-top { display: flex; align-items: flex-start; flex: none; }
+.sheet-handle { flex: 1; border: 0; background: none; padding: 8px 0 4px; display: grid; place-items: center; touch-action: none; }
 .sheet-handle span { width: 42px; height: 5px; border-radius: 3px; background: var(--line); }
-.tabs { display: flex; gap: 4px; padding: 0 10px 8px; overflow-x: auto; scrollbar-width: none; flex: none; }
-.tabs::-webkit-scrollbar { display: none; }
-.tabs button { border: 0; background: var(--paper-2); color: var(--ink-2); padding: 8px 13px; border-radius: 999px;
-  white-space: nowrap; font-size: 14px; }
+.sheet-close { border: 0; background: var(--paper-2); color: var(--ink-2); width: 32px; height: 32px; border-radius: 50%;
+  margin: 6px 10px 0 0; font-size: 16px; line-height: 1; display: none; }
+.sheet:not([data-state="peek"]) .sheet-close { display: block; }
+.tabs { display: flex; flex-wrap: wrap; gap: 5px; padding: 0 10px 8px; flex: none; }
+.tabs button { border: 0; background: var(--paper-2); color: var(--ink-2); padding: 7px 11px; border-radius: 999px;
+  white-space: nowrap; font-size: 13.5px; }
 .tabs button.active { background: var(--deep); color: #fff; }
 @media (prefers-color-scheme: dark) { .tabs button.active { background: var(--accent); color: var(--accent-ink); } }
-.sheet-body { overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 4px 16px 24px; flex: 1; overscroll-behavior: contain; }
+/* min-height: 0 lets a flex child shrink below its content and scroll — without it Safari clips the tab. */
+.sheet-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
+  padding: 4px 16px calc(28px + var(--safe-b)); }
+.sheet[data-state="peek"] .sheet-body { visibility: hidden; }
+.panel-open { display: none; }
 
-@media (min-width: 900px) {
-  .sheet { top: 0; bottom: 0; left: 0; right: auto; width: 400px; max-height: none; border-radius: 0;
-    transform: none !important; padding-top: var(--safe-t); }
+/* Phone on its side: a slim side panel that folds away completely, so the map keeps the screen. */
+@media (orientation: landscape) and (max-height: 540px) and (max-width: 1100px) {
+  :root { --sheet-peek: 0px; }
+  .sheet { top: 0; bottom: 0; left: 0; right: auto; height: auto; width: min(360px, 48vw); border-radius: 0 16px 16px 0;
+    padding-top: var(--safe-t); transition: transform .22s ease; box-shadow: 8px 0 30px rgba(8, 30, 42, .25); }
+  .sheet[data-state="peek"] { transform: translateX(-105%); }
+  .sheet[data-state="half"], .sheet[data-state="full"] { transform: none; }
   .sheet-handle { display: none; }
-  .tabs { padding-top: 12px; flex-wrap: wrap; }
+  .sheet-top { justify-content: flex-end; }
+  .sheet-close { display: block; }
+  .sheet[data-state="peek"] .sheet-body { visibility: visible; }
+  .panel-open { display: grid; }
+  .topbar { left: calc(8px + env(safe-area-inset-left, 0px)); }
+  .fabs { right: calc(8px + env(safe-area-inset-right, 0px)); }
+  .leaflet-bottom { bottom: 0 !important; }
+  .toast { bottom: 16px !important; }
+  .nav-hud { max-width: 430px; padding: 8px 10px; }
+  .nav-arrow { width: 54px; height: 54px; }
+  .nav-arrow svg { width: 40px; height: 40px; }
+  .nav-dist { font-size: 24px; }
+  .nav-buttons { margin-top: 6px; }
+  .nav-buttons button { padding: 7px 4px; }
+}
+
+@media (min-width: 900px) and (min-height: 541px) {
+  .sheet { top: 0; bottom: 0; left: 0; right: auto; width: 400px; height: auto; border-radius: 0;
+    padding-top: var(--safe-t); transition: none; }
+  .sheet[data-state] { --sheet-h: auto; }
+  .sheet[data-state="peek"] .sheet-body { visibility: visible; }
+  .sheet-handle, .sheet-close { display: none !important; }
+  .tabs { padding-top: 12px; }
   .topbar { left: 412px; }
   .leaflet-left { left: 400px; }
 }
@@ -167,13 +206,13 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
 .leaflet-container { font: inherit; }
 .leaflet-control-attribution { font-size: 10px; max-width: 70vw; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .leaflet-bottom { bottom: calc(var(--sheet-peek) + var(--safe-b)); }
-@media (min-width: 900px) { .leaflet-bottom { bottom: 0; } }
+@media (min-width: 900px) and (min-height: 541px) { .leaflet-bottom { bottom: 0; } }
 .zone-label { background: rgba(255,255,255,.85); border: 0; box-shadow: none; font-size: 11px; padding: 1px 5px; border-radius: 6px; }
 
 /* navigator */
-.nav-hud { position: fixed; left: 8px; right: 8px; top: calc(8px + var(--safe-t)); z-index: 1100; background: var(--deep); color: #fff;
+.nav-hud { position: fixed; left: 8px; right: 8px; top: calc(8px + var(--safe-t)); z-index: 1100; max-width: 520px; background: var(--deep); color: #fff;
   border-radius: 18px; box-shadow: var(--shadow); padding: 12px; }
-@media (min-width: 900px) { .nav-hud { left: 412px; right: auto; width: 420px; } }
+@media (min-width: 900px) and (min-height: 541px) { .nav-hud { left: 412px; right: 8px; } }
 .nav-top { display: flex; gap: 12px; align-items: center; }
 .nav-arrow { width: 72px; height: 72px; flex: none; border-radius: 50%; background: rgba(255,255,255,.08); display: grid; place-items: center; }
 .nav-arrow svg { width: 52px; height: 52px; fill: #4cc0dc; transition: transform .25s linear; }
@@ -181,8 +220,8 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
 .nav-title { font-size: 14px; opacity: .85; }
 .nav-dist { font-size: 30px; font-weight: 800; line-height: 1.1; }
 .nav-sub { font-size: 13px; opacity: .85; }
-.nav-buttons { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 10px; }
-.nav-buttons button { border: 0; border-radius: 10px; padding: 9px 4px; background: rgba(255,255,255,.12); color: #fff; font-size: 13px; }
+.nav-buttons { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin-top: 10px; }
+.nav-buttons button { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border: 0; border-radius: 10px; padding: 9px 4px; background: rgba(255,255,255,.12); color: #fff; font-size: 13px; }
 .nav-buttons button.on { background: #4cc0dc; color: #062029; }
 .nav-buttons .danger { background: #c92a2a; }
 body.navigating .topbar, body.navigating .fabs { display: none; }

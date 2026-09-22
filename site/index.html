@@ -14,7 +14,7 @@
   <link rel="apple-touch-icon" href="icons/icon-180.png">
   <link rel="stylesheet" href="vendor/leaflet.css">
   <link rel="stylesheet" href="vendor/MarkerCluster.css">
-  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="styles.css?v=4">
 </head>
 <body>
   <div id="map" aria-label="Карта южной Ладоги"></div>
@@ -31,17 +31,25 @@
     <button type="button" class="fab" id="btnLayers" title="Слои карты" aria-label="Слои карты">
       <svg viewBox="0 0 24 24"><path d="M12 3 2 8.5 12 14l10-5.5L12 3Zm-8.2 9.4L2 13.5 12 19l10-5.5-1.8-1.1L12 17l-8.2-4.6Z"/></svg>
     </button>
+    <button type="button" class="fab panel-open" id="btnPanel" title="Меню" aria-label="Открыть панель">
+      <svg viewBox="0 0 24 24"><path d="M3 6h18v2H3V6Zm0 5h18v2H3v-2Zm0 5h18v2H3v-2Z"/></svg>
+    </button>
     <button type="button" class="fab" id="btnLocate" title="Где я" aria-label="Где я">
       <svg viewBox="0 0 24 24"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Zm9 3h-2.07A7 7 0 0 0 13 5.07V3h-2v2.07A7 7 0 0 0 5.07 11H3v2h2.07A7 7 0 0 0 11 18.93V21h2v-2.07A7 7 0 0 0 18.93 13H21v-2Zm-9 6a5 5 0 1 1 0-10 5 5 0 0 1 0 10Z"/></svg>
     </button>
   </div>
 
   <section class="sheet" id="sheet" data-state="peek" aria-label="Панель">
-    <button type="button" class="sheet-handle" id="sheetHandle" aria-label="Развернуть или свернуть панель"><span></span></button>
+    <div class="sheet-top">
+      <button type="button" class="sheet-handle" id="sheetHandle" aria-label="Развернуть или свернуть панель"><span></span></button>
+      <button type="button" class="sheet-close" id="sheetClose" aria-label="Свернуть панель">✕</button>
+    </div>
     <nav class="tabs" id="tabs" role="tablist">
       <button type="button" role="tab" data-tab="filter" class="active">Фильтр</button>
+      <button type="button" role="tab" data-tab="places">Места</button>
       <button type="button" role="tab" data-tab="season">Сезон</button>
       <button type="button" role="tab" data-tab="fish">Рыба</button>
+      <button type="button" role="tab" data-tab="depth">Глубины</button>
       <button type="button" role="tab" data-tab="rules">Правила</button>
       <button type="button" role="tab" data-tab="layers">Слои</button>
       <button type="button" role="tab" data-tab="data">Данные</button>
@@ -73,6 +81,6 @@
   <script src="vendor/leaflet.js"></script>
   <script src="vendor/leaflet.markercluster.js"></script>
   <script src="vendor/leaflet-heat.js"></script>
-  <script src="app.js"></script>
+  <script src="app.js?v=4"></script>
 </body>
 </html>

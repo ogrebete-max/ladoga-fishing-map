@@ -1,0 +1,812 @@
+{
+ "agent": "depth",
+ "generated": "2026-09-22",
+ "tile_layers": [
+  {
+   "name": "Navionics SonarChart™ (HD-батиметрия сообщества) — Garmin Navionics Web API v2",
+   "url": "",
+   "url_note": "Намеренно пусто: это не XYZ-шаблон — тайлы выдаёт JS-библиотека после получения navtoken по ключу (https://tile{1-5}.navionics.com/tile/get_key/<navKey>/<домен>), см. leaflet_snippet. addExtraTileLayers() в app.js этот слой автоматически не добавит.",
+   "tile_template_reference": "https://tile{1-5}.navionics.com/tile/{z}/{x}/{y}?LAYERS=config_<unit>_<safetyDepth>_<0|1>&TRANSPARENT=<TRUE|FALSE>&theme=0&navtoken=<из get_key>",
+   "attribution": "© Garmin / Navionics (логотип Navionics добавляется библиотекой)",
+   "kind": "overlay",
+   "works_in_browser": "key_required",
+   "max_zoom": null,
+   "tms": false,
+   "requires_key": true,
+   "chart_type_note": "chartType: JNC.NAVIONICS_CHARTS.SONARCHART ('sonar'); краудсорсинговая батиметрия, изобаты до 0,5 м там, где есть логи эхолотов",
+   "license_note": "Тариф Standard (бесплатный): только окно с картой Navionics на странице, центрированное на нужном месте; «Display of additional features on top of charts is not allowed» — наши точки/слои поверх карты Navionics класть НЕЛЬЗЯ; сервис должен быть бесплатным для пользователей. Тариф Enhanced (платный, годовая плата за регион/мир) разрешает полноэкранную карту со своими оверлеями и POI. Источник: developer.garmin.com/marine-charts/web/. Выгружать/сохранять тайлы, использовать чужие ключи (например, демо-ключи со страниц примеров) — запрещено.",
+   "test_result": "2026-09-22: https://webapiv2.navionics.com/dist/webapi/webapi.min.no-dep.js → 200 application/javascript (2 112 686 B); webapi.min.css → 200 text/css; https://tile1.navionics.com/tile/10/603/296?LAYERS=config_1_20.00_1&TRANSPARENT=TRUE&theme=0 (тайл над 60.2N 32.2E) без navtoken → 401 (пусто); https://tile1.navionics.com/tile/get_key/navionics_key/ogrebete-max.github.io (ключ-заглушка) → 400 application/problem+json. Без собственного ключа слой не работает.",
+   "leaflet_snippet": "<!-- подключать ПОСЛЕ leaflet.js: библиотека проверяет глобальный L и наследует L.TileLayer -->\n<link rel=\"stylesheet\" href=\"https://webapiv2.navionics.com/dist/webapi/webapi.min.css\">\n<script src=\"https://webapiv2.navionics.com/dist/webapi/webapi.min.no-dep.js\"></script>\n<div id=\"navMap\" style=\"height:360px\"></div>\n<script>\n  // Отдельное окно карты Navionics БЕЗ наших маркеров/слоёв (условие бесплатного тарифа Standard)\n  const navMap = L.map('navMap').setView([60.20, 32.20], 12);   // центр = выбранная точка\n  new JNC.Leaflet.NavionicsOverlay({\n    navKey: 'ВАШ_КЛЮЧ_NAVIONICS',                 // ключ привязан к домену ogrebete-max.github.io\n    chartType: JNC.NAVIONICS_CHARTS.NAUTICAL,      // морская карта с изобатами\n    isTransparent: false,\n    zIndex: 1\n  }).addTo(navMap);\n  new JNC.Leaflet.NavionicsOverlay({\n    navKey: 'ВАШ_КЛЮЧ_NAVIONICS',\n    chartType: JNC.NAVIONICS_CHARTS.SONARCHART,    // SonarChart HD-батиметрия (краудсорсинг)\n    isTransparent: true,\n    zIndex: 2\n  }).addTo(navMap);\n</script>",
+   "leaflet_compat_note": "Примеры Garmin написаны под Leaflet 0.7.3; класс JNC.Leaflet.NavionicsOverlay наследует L.TileLayer (CoffeeScript), работа с Leaflet 1.9 из vendor/ не проверена — проверить сразу после получения ключа. webapi.min.no-dep.js включает jQuery/underscore внутри (JNC.$, JNC._).",
+   "key_request_steps_ru": [
+    "1. Откройте https://developer.garmin.com/marine-charts/web/ → «Request Access» (или сразу форму https://www.garmin.com/en-US/forms/navionics-web-api/).",
+    "2. Заполните поля: Name, Company name (можно название проекта, напр. «Ladoga fishing map, non-commercial»), Country/region, Email, телефон с кодом страны, описание use case, Your website = https://ogrebete-max.github.io/<имя-репозитория>/, модель = Standard.",
+    "3. В use case честно напишите: бесплатная некоммерческая карта рыболовных мест южной Ладоги; карта Navionics будет показываться в отдельном окне, центрированном на выбранной точке, без наложения наших данных.",
+    "4. Пройдите reCAPTCHA и отправьте форму — это делаете вы сами (личные данные и отправку формы агент не выполняет).",
+    "5. Получив developer key, пришлите его разработчику сайта: ключ вставляется в navKey; он привязан к домену (ogrebete-max.github.io; для отладки попросите добавить localhost).",
+    "6. Учтите: Garmin с 2022 г. приостановил деятельность в РФ — заявку с Country = Russian Federation могут не одобрить; ответа может не быть."
+   ]
+  },
+  {
+   "name": "Navionics Nautical Chart (морская/озёрная карта с изобатами) — Garmin Navionics Web API v2",
+   "url": "",
+   "url_note": "Намеренно пусто: это не XYZ-шаблон — тайлы выдаёт JS-библиотека после получения navtoken по ключу (https://tile{1-5}.navionics.com/tile/get_key/<navKey>/<домен>), см. leaflet_snippet. addExtraTileLayers() в app.js этот слой автоматически не добавит.",
+   "tile_template_reference": "https://tile{1-5}.navionics.com/tile/{z}/{x}/{y}?LAYERS=config_<unit>_<safetyDepth>_<0|1>&TRANSPARENT=<TRUE|FALSE>&theme=0&navtoken=<из get_key>",
+   "attribution": "© Garmin / Navionics (логотип Navionics добавляется библиотекой)",
+   "kind": "overlay",
+   "works_in_browser": "key_required",
+   "max_zoom": null,
+   "tms": false,
+   "requires_key": true,
+   "chart_type_note": "chartType: JNC.NAVIONICS_CHARTS.NAUTICAL ('nautical'); depthUnit: JNC.DEPTH_UNIT.METERS; safetyDepth — уровень выделения глубин",
+   "license_note": "Тариф Standard (бесплатный): только окно с картой Navionics на странице, центрированное на нужном месте; «Display of additional features on top of charts is not allowed» — наши точки/слои поверх карты Navionics класть НЕЛЬЗЯ; сервис должен быть бесплатным для пользователей. Тариф Enhanced (платный, годовая плата за регион/мир) разрешает полноэкранную карту со своими оверлеями и POI. Источник: developer.garmin.com/marine-charts/web/. Выгружать/сохранять тайлы, использовать чужие ключи (например, демо-ключи со страниц примеров) — запрещено.",
+   "test_result": "2026-09-22: https://webapiv2.navionics.com/dist/webapi/webapi.min.no-dep.js → 200 application/javascript (2 112 686 B); webapi.min.css → 200 text/css; https://tile1.navionics.com/tile/10/603/296?LAYERS=config_1_20.00_1&TRANSPARENT=TRUE&theme=0 (тайл над 60.2N 32.2E) без navtoken → 401 (пусто); https://tile1.navionics.com/tile/get_key/navionics_key/ogrebete-max.github.io (ключ-заглушка) → 400 application/problem+json. Без собственного ключа слой не работает.",
+   "leaflet_snippet": "<!-- подключать ПОСЛЕ leaflet.js: библиотека проверяет глобальный L и наследует L.TileLayer -->\n<link rel=\"stylesheet\" href=\"https://webapiv2.navionics.com/dist/webapi/webapi.min.css\">\n<script src=\"https://webapiv2.navionics.com/dist/webapi/webapi.min.no-dep.js\"></script>\n<div id=\"navMap\" style=\"height:360px\"></div>\n<script>\n  // Отдельное окно карты Navionics БЕЗ наших маркеров/слоёв (условие бесплатного тарифа Standard)\n  const navMap = L.map('navMap').setView([60.20, 32.20], 12);   // центр = выбранная точка\n  new JNC.Leaflet.NavionicsOverlay({\n    navKey: 'ВАШ_КЛЮЧ_NAVIONICS',                 // ключ привязан к домену ogrebete-max.github.io\n    chartType: JNC.NAVIONICS_CHARTS.NAUTICAL,      // морская карта с изобатами\n    isTransparent: false,\n    zIndex: 1\n  }).addTo(navMap);\n  new JNC.Leaflet.NavionicsOverlay({\n    navKey: 'ВАШ_КЛЮЧ_NAVIONICS',\n    chartType: JNC.NAVIONICS_CHARTS.SONARCHART,    // SonarChart HD-батиметрия (краудсорсинг)\n    isTransparent: true,\n    zIndex: 2\n  }).addTo(navMap);\n</script>",
+   "leaflet_compat_note": "Примеры Garmin написаны под Leaflet 0.7.3; класс JNC.Leaflet.NavionicsOverlay наследует L.TileLayer (CoffeeScript), работа с Leaflet 1.9 из vendor/ не проверена — проверить сразу после получения ключа. webapi.min.no-dep.js включает jQuery/underscore внутри (JNC.$, JNC._).",
+   "key_request_steps_ru": [
+    "1. Откройте https://developer.garmin.com/marine-charts/web/ → «Request Access» (или сразу форму https://www.garmin.com/en-US/forms/navionics-web-api/).",
+    "2. Заполните поля: Name, Company name (можно название проекта, напр. «Ladoga fishing map, non-commercial»), Country/region, Email, телефон с кодом страны, описание use case, Your website = https://ogrebete-max.github.io/<имя-репозитория>/, модель = Standard.",
+    "3. В use case честно напишите: бесплатная некоммерческая карта рыболовных мест южной Ладоги; карта Navionics будет показываться в отдельном окне, центрированном на выбранной точке, без наложения наших данных.",
+    "4. Пройдите reCAPTCHA и отправьте форму — это делаете вы сами (личные данные и отправку формы агент не выполняет).",
+    "5. Получив developer key, пришлите его разработчику сайта: ключ вставляется в navKey; он привязан к домену (ogrebete-max.github.io; для отладки попросите добавить localhost).",
+    "6. Учтите: Garmin с 2022 г. приостановил деятельность в РФ — заявку с Country = Russian Federation могут не одобрить; ответа может не быть."
+   ]
+  }
+ ],
+ "vector_files": [
+  {
+   "path": "C:\\STT\\ladoga-fishing-map\\research\\depth_isobaths.geojson",
+   "description": "Модельные изобаты южной Ладоги (bbox 30.90–33.40E, 59.85–60.80N): 2, 4, 6, 8, 10, 15, 20, 30, 50, 70 м; 10 объектов MultiLineString/LineString, свойство depth_m; 76 КБ. Построено по сетке GLDB 30″ (~0,46×0,93 км) функцией skimage find_contours + сглаживание Chaikin + упрощение; точность ±0,5–1 км, у берега грубо. Совпадает с изобатами топокарт по характеру (мелко у Птинова/западного берега Волховской губы, 10–18 м в центре губы, 15–20 м к северу от Свирской губы). Стиль: L.geoJSON(..., {style: f => ({color:'#1c7ed6', weight: f.properties.depth_m % 10 ? 1 : 2, opacity:.7})}), подпись по depth_m.",
+   "source": "GLDB v2 (Global Lake Database, Kourzeneva & Choulga; FLake, IGB Berlin): http://www.flake.igb-berlin.de/site/external-dataset (gldbv2.tar.gz, GlobalLakeDepth.dat); для Ладоги — локальные глубины, оцифрованные с карт (Гидрометцентр СПб, 2009).",
+   "license": "CC BY — «GLDB is available under Creative Commons license with Attribution (CC-BY)» (Choulga et al. 2019, Adv. Sci. Res. 16:57–61, Data availability); цитировать Kourzeneva et al. 2012 (Tellus A 64:15640) и Choulga et al. 2014 (Tellus A 66:21295). Атрибуция на карте: «Изобаты (модель): GLDB v2, Kourzeneva & Choulga, CC BY».",
+   "can_publish_now": true
+  },
+  {
+   "path": "C:\\STT\\ladoga-fishing-map\\research\\depth_isobaths_gldb.gpx",
+   "description": "Те же изобаты GLDB как 10 GPX-треков «Изобата N м (модель ~1 км)» (3313 точек, 128 КБ) — для импорта в OsmAnd/Locus/ActiveCaptain/Navionics рядом с ladoga_points.gpx.",
+   "source": "производное от depth_isobaths.geojson",
+   "license": "CC BY (GLDB v2)",
+   "can_publish_now": true
+  },
+  {
+   "path": "C:\\STT\\ladoga-fishing-map\\research\\raw\\depth\\genshtab\\overlays.json",
+   "description": "Индекс перепроецированных листов Генштаба (bounds, рамки, RMS привязки) + georef.json (матрицы ГК→пиксель) — для воспроизводимости.",
+   "source": "maps.vlasenko.net + собственная привязка по сетке",
+   "license": "метаданные — свободно; сами изображения — см. image_overlays.license_note",
+   "can_publish_now": true
+  }
+ ],
+ "image_overlays": [
+  {
+   "name": "Генштаб 1:100 000, лист P-36-137,138: Новая Ладога, Волховская губа (южная часть), о. Птинов, устья Волхова и Сяси",
+   "url": "overlays/genshtab_P-36-137_138_wgs84.jpg",
+   "url_note": "предлагаемый путь на сайте после копирования файла в site/overlays/",
+   "file": "C:\\STT\\ladoga-fishing-map\\research\\raw\\depth\\genshtab\\warped\\genshtab_P-36-137_138_wgs84.jpg",
+   "file_size_mb": 2.4,
+   "size_px": [
+    3461,
+    2319
+   ],
+   "bounds": [
+    [
+     60.000025,
+     31.997765
+    ],
+    [
+     60.333344,
+     32.997755
+    ]
+   ],
+   "depth_content": "изобаты 5 и 10 м, отметки глубин 1–14 м, отмели (Пересуха, Сидорова), знаки камней у о. Птинов",
+   "source_url": "https://maps.vlasenko.net/smtm100/p-36-137_138.jpg",
+   "source_site": "https://maps.vlasenko.net/soviet-military-topographic-map/map100k.html",
+   "crs_note": "Исходник: СК-42 (Пулково-1942), Гаусс–Крюгер 6-я зона, EPSG:28406. Рамка листа в СК-42: 60.000000–60.333333 N, 32.000000–33.000000 E. Привязка по 482 узлам 2-км сетки, проективное преобразование, RMS ≈ 23.5 м; перепроецировано в WGS84, пиксели равномерны в Web Mercator (16.0 м/пикс) — L.imageOverlay(url, bounds) кладёт без искажений. Сдвиг СК-42→WGS84 здесь ≈ −0,00224° по долготе (≈125 м на запад) и +0,00001…0,00004° по широте (1–4 м): bounds уже сдвинуты. Проверено по OSM: о. Птинов, Осиновецкий и Свирский маяки совпадают с картой (десятки метров).",
+   "raw_image_frame": {
+    "image": "C:\\STT\\ladoga-fishing-map\\research\\raw\\depth\\genshtab\\vlasenko_p-36-137_138.jpg",
+    "frame_corners_px_TL_TR_BR_BL": [
+     [
+      40.95,
+      25.78
+     ],
+     [
+      4357.91,
+      32.19
+     ],
+     [
+      4370.63,
+      2923.14
+     ],
+     [
+      21.99,
+      2916.02
+     ]
+    ],
+    "frame_corners_sk42_latlon_TL_TR_BR_BL": [
+     [
+      60.333333333333336,
+      32.0
+     ],
+     [
+      60.333333333333336,
+      33.0
+     ],
+     [
+      60.0,
+      33.0
+     ],
+     [
+      60.0,
+      32.0
+     ]
+    ],
+    "frame_corners_wgs84_latlon_TL_TR_BR_BL": [
+     [
+      60.333344,
+      31.99774
+     ],
+     [
+      60.333363,
+      32.997755
+     ],
+     [
+      60.000025,
+      32.99778
+     ],
+     [
+      60.000006,
+      31.997765
+     ]
+    ],
+    "note": "Сырые JPEG vlasenko повёрнуты/трапециевидны (схождение меридианов до 0,9°) — прямо в L.imageOverlay их класть нельзя, используйте перепроецированный file/url. Калибровки .map из map100k.zip vlasenko к этим JPEG НЕ подходят (ошибка до 500 пикс)."
+   },
+   "license_note": "Правовой статус не определён: советская топокарта ГШ (служебное произведение, изд. ~1970–80-х), открытой лицензии нет; широко распространяется (vlasenko.net, nakarte и т.п.), OSM запрещает использовать такие карты как источник. Для некоммерческого сайта — только как справочный полупрозрачный слой с подписью «Топокарта Генштаба СССР 1:100 000, скан maps.vlasenko.net», без векторизации глубин; на свой риск. Глубины — от уровня съёмки, не навигационные."
+  },
+  {
+   "name": "Генштаб 1:100 000, лист P-36-135,136: Осиновец, бухта Петрокрепость, Кобона — открытая южная Ладога",
+   "url": "overlays/genshtab_P-36-135_136_wgs84.jpg",
+   "url_note": "предлагаемый путь на сайте после копирования файла в site/overlays/",
+   "file": "C:\\STT\\ladoga-fishing-map\\research\\raw\\depth\\genshtab\\warped\\genshtab_P-36-135_136_wgs84.jpg",
+   "file_size_mb": 1.77,
+   "size_px": [
+    3461,
+    2319
+   ],
+   "bounds": [
+    [
+     60.000006,
+     30.997751
+    ],
+    [
+     60.333325,
+     31.99774
+    ]
+   ],
+   "depth_content": "отметки глубин и изобаты открытой части, мели у Осиновца",
+   "source_url": "https://maps.vlasenko.net/smtm100/p-36-135_136.jpg",
+   "source_site": "https://maps.vlasenko.net/soviet-military-topographic-map/map100k.html",
+   "crs_note": "Исходник: СК-42 (Пулково-1942), Гаусс–Крюгер 6-я зона, EPSG:28406. Рамка листа в СК-42: 60.000000–60.333333 N, 31.000000–32.000000 E. Привязка по 435 узлам 2-км сетки, проективное преобразование, RMS ≈ 16.4 м; перепроецировано в WGS84, пиксели равномерны в Web Mercator (16.0 м/пикс) — L.imageOverlay(url, bounds) кладёт без искажений. Сдвиг СК-42→WGS84 здесь ≈ −0,00224° по долготе (≈125 м на запад) и +0,00001…0,00004° по широте (1–4 м): bounds уже сдвинуты. Проверено по OSM: о. Птинов, Осиновецкий и Свирский маяки совпадают с картой (десятки метров).",
+   "raw_image_frame": {
+    "image": "C:\\STT\\ladoga-fishing-map\\research\\raw\\depth\\genshtab\\vlasenko_p-36-135_136.jpg",
+    "frame_corners_px_TL_TR_BR_BL": [
+     [
+      52.17,
+      56.58
+     ],
+     [
+      4362.18,
+      60.19
+     ],
+     [
+      4384.4,
+      2963.93
+     ],
+     [
+      29.28,
+      2958.79
+     ]
+    ],
+    "frame_corners_sk42_latlon_TL_TR_BR_BL": [
+     [
+      60.333333333333336,
+      31.0
+     ],
+     [
+      60.333333333333336,
+      32.0
+     ],
+     [
+      60.0,
+      32.0
+     ],
+     [
+      60.0,
+      31.0
+     ]
+    ],
+    "frame_corners_wgs84_latlon_TL_TR_BR_BL": [
+     [
+      60.333325,
+      30.997725
+     ],
+     [
+      60.333344,
+      31.99774
+     ],
+     [
+      60.000006,
+      31.997765
+     ],
+     [
+      59.999987,
+      30.997751
+     ]
+    ],
+    "note": "Сырые JPEG vlasenko повёрнуты/трапециевидны (схождение меридианов до 0,9°) — прямо в L.imageOverlay их класть нельзя, используйте перепроецированный file/url. Калибровки .map из map100k.zip vlasenko к этим JPEG НЕ подходят (ошибка до 500 пикс)."
+   },
+   "license_note": "Правовой статус не определён: советская топокарта ГШ (служебное произведение, изд. ~1970–80-х), открытой лицензии нет; широко распространяется (vlasenko.net, nakarte и т.п.), OSM запрещает использовать такие карты как источник. Для некоммерческого сайта — только как справочный полупрозрачный слой с подписью «Топокарта Генштаба СССР 1:100 000, скан maps.vlasenko.net», без векторизации глубин; на свой риск. Глубины — от уровня съёмки, не навигационные."
+  },
+  {
+   "name": "Генштаб 1:100 000, лист O-36-3: Шлиссельбург, Шлиссельбургская губа, исток Невы (южнее 60°00')",
+   "url": "overlays/genshtab_O-36-3_wgs84.jpg",
+   "url_note": "предлагаемый путь на сайте после копирования файла в site/overlays/",
+   "file": "C:\\STT\\ladoga-fishing-map\\research\\raw\\depth\\genshtab\\warped\\genshtab_O-36-3_wgs84.jpg",
+   "file_size_mb": 2.61,
+   "size_px": [
+    2331,
+    3092
+   ],
+   "bounds": [
+    [
+     59.666658,
+     30.997775
+    ],
+    [
+     59.999987,
+     31.497758
+    ]
+   ],
+   "depth_content": "мелководья Шлиссельбургской губы",
+   "source_url": "https://maps.vlasenko.net/smtm100/o-36-003.jpg",
+   "source_site": "https://maps.vlasenko.net/soviet-military-topographic-map/map100k.html",
+   "crs_note": "Исходник: СК-42 (Пулково-1942), Гаусс–Крюгер 6-я зона, EPSG:28406. Рамка листа в СК-42: 59.666667–60.000000 N, 31.000000–31.500000 E. Привязка по 230 узлам 2-км сетки, проективное преобразование, RMS ≈ 11.4 м; перепроецировано в WGS84, пиксели равномерны в Web Mercator (12.0 м/пикс) — L.imageOverlay(url, bounds) кладёт без искажений. Сдвиг СК-42→WGS84 здесь ≈ −0,00224° по долготе (≈125 м на запад) и +0,00001…0,00004° по широте (1–4 м): bounds уже сдвинуты. Проверено по OSM: о. Птинов, Осиновецкий и Свирский маяки совпадают с картой (десятки метров).",
+   "raw_image_frame": {
+    "image": "C:\\STT\\ladoga-fishing-map\\research\\raw\\depth\\genshtab\\vlasenko_o-36-003.jpg",
+    "frame_corners_px_TL_TR_BR_BL": [
+     [
+      55.27,
+      62.43
+     ],
+     [
+      3282.99,
+      61.94
+     ],
+     [
+      3306.35,
+      4355.49
+     ],
+     [
+      41.43,
+      4357.05
+     ]
+    ],
+    "frame_corners_sk42_latlon_TL_TR_BR_BL": [
+     [
+      60.0,
+      31.0
+     ],
+     [
+      60.0,
+      31.5
+     ],
+     [
+      59.666666666666664,
+      31.5
+     ],
+     [
+      59.666666666666664,
+      31.0
+     ]
+    ],
+    "frame_corners_wgs84_latlon_TL_TR_BR_BL": [
+     [
+      59.999987,
+      30.997751
+     ],
+     [
+      59.999997,
+      31.497758
+     ],
+     [
+      59.666658,
+      31.497782
+     ],
+     [
+      59.666649,
+      30.997775
+     ]
+    ],
+    "note": "Сырые JPEG vlasenko повёрнуты/трапециевидны (схождение меридианов до 0,9°) — прямо в L.imageOverlay их класть нельзя, используйте перепроецированный file/url. Калибровки .map из map100k.zip vlasenko к этим JPEG НЕ подходят (ошибка до 500 пикс)."
+   },
+   "license_note": "Правовой статус не определён: советская топокарта ГШ (служебное произведение, изд. ~1970–80-х), открытой лицензии нет; широко распространяется (vlasenko.net, nakarte и т.п.), OSM запрещает использовать такие карты как источник. Для некоммерческого сайта — только как справочный полупрозрачный слой с подписью «Топокарта Генштаба СССР 1:100 000, скан maps.vlasenko.net», без векторизации глубин; на свой риск. Глубины — от уровня съёмки, не навигационные."
+  },
+  {
+   "name": "Генштаб 1:100 000, лист P-36-126: Свирская губа, Сторожно, устье Свири, Загубская губа (восточная половина листа P-36-125,126)",
+   "url": "overlays/genshtab_P-36-126_wgs84.jpg",
+   "url_note": "предлагаемый путь на сайте после копирования файла в site/overlays/",
+   "file": "C:\\STT\\ladoga-fishing-map\\research\\raw\\depth\\genshtab\\warped\\genshtab_P-36-126_wgs84.jpg",
+   "file_size_mb": 2.03,
+   "size_px": [
+    2284,
+    3092
+   ],
+   "bounds": [
+    [
+     60.333363,
+     32.497747
+    ],
+    [
+     60.666692,
+     32.997729
+    ]
+   ],
+   "depth_content": "изобаты 2/5/10/20 м, частые отметки глубин 0,3–20 м, Стороженский риф, банки",
+   "source_url": "https://maps.vlasenko.net/smtm100/p-36-126.jpg",
+   "source_site": "https://maps.vlasenko.net/soviet-military-topographic-map/map100k.html",
+   "crs_note": "Исходник: СК-42 (Пулково-1942), Гаусс–Крюгер 6-я зона, EPSG:28406. Рамка листа в СК-42: 60.333333–60.666667 N, 32.500000–33.000000 E. Привязка по 218 узлам 2-км сетки, проективное преобразование, RMS ≈ 8.4 м; перепроецировано в WGS84, пиксели равномерны в Web Mercator (12.0 м/пикс) — L.imageOverlay(url, bounds) кладёт без искажений. Сдвиг СК-42→WGS84 здесь ≈ −0,00224° по долготе (≈125 м на запад) и +0,00001…0,00004° по широте (1–4 м): bounds уже сдвинуты. Проверено по OSM: о. Птинов, Осиновецкий и Свирский маяки совпадают с картой (десятки метров).",
+   "raw_image_frame": {
+    "image": "C:\\STT\\ladoga-fishing-map\\research\\raw\\depth\\genshtab\\vlasenko_p-36-126.jpg",
+    "frame_corners_px_TL_TR_BR_BL": [
+     [
+      42.74,
+      47.85
+     ],
+     [
+      3272.54,
+      27.96
+     ],
+     [
+      3306.98,
+      4415.37
+     ],
+     [
+      46.69,
+      4439.51
+     ]
+    ],
+    "frame_corners_sk42_latlon_TL_TR_BR_BL": [
+     [
+      60.666666666666664,
+      32.5
+     ],
+     [
+      60.666666666666664,
+      33.0
+     ],
+     [
+      60.333333333333336,
+      33.0
+     ],
+     [
+      60.333333333333336,
+      32.5
+     ]
+    ],
+    "frame_corners_wgs84_latlon_TL_TR_BR_BL": [
+     [
+      60.666692,
+      32.497721
+     ],
+     [
+      60.666701,
+      32.997729
+     ],
+     [
+      60.333363,
+      32.997755
+     ],
+     [
+      60.333354,
+      32.497747
+     ]
+    ],
+    "note": "Сырые JPEG vlasenko повёрнуты/трапециевидны (схождение меридианов до 0,9°) — прямо в L.imageOverlay их класть нельзя, используйте перепроецированный file/url. Калибровки .map из map100k.zip vlasenko к этим JPEG НЕ подходят (ошибка до 500 пикс)."
+   },
+   "license_note": "Правовой статус не определён: советская топокарта ГШ (служебное произведение, изд. ~1970–80-х), открытой лицензии нет; широко распространяется (vlasenko.net, nakarte и т.п.), OSM запрещает использовать такие карты как источник. Для некоммерческого сайта — только как справочный полупрозрачный слой с подписью «Топокарта Генштаба СССР 1:100 000, скан maps.vlasenko.net», без векторизации глубин; на свой риск. Глубины — от уровня съёмки, не навигационные."
+  }
+ ],
+ "phone_workflows": [
+  {
+   "app": "Garmin ActiveCaptain (iOS/Android)",
+   "steps": [
+    "Установите ActiveCaptain и войдите в аккаунт Garmin (создаёте сами).",
+    "Глубины сообщества: «Карты» → «Меню» (☰) → «Загрузить данные сообщества Quickdraw» (в мануалах Garmin: Quickdraw Community → Search for Contours).",
+    "Найдите южную Ладогу, «Выбрать область загрузки», растяните рамку на Волховскую губу/нужный участок → «Загрузить область». Изолинии Quickdraw появятся на карте приложения; при подключении к совместимому картплоттеру Garmin передаются и на него.",
+    "Наши точки: на сайте кнопка GPX (downloads/ladoga_points.gpx). Держите ActiveCaptain запущенным в фоне и откройте файл: Android — тап по файлу/вложению → ActiveCaptain → «Импорт»; iOS — «Поделиться» → ActiveCaptain → «Import».",
+    "Точки появятся в «Карты» → ☰ → «Пользовательские данные»; туда же можно импортировать depth_isobaths_gldb.gpx (модельные изобаты как треки).",
+    "Экспорт своих точек: «Карты» → ☰ → «Пользовательские данные» → ⋮ → «Экспорт в GPX»."
+   ],
+   "gpx_import": "да — открыть .gpx из почты/мессенджера/«Файлов» (Android: тап → ActiveCaptain → Импорт; iOS: Поделиться → ActiveCaptain → Import); на плоттер — «Синхронизация с плоттером»",
+   "depth_coverage_ladoga": "Quickdraw Community — только участки, которые записали и опубликовали владельцы эхолотов Garmin (судя по видео пользователя, у южного берега что-то есть); полноту проверить нельзя — данные закрыты для выгрузки и на сайт их переносить запрещено. Веб-просмотр карт Garmin (maps.garmin.com/marine) для Ленобласти пишет «Map preview is unavailable here».",
+   "cost": "Приложение и Quickdraw Community — бесплатно (нужен аккаунт Garmin); карты Garmin Navionics+/Vision+ — платно; Garmin приостановил работу в РФ (2022), покупка из РФ может быть недоступна."
+  },
+  {
+   "app": "Navionics Boating (Garmin), iOS/Android",
+   "steps": [
+    "Установите Navionics Boating: 14 дней пробного периода, дальше подписка.",
+    "«Меню» → «Параметры карты» → включите SonarChart™ (HD-батиметрия) и правки сообщества; единицы — метры.",
+    "Наши точки: пришлите себе ladoga_points.gpx (почта/мессенджер) → откройте файл → выберите Navionics Boating → «Импорт»; маркеры — в «Меню» → «Маркеры».",
+    "Экспорт: «Меню» → «Маркеры/Маршруты/Треки» → «Выбрать» → отметить → «Поделиться» → «Экспорт GPX»."
+   ],
+   "gpx_import": "да, но импорт/экспорт GPX работает только при активной подписке (Garmin FAQ «Navionics Boating: Importing and Exporting»)",
+   "depth_coverage_ladoga": "SonarChart покрывает всё, где есть логи; плотность для Ладоги неизвестна — проверить в пробный период. Публичного веб-просмотрщика Navionics больше нет (webapp.navionics.com → maps.garmin.com/marine, превью для Ленобласти недоступно).",
+   "cost": "Пробный период 14 дней, затем платная подписка; оплата из РФ через сторы может не пройти."
+  },
+  {
+   "app": "OsmAnd (Android/iOS)",
+   "steps": [
+    "Установите OsmAnd, скачайте карту «Ленинградская область».",
+    "Откройте ladoga_points.gpx → «Открыть в OsmAnd» → импорт как «Избранное» (точки) или трек.",
+    "Так же импортируйте depth_isobaths_gldb.gpx — модельные изобаты будут видны как треки.",
+    "Морской плагин OsmAnd (платный, OsmAnd Pro/Maps+): «Морские карты» → глубины (контуры/точки) — строятся по открытым данным (OpenSeaMap и др.), а для Ладоги таких данных нет (проверено: OpenSeaMap, GEBCO, EMODnet пусты).",
+    "По желанию: плагин «Онлайн-карты» → свой источник тайлов со слоем Генштаба (URL — из отчёта nav_structures): на нём изобаты 5/10 м и отметки глубин Волховской и Свирской губ."
+   ],
+   "gpx_import": "да, бесплатно (точки → Избранное, линии → треки)",
+   "depth_coverage_ladoga": "собственных глубин по Ладоге фактически нет; видно то, что импортировано (наши модельные изобаты) или подключено онлайн-слоем (Генштаб)",
+   "cost": "базово бесплатно; морской плагин/глубины — OsmAnd Pro/Maps+"
+  },
+  {
+   "app": "C-MAP (C-MAP Boating), iOS/Android",
+   "steps": [
+    "Установите C-MAP: в бесплатном режиме — просмотр карт, путевые точки, маршруты, импорт/экспорт GPX.",
+    "Откройте ladoga_points.gpx → C-MAP → импорт.",
+    "Слой Genesis Social Map (карты глубин сообщества Lowrance/Simrad/B&G) бесплатен; есть ли логи по южной Ладоге — посмотреть в приложении."
+   ],
+   "gpx_import": "да, в бесплатной версии (по описанию C-MAP)",
+   "depth_coverage_ladoga": "неизвестно; Genesis Social Map — только там, где владельцы Lowrance/Simrad загрузили логи",
+   "cost": "базово бесплатно; премиум-карты и Genesis Edge — платно"
+  },
+  {
+   "app": "Fish Deeper (эхолоты Deeper) / Lakebook",
+   "steps": [
+    "С эхолотом Deeper снимайте рельеф сами: карта строится в приложении и в Lakebook (maps.fishdeeper.com), сырые данные выгружаются в CSV.",
+    "Fish Deeper Premium: 50 000+ карт глубин по миру — наличие южной Ладоги проверить в приложении.",
+    "Наши точки: импорт GPX не документирован — ставьте метки вручную по координатам из карточки точки на сайте."
+   ],
+   "gpx_import": "нет (не документировано; есть только экспорт своих сканов в CSV)",
+   "depth_coverage_ladoga": "собственные сканы; покрытие Premium-базы не проверено",
+   "cost": "приложение бесплатно; Premium — подписка; эхолот — покупка"
+  },
+  {
+   "app": "MapFish — карта глубин (RuStore)",
+   "steps": [
+    "Установите MapFish из RuStore.",
+    "По отзывам пользователей, в каталоге есть Ладога и Волхов (по подписке; есть жалобы, что карты не открываются после оплаты).",
+    "Наши точки: импорт GPX (в приложении есть импорт/экспорт точек GPX)."
+   ],
+   "gpx_import": "да (импорт/экспорт точек GPX)",
+   "depth_coverage_ladoga": "Ладога/Волхов упоминаются в отзывах (платно); источник глубин не раскрыт",
+   "cost": "подписка; часть карт бесплатно; рейтинг 2,5–2,8"
+  },
+  {
+   "app": "Dap Drift Ru (RuStore)",
+   "steps": [
+    "Установите из RuStore; карты глубин по регионам, для Ленобласти заявлены «Вуокса, Нева и др. озёра».",
+    "Импорт наших точек — GPX."
+   ],
+   "gpx_import": "да (импорт/экспорт точек GPX)",
+   "depth_coverage_ladoga": "Ладога и Волховская губа явно не заявлены",
+   "cost": "приложение бесплатно, карты — покупка по регионам"
+  },
+  {
+   "app": "GLive (RuStore)",
+   "steps": [
+    "Батиметрические карты водоёмов РФ, покупка по водоёмам (в отзывах — дорого: Рыбинское вдхр. ~35 тыс. руб.).",
+    "В версии 1.10.0 (18.07.2026) добавлена страница импорта точек и треков."
+   ],
+   "gpx_import": "вероятно да (импорт точек/треков с 1.10.0; формат GPX явно не указан)",
+   "depth_coverage_ladoga": "Ладога не подтверждена",
+   "cost": "платные карты"
+  },
+  {
+   "app": "Fishing Points (Grega Cucnik), iOS/Android",
+   "steps": [
+    "Импорт GPX/KML/KMZ — только в Premium.",
+    "Карты глубин в приложении — в основном США/Канада/Великобритания; для Ладоги — нет."
+   ],
+   "gpx_import": "да, только Premium",
+   "depth_coverage_ladoga": "нет",
+   "cost": "Premium — подписка"
+  },
+  {
+   "app": "Locus Map / AlpineQuest (Android), Guru Maps (iOS/Android) — «бесплатно и офлайн»",
+   "steps": [
+    "Импортируйте ladoga_points.gpx и depth_isobaths_gldb.gpx.",
+    "Добавьте онлайн-источник тайлов Генштаба (URL из отчёта nav_structures) и скачайте его на район для офлайна — на листах 1:100 000 видны изобаты и отметки глубин.",
+    "Это общеизвестные возможности приложений; в этой сессии отдельно не перепроверялись."
+   ],
+   "gpx_import": "да",
+   "depth_coverage_ladoga": "только из подключённых слоёв (Генштаб) и импортированных изобат",
+   "cost": "базово бесплатно/недорого"
+  }
+ ],
+ "sources_checked": [
+  {
+   "name": "Garmin Navionics Web API v2 — условия и тарифы",
+   "url": "https://developer.garmin.com/marine-charts/web/",
+   "status": "login_required",
+   "note": "webapiv2.navionics.com → 301 сюда. Нужен developer key. Standard (бесплатно): окно с картой Navionics по центру места, «Display of additional features on top of charts is not allowed», сервис бесплатен для пользователей. Enhanced: платно (годовая плата), свои оверлеи/POI разрешены."
+  },
+  {
+   "name": "Navionics Web API — JS и тайлы (тест)",
+   "url": "https://webapiv2.navionics.com/dist/webapi/webapi.min.no-dep.js",
+   "status": "login_required",
+   "note": "2026-09-22: https://webapiv2.navionics.com/dist/webapi/webapi.min.no-dep.js → 200 application/javascript (2 112 686 B); webapi.min.css → 200 text/css; https://tile1.navionics.com/tile/10/603/296?LAYERS=config_1_20.00_1&TRANSPARENT=TRUE&theme=0 (тайл над 60.2N 32.2E) без navtoken → 401 (пусто); https://tile1.navionics.com/tile/get_key/navionics_key/ogrebete-max.github.io (ключ-заглушка) → 400 application/problem+json. Без собственного ключа слой не работает."
+  },
+  {
+   "name": "Форма запроса ключа Navionics Web API",
+   "url": "https://www.garmin.com/en-US/forms/navionics-web-api/",
+   "status": "login_required",
+   "note": "Поля: Name*, Company name*, Country/region*, Email*, Phone*, Use case*, Website*, модель Standard/Enhanced; reCAPTCHA. Заполняет и отправляет пользователь."
+  },
+  {
+   "name": "Пример Leaflet из документации Navionics",
+   "url": "https://webapiv2.navionics.com/examples/5000_LeafletSupport.html",
+   "status": "used",
+   "note": "JNC.Leaflet.NavionicsOverlay({navKey, chartType: NAUTICAL|SONARCHART, isTransparent, logoPayoff, zIndex}); примеры на Leaflet 0.7.3; демо-ключи на страницах примеров привязаны к их домену — использовать нельзя."
+  },
+  {
+   "name": "Navionics ChartViewer (webapp.navionics.com)",
+   "url": "https://webapp.navionics.com/",
+   "status": "no_data",
+   "note": "301 → maps.garmin.com/marine (подбор карт Garmin); параметр ?key=<geohash> центрирует карту, но для Ленобласти «Map preview is unavailable here» и «no results» — бесплатного веб-просмотра глубин Ладоги нет. Cookie-баннер отклонён."
+  },
+  {
+   "name": "Garmin: импорт данных в ActiveCaptain (FAQ)",
+   "url": "https://support.garmin.com/en-US/?faq=hfoJ0E0Exk6w02QCMGhun7",
+   "status": "used",
+   "note": "Импорт GPX: Android — тап по вложению → Import; iOS — Share → ActiveCaptain → Import."
+  },
+  {
+   "name": "Garmin: обмен данными ActiveCaptain (FAQ)",
+   "url": "https://support.garmin.com/en-US/?faq=i62odT3v8G2VPLmZZGnE77",
+   "status": "used",
+   "note": "Экспорт: Chart → ☰ → User Data → ⋮ → Export to GPX File."
+  },
+  {
+   "name": "Garmin: синхронизация ActiveCaptain с плоттером (FAQ)",
+   "url": "https://support.garmin.com/en-US/?faq=JLV7u4Czlx5bxkC9YWnQ17",
+   "status": "used",
+   "note": "Импорт/экспорт на плоттер; User Data = Waypoints, Routes, Tracks."
+  },
+  {
+   "name": "Garmin: Navionics Boating — импорт/экспорт (FAQ)",
+   "url": "https://support.garmin.com/en-US/?faq=svQYf7Ckm14zQIwAIVXle7",
+   "status": "used",
+   "note": "Импорт GPX: открыть файл из сообщения → Navionics Boating → Import. По блогу Navionics GPX-функции требуют подписки."
+  },
+  {
+   "name": "Garmin manual: Downloading Garmin Quickdraw Community Maps Using ActiveCaptain",
+   "url": "https://www8.garmin.com/manuals/webhelp/gpsmap_touch/EN-US/GUID-F741729D-31EA-4E0C-A1E8-1CFB997A3383.html",
+   "status": "used",
+   "note": "Quickdraw Community → Search for Contours → Select Download Region → рамка → Download Area; на плоттер — при следующем подключении."
+  },
+  {
+   "name": "Garmin EMEA Cartography Catalogue 2025",
+   "url": "https://static.garmincdn.com/shared/nordic/catalogs/EMEA_Cartography_Catalog_2025.pdf",
+   "status": "no_data",
+   "note": "Регионы рядом: EU050R Gulf of Finland & Riga, EU055R Finland Lakes & Rivers, EU644L Baltic Sea; отдельного региона «Россия/Ладога» нет."
+  },
+  {
+   "name": "ЭНК ВВП (S-57) — Администрация «Волго-Балт»",
+   "url": "https://www.volgo-balt.ru/activity/kartografiya/elektronnye-karty.php",
+   "status": "blocked",
+   "note": "Ладожское озеро: 171/12/5 ячеек (1:4 000/1:45 000/1:90 000, изд. 2024–2026), Нева 9 (2025), Свирь 22 (2023); S-57 ред. 3.1, РД 152-012-01. Выдача только через ФГБУ «Канал имени Москвы» по лицензионному соглашению (контракту) — не открытые данные, скачать нельзя, DEPCNT/DEPARE/SOUNDG не получены."
+  },
+  {
+   "name": "EData LLC — ЭНК ВВП РФ (дистрибьютор)",
+   "url": "https://edatallc.com/products-and-services/elektronnye-rechnye-karty",
+   "status": "blocked",
+   "note": "8RLAD1 южная Ладога 31 ячейка, 8R6001 Нева—Ладога 14, 8R6002 Свирь 22; «срок действия лицензии и цена — по запросу»."
+  },
+  {
+   "name": "Transas «ЭНК на ВВП РФ»",
+   "url": "https://transas.ru/products/enk-na-vvp-rf/",
+   "status": "blocked",
+   "note": "Коммерческий продукт (из поиска, страница не открывалась)."
+  },
+  {
+   "name": "GEBCO_2026 Grid — WMS",
+   "url": "https://wms.gebco.net/mapserv?service=WMS&request=GetCapabilities&version=1.3.0",
+   "status": "no_data",
+   "note": "GetCapabilities 200 text/xml (GEBCO_2026); GetFeatureInfo — пусто; GetMap GEBCO_LATEST_2 (29.5–33.5E, 59.8–61.8N) 200 image/png — вся Ладога одним «сухопутным» цветом (51,204,102); GEBCO_LATEST_3 (измеренные ячейки) прозрачен; TID однороден. Батиметрии Ладоги нет — только поверхность."
+  },
+  {
+   "name": "OpenTopoData (GEBCO 2020, ETOPO1)",
+   "url": "https://api.opentopodata.org/v1/gebco2020?locations=60.20,32.20",
+   "status": "no_data",
+   "note": "gebco2020: +1.0 м в 60.20/32.20, 60.25/32.10, 60.40/31.60, 60.60/31.40, 61.00/31.50; etopo1: +1.0 м — озеро плоское."
+  },
+  {
+   "name": "EMODnet Bathymetry REST",
+   "url": "https://rest.emodnet-bathymetry.eu/depth_sample?geom=POINT(32.2%2060.2)",
+   "status": "no_data",
+   "note": "4.0 и пустой reference во всех точках Ладоги (60.2/32.2, 61.0/31.0, 61.3/30.8, 60.5/31.5) — заполнитель; контроль Невская губа 60.0/30.0 → 1.66 (IBCAO_4)."
+  },
+  {
+   "name": "Esri World Ocean Base",
+   "url": "https://server.arcgisonline.com/ArcGIS/rest/services/Ocean/World_Ocean_Base/MapServer/tile/10/296/603",
+   "status": "no_data",
+   "note": "200 image/jpeg; Ладога залита одним цветом, изобат нет."
+  },
+  {
+   "name": "OpenSeaMap Depth (crowdsourced) WMS",
+   "url": "https://depth.openseamap.org/geoserver/openseamap/wms?SERVICE=WMS&REQUEST=GetCapabilities",
+   "status": "no_data",
+   "note": "GetCapabilities 200 (290 КБ); GetMap tracks_10m, tracks_100m, contour2+contour (30.9–33.4E, 59.85–60.8N и вся Ладога) → 200 image/png, 0 непрозрачных пикселей. Контроль: Боденское озеро 2 982 пикс., Кильская бухта 50 190 пикс. Данных по Ладоге нет."
+  },
+  {
+   "name": "GLDB v2 — Global Lake Database (FLake, IGB Berlin)",
+   "url": "http://www.flake.igb-berlin.de/site/external-dataset",
+   "status": "used",
+   "note": "gldbv2.tar.gz 200 (10.2 МБ) → GlobalLakeDepth.dat (int16, дм, 30″); вырезано окно 59.80–61.85N, 29.70–33.70E; Ладога — локальные глубины с карт (LargeLakesWithBathymetry_v2.txt, ref. 4). Сырьё: research/raw/depth/gldbv2*, gldb_ladoga_*.npy."
+  },
+  {
+   "name": "Choulga et al. 2019, ASR 16:57 (лицензия GLDB)",
+   "url": "https://asr.copernicus.org/articles/16/57/2019/",
+   "status": "used",
+   "note": "Data availability: «GLDB is available under Creative Commons license with Attribution (CC-BY)»."
+  },
+  {
+   "name": "GLOBathy (figshare)",
+   "url": "https://springernature.figshare.com/articles/dataset/GLOBathy_Bathymetry_Rasters/13404635",
+   "status": "no_data",
+   "note": "CC0, 1″, но это МОДЕЛЬ (Dmax + расстояние до берега), не измерения; один архив 16.7 ГБ — не скачивался. Для рыбалки не подходит."
+  },
+  {
+   "name": "HydroLAKES",
+   "url": "https://www.hydrosheds.org/products/hydrolakes",
+   "status": "no_data",
+   "note": "Только средняя глубина/объём озера (атрибуты), батиметрии нет; не скачивался."
+  },
+  {
+   "name": "Науменко М.А. 2020, Lake Ladoga Digital Bathymetric Models (Limnological Review 20(2):65–80)",
+   "url": "https://www.researchgate.net/publication/347126997",
+   "status": "no_data",
+   "note": "ЦМР ИНОЗ РАН 0,5×0,5 км (70 190 точек) публично не выложена; только по запросу в ИНОЗ РАН."
+  },
+  {
+   "name": "Аксенов и др. — рельеф дна Ладоги (сейсмоакустика)",
+   "url": "https://journals.rcsi.science/2949-1789/article/view/232931",
+   "status": "no_data",
+   "note": "Статья; открытых данных не найдено (только по поиску)."
+  },
+  {
+   "name": "PANGAEA — поиск Ladoga",
+   "url": "https://ws.pangaea.de/es/pangaea/panmd/_search?q=Ladoga",
+   "status": "no_data",
+   "note": "34 набора — керны донных отложений; батиметрической сетки нет."
+  },
+  {
+   "name": "Zenodo — поиск Ladoga bathymetry/depth/DEM",
+   "url": "https://zenodo.org/api/records?q=Ladoga%20bathymetry",
+   "status": "no_data",
+   "note": "Релевантных наборов нет."
+  },
+  {
+   "name": "maps.vlasenko.net — советские топокарты 1:100 000",
+   "url": "https://maps.vlasenko.net/soviet-military-topographic-map/map100k.html",
+   "status": "used",
+   "note": "Скачаны p-36-137_138, p-36-135_136, p-36-126 (= p-36-125_126, только восточная половина 32°30′–33°00′), o-36-003 (200 image/jpeg). Нет листов P-36-125 (о. Сухо, верх Волховской губы) и P-36-123,124. На листах есть изобаты и отметки глубин."
+  },
+  {
+   "name": "vlasenko map100k.zip (калибровки OziExplorer .map)",
+   "url": "https://maps.vlasenko.net/soviet-military-topographic-map/map100k.zip",
+   "status": "error",
+   "note": "Точки .map не совпадают с рамкой JPEG (P-36-137,138: 131,147 вместо ≈41,26; P-36-126 — неверный охват 32.5–33.5E). Привязка сделана заново по 2-км сетке."
+  },
+  {
+   "name": "loadmap.net — Генштаб",
+   "url": "http://loadmap.net/ru/catalog/c41/s100000/p973",
+   "status": "blocked",
+   "note": "JS-редирект с токеном (антибот) — не обходили."
+  },
+  {
+   "name": "UT Austin PCL / geodata.lib.utexas.edu (AMS 1:250 000)",
+   "url": "https://maps.lib.utexas.edu/maps/ams/eastern_europe/",
+   "status": "blocked",
+   "note": "Anubis bot-check — не обходили."
+  },
+  {
+   "name": "ladoga-lake.ru — навигационные карты ГУНиО МО",
+   "url": "https://ladoga-lake.ru/maps/navi_su/navi-su-00.html",
+   "status": "blocked",
+   "note": "Листы: 13 Свирская губа 1:50 000 (1998), 14 южная часть Свирской губы 1:25 000 (1995), 15 бухта Петрокрепость—Свирская губа 1:125 000 (1999), 16 Волховская губа 1:50 000 (1997), 17 устье Волхова 1:10 000 (1984). Охраняемые карты — только ссылка (navi-su-16.html и т.д.), не встраивать."
+  },
+  {
+   "name": "ladoga-lake.ru — US Army 1:250 000 (1949–53)",
+   "url": "https://ladoga-lake.ru/maps/us-army/us-army.html",
+   "status": "no_data",
+   "note": "Листы Sortavala, Mikkeli, Shuvalovo, Leningrad — запад Ладоги; наличие изобат не проверялось."
+  },
+  {
+   "name": "rspin.com — Атлас ЕГС, карта-лоция Ладожского озера (38 листов)",
+   "url": "https://www.rspin.com/map_atlas/ladoga_lake1/index.html",
+   "status": "blocked",
+   "note": "Сканы охраняемого атласа ЕГС — только ссылка (лист 15 маяк Кареджи—маяк Сухо / лист 16 Волховская губа: https://www.rspin.com/map_atlas/a_pages.php?an=17&pg=8)."
+  },
+  {
+   "name": "Геопортал РГО — «Карта Ладожского озера» 1867 (Гидрографический департамент)",
+   "url": "https://geoportal.rgo.ru/record/16572",
+   "status": "no_data",
+   "note": "Оригинал 1867 г. — общественное достояние, но на сканы «© ВОО РГО»; масштаб ~5 вёрст в дюйме, устарела — только ссылка."
+  },
+  {
+   "name": "Wikimedia Commons — шведская гидрографическая карта (Нева—Ладога—Волхов, XVIII в.)",
+   "url": "https://commons.wikimedia.org/wiki/File:Hydrographisk_charta_%C3%B6fver_farvattnet_och_redden_vid_Pettersburg,_ifr%C3%A5n_Bj%C3%B6rk%C3%B6sund,_genom_Cronstadt_och_Newastr%C3%B6m,_Ladogacanalen,_Ladogasj%C3%B6n_och_Wolkow_str%C3%B6m_til_staden_Stora_Ladoga.jpg",
+   "status": "no_data",
+   "note": "Public domain, но в описании «Without depth figures» — глубин нет."
+  },
+  {
+   "name": "Wikimedia Commons — Hydrographical Survey of Ladoga Lake (Proc. RGS)",
+   "url": "https://commons.wikimedia.org/wiki/File:Hydrographical_Survey_of_Ladoga_Lake_(IA_jstor-1799692).pdf",
+   "status": "no_data",
+   "note": "PD-статья, не карта."
+  },
+  {
+   "name": "Президентская библиотека — Андреев, «Ладожское озеро» (1875)",
+   "url": "https://www.prlib.ru/history/1300514",
+   "status": "no_data",
+   "note": "Монография по съёмке 1858–1866 гг. (prlib item 342025/342026); карты в ней не проверялись — старый мелкомасштабный источник."
+  },
+  {
+   "name": "gpsspbmap.narod.ru — карты глубин Ладоги для Garmin",
+   "url": "http://gpsspbmap.narod.ru/old",
+   "status": "blocked",
+   "note": "Карты BlueChart-формата только по письму автору; производные от навигационных карт — не для публикации."
+  },
+  {
+   "name": "fishermap.org — «Карты глубин» Ладожского озера",
+   "url": "https://ru.fishermap.org/depth-map/ladoghskoe-ozero/",
+   "status": "blocked",
+   "note": "Проприетарный просмотрщик; не использовать."
+  },
+  {
+   "name": "garmin.ru — «Карта глубин Ладожского озера»",
+   "url": "https://www.garmin.ru/vodoemy/karty-vnutrennih-vodnyh-putey/ladoga/",
+   "status": "blocked",
+   "note": "Коммерческие карты ВВП для навигаторов Garmin (из поиска)."
+  },
+  {
+   "name": "OsmAnd — Nautical Map View / глубины",
+   "url": "https://osmand.net/docs/user/plugins/nautical-charts/",
+   "status": "used",
+   "note": "Плагин платный; Depth contours/points на данных OpenSeaMap и др.; Ладоги в них по сути нет."
+  },
+  {
+   "name": "RuStore — MapFish, Dap Drift Ru, GLive",
+   "url": "https://www.rustore.ru/catalog/app/ru.mapfish.twa",
+   "status": "used",
+   "note": "Описания и отзывы: GPX-импорт, упоминания Ладоги/Волхова (MapFish)."
+  },
+  {
+   "name": "Deeper support — доступ к картам",
+   "url": "https://support.deeper.eu/668053-How-do-I-access-bathymetric-maps-recorded-using-Deeper",
+   "status": "used",
+   "note": "Свои сканы — History/Lakebook; импорт GPX не описан."
+  },
+  {
+   "name": "C-MAP app / Genesis Social Map",
+   "url": "https://www.c-map.com/app/",
+   "status": "used",
+   "note": "По описанию C-MAP: бесплатно — просмотр карт, путевые точки, импорт/экспорт GPX; Social Map бесплатно (из поиска)."
+  }
+ ],
+ "points": [],
+ "site_integration": {
+  "isobaths": "fetch('data/depth_isobaths.geojson') → L.geoJSON в группу «Глубины (модель)», подписи depth_m через bindTooltip; атрибуция GLDB CC BY; предупреждение «не для навигации».",
+  "genshtab_overlays": "L.layerGroup(image_overlays.map(o => L.imageOverlay(o.url, o.bounds, {opacity: 0.75, attribution: 'Топокарта ГШ СССР 1:100 000 (скан maps.vlasenko.net)'}))) — отдельный переключатель «Глубины: топокарта ГШ»; 4 файла 1,8–2,6 МБ, грузить только при включении.",
+  "navionics": "Только отдельное окно/модалка с картой Navionics по центру выбранной точки без наших маркеров (Standard); на основной карте — лишь с платным Enhanced.",
+  "phone": "В карточку точки добавить «Скачать GPX» (уже есть downloads/ladoga_points.gpx) и ссылку geo:lat,lon?z=15 для Android; отдельной кнопкой — depth_isobaths_gldb.gpx."
+ },
+ "notes": "ИТОГ. (1) Можно публиковать сейчас: research/depth_isobaths.geojson — модельные изобаты 2–70 м по GLDB v2 (CC BY, грубая сетка ~1 км, верна по характеру: мелко у Птинова и западного берега Волховской губы, 10–18 м в её центре), + GPX-версия для телефонов. (2) Самые подробные доступные глубины — советские топокарты ГШ 1:100 000: изобаты 2/5/10/20 м и отметки глубин в Волховской и Свирской губах; 4 листа перепроецированы в WGS84 (RMS привязки 8–24 м, сверено с OSM) и готовы для L.imageOverlay, но лицензия не определена (серая зона) — решение за владельцем сайта. Пробел: лист P-36-125 (о. Сухо, север Волховской губы) и P-36-123,124 не найдены в открытом доступе. (3) Navionics Web API v2 жив (Garmin), ключ бесплатный (Standard), но накладывать наши точки на карту Navionics запрещено — только отдельное окно; ключ запрашивает пользователь через форму Garmin (шаги в tile_layers[].key_request_steps_ru); из РФ заявку могут не одобрить. (4) ЭНК ВВП (S-57) по Ладоге существуют (171 ячейка), но выдаются только по лицензионному договору (ФГБУ «Канал имени Москвы») — не открыты. (5) GEBCO 2026, ETOPO, EMODnet, Esri Ocean, OpenSeaMap Depth: у Ладоги нет батиметрии (протестировано). GLOBathy — модель, CC0, не использована. ЦМР ИНОЗ РАН (Науменко, 0,5 км) — не опубликована, можно попросить у авторов. (6) Quickdraw/SonarChart/C-MAP Genesis/Deeper не выгружались и не переносились; на телефоне их смотреть в своих приложениях, наши точки импортировать через GPX. Глубины на картах разных лет даны от разных уровней (Ладога колеблется ~±0,5–1 м по годам) — считать ориентиром. Все скрипты: research/raw/depth/*.py и research/raw/depth/genshtab/*.py."
+}

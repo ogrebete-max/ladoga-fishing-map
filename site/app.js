@@ -60,12 +60,13 @@ const state = {
   fav: new Set(store.get('ladoga-fav', [])),
   mine: store.get('ladoga-mine', []),
   base: store.get('ladoga-base', 'sat'),
-  overlays: Object.assign({ seamarks: false, heat: false, cluster: true, radius: false, seasonZones: false, rules: false, lines: true, mine: true }, store.get('ladoga-overlays', {})),
+  overlays: Object.assign({ seamarks: false, heat: false, cluster: true, radius: false, seasonZones: false, rules: false, lines: true, mine: true, genshtab: false, isobaths: false }, store.get('ladoga-overlays', {})),
+  genshtabOpacity: store.get('ladoga-genshtab-opacity', 0.8),
   overlayOpacity: store.get('ladoga-overlay-opacity', 0.7),
 };
 
 function defaultFilters() {
-  return { fish: new Set(), months: new Set(), season: 'all', cls: new Set(['A', 'B', 'C']), kinds: new Set(Object.keys(KINDS)), sources: new Set(), core: false, yearMin: 0, fav: false };
+  return { fish: new Set(), months: new Set(), season: 'all', cls: new Set(['A', 'B', 'C']), kinds: new Set(Object.keys(KINDS)), sources: new Set(), core: false, yearMin: 0, fav: false, depthOnly: false };
 }
 
 /* ---------- utilities ---------- */
@@ -177,6 +178,8 @@ const layers = {
   rules: L.layerGroup(),
   lines: L.layerGroup(),
   mine: L.layerGroup(),
+  genshtab: L.layerGroup(),
+  isobaths: L.layerGroup(),
   nav: L.layerGroup(),
   me: L.layerGroup(),
   select: L.layerGroup(),
@@ -195,6 +198,10 @@ function applyOverlays() {
   toggle(layers.rules, o.rules);
   toggle(layers.lines, o.lines);
   toggle(layers.mine, o.mine);
+  toggle(layers.genshtab, o.genshtab);
+  toggle(layers.isobaths, o.isobaths);
+  if (o.isobaths) ensureIsobaths();
+  if (o.genshtab) layers.genshtab.eachLayer((l) => l.setOpacity(state.genshtabOpacity));
   for (const [key, ov] of Object.entries(extraOverlays)) {
     toggle(ov.layer, !!o[key]);
     ov.layer.setOpacity?.(state.overlayOpacity);
@@ -219,6 +226,7 @@ function passes(r) {
     if (!['structure', 'landmark', 'launch', 'hazard'].includes(r.kind)) return false;
   }
   if (f.fav && !state.fav.has(pointKey(r.lat, r.lon))) return false;
+  if (f.depthOnly && !r.depth) return false;
   return true;
 }
 
@@ -275,6 +283,7 @@ function renderActiveFilters() {
   if (f.core) chips.push(['core', '≤55 км']);
   if (f.yearMin) chips.push(['yearMin', `с ${f.yearMin} г.`]);
   if (f.fav) chips.push(['fav', '★ избранное']);
+  if (f.depthOnly) chips.push(['depthOnly', 'с глубиной']);
   if (f.kinds.size < Object.keys(KINDS).length) chips.push(['kinds', `${f.kinds.size} из ${Object.keys(KINDS).length} слоёв`]);
   $('#activeFilters').innerHTML = chips.map(([k, t]) => `<button type="button" data-clear="${k}">${esc(t)}</button>`).join('');
 }
@@ -290,6 +299,10 @@ $('#activeFilters').addEventListener('click', (e) => {
 /* ---------- sheet ---------- */
 const sheet = $('#sheet');
 function setSheet(s) { sheet.dataset.state = s; }
+$('#sheetClose').addEventListener('click', () => setSheet('peek'));
+// Turning the phone gives the map the screen back; the panel is one tap away.
+window.matchMedia('(orientation: landscape) and (max-height: 540px) and (max-width: 1100px)').addEventListener?.('change', (e) => { if (e.matches) setSheet('peek'); });
+$('#btnPanel').addEventListener('click', () => { if (!$('#sheetBody').innerHTML.trim()) showTab('filter'); setSheet('full'); });
 $('#sheetHandle').addEventListener('click', () => setSheet(sheet.dataset.state === 'peek' ? 'half' : sheet.dataset.state === 'half' ? 'full' : 'peek'));
 (() => { // drag the handle to resize
   let y0 = null, s0 = null;
@@ -315,7 +328,7 @@ function showTab(tab) {
   if (tab !== 'point') { state.selected = null; layers.select.clearLayers(); }
   $$('#tabs button').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
   const body = $('#sheetBody');
-  body.innerHTML = ({ filter: filterHtml, season: seasonHtml, fish: fishHtml, rules: rulesHtml, layers: layersHtml, data: dataHtml }[tab] || (() => ''))();
+  body.innerHTML = ({ filter: filterHtml, places: placesHtml, season: seasonHtml, fish: fishHtml, depth: depthHtml, rules: rulesHtml, layers: layersHtml, data: dataHtml }[tab] || (() => ''))();
   body.scrollTop = 0;
   if (tab === 'filter' || tab === 'data') refreshCounts();
 }
@@ -376,14 +389,15 @@ $('#sheetBody').addEventListener('click', (e) => {
   const d = t.dataset;
   const f = state.f;
   const toggleSet = (set, v) => (set.has(v) ? set.delete(v) : set.add(v));
-  if (d.place != null) { const p = PLACES[+d.place]; map.setView([p[1], p[2]], p[3]); if (window.innerWidth < 900) setSheet('peek'); return; }
+  if (d.openMarker != null) { e.preventDefault(); const m = state.M[+d.openMarker]; if (m) { map.setView([m.lat, m.lon], Math.max(map.getZoom(), 14)); openPoint(+d.openMarker); } return; }
+  if (d.place != null) { const p = PLACES[+d.place]; map.setView([p[1], p[2]], p[3]); closeSheetOnPhone(); return; }
   if (d.fish) { toggleSet(f.fish, d.fish); t.classList.toggle('on'); render(); return; }
   if (d.month) { toggleSet(f.months, +d.month); t.classList.toggle('on'); render(); return; }
   if (d.season) { f.season = d.season; $$('#seasonSeg button').forEach((b) => b.classList.toggle('on', b === t)); render(); return; }
   if (d.src) { toggleSet(f.sources, d.src); t.classList.toggle('on'); render(); return; }
   if (t.id === 'thisMonth') { f.months = new Set([new Date().getMonth() + 1]); render(); showTab('filter'); return; }
   if (t.id === 'resetFilters') { state.f = defaultFilters(); render(); showTab('filter'); return; }
-  if (d.smonth) { state.seasonMonth = +d.smonth; showTab('season'); drawSeasonZones(); return; }
+  if (d.smonth) { if (state.playing) { clearInterval(state.playing); state.playing = null; } state.seasonMonth = +d.smonth; showTab('season'); drawSeasonZones(); return; }
   if (d.act) handleAction(d.act, t);
 });
 $('#sheetBody').addEventListener('change', (e) => {
@@ -392,6 +406,7 @@ $('#sheetBody').addEventListener('change', (e) => {
   else if (t.dataset.cls) { t.checked ? f.cls.add(t.dataset.cls) : f.cls.delete(t.dataset.cls); render(); }
   else if (t.id === 'coreOnly') { f.core = t.checked; render(); }
   else if (t.id === 'favOnly') { f.fav = t.checked; render(); }
+  else if (t.id === 'depthOnly') { f.depthOnly = t.checked; render(); }
   else if (t.dataset.overlay) {
     state.overlays[t.dataset.overlay] = t.checked;
     if (t.dataset.overlay === 'cluster') render();
@@ -407,6 +422,9 @@ $('#sheetBody').addEventListener('input', (e) => {
     state.f.yearMin = v > min ? v : 0;
     $('#yearLabel').textContent = state.f.yearMin ? `отчёты с ${state.f.yearMin} года` : 'все годы';
     clearTimeout(t._timer); t._timer = setTimeout(render, 150);
+  } else if (t.id === 'genshtabOpacity') {
+    state.genshtabOpacity = +t.value; store.set('ladoga-genshtab-opacity', state.genshtabOpacity);
+    layers.genshtab.eachLayer((l) => l.setOpacity(state.genshtabOpacity));
   } else if (t.id === 'overlayOpacity') {
     state.overlayOpacity = +t.value; store.set('ladoga-overlay-opacity', state.overlayOpacity); applyOverlays();
   }
@@ -460,13 +478,13 @@ function openPoint(idx) {
     <h3>${rs.length} ${plural(rs.length, 'запись', 'записи', 'записей')} в этом месте</h3>
     ${rs.map(({ r, ok }) => reportHtml(r, ok)).join('')}`;
   $('#sheetBody').scrollTop = 0;
-  setSheet(window.innerWidth < 900 ? 'half' : 'full');
+  setSheet(desktopLayout() ? 'full' : 'half');
   updatePointFromMe();
   history.replaceState(null, '', `#pt=${m.lat.toFixed(5)},${m.lon.toFixed(5)}`);
 }
 function reportHtml(r, ok) {
   const extra = [r.depth && `глубина ${r.depth}`, r.method && r.method, r.catch && `улов: ${r.catch}`].filter(Boolean).join(' · ');
-  const links = [safeUrl(r.url) && `<a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.src)}</a>`, safeUrl(r.orig) && `<a href="${esc(r.orig)}" target="_blank" rel="noopener">первоисточник</a>`].filter(Boolean).join(' · ') || esc(r.src);
+  const links = [safeUrl(r.url) && `<a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.srcd || r.src)}</a>`, safeUrl(r.orig) && `<a href="${esc(r.orig)}" target="_blank" rel="noopener">первоисточник</a>`].filter(Boolean).join(' · ') || esc(r.srcd || r.src);
   return `<div class="report ${ok ? '' : 'dim'}">
     <div><b>${esc((r.fish || []).join(', ') || r.title || KINDS[r.kind].short)}</b> · ${esc(fmtDate(r.date))}${r.season ? ` · ${r.season === 'ice' ? '❄ лёд' : '🌊 вода'}` : ''} <span class="badge ${r.cls}" title="${esc(CLASS_TEXT[r.cls])}">${r.cls}</span></div>
     ${r.title && (r.fish || []).length ? `<div class="small">${esc(r.title)}</div>` : ''}
@@ -514,8 +532,13 @@ function handleAction(act, el) {
   else if (act === 'mine-nav') { const p = state.mine.find((x) => x.id === el.dataset.id); if (p) startNav({ lat: p.lat, lon: p.lon, title: p.name }); }
   else if (act === 'mine-del') { state.mine = state.mine.filter((x) => x.id !== el.dataset.id); store.set('ladoga-mine', state.mine); drawMine(); showTab('data'); }
   else if (act === 'show-zone') showZone(el.dataset.zone);
-  else if (act === 'filter-fish') { state.f.fish = new Set([el.dataset.name]); render(); toast(`На карте: ${el.dataset.name}`); if (window.innerWidth < 900) setSheet('peek'); }
-  else if (act === 'month-filter') { state.f.months = new Set([state.seasonMonth]); render(); toast(`На карте отчёты за ${MONTHS_FULL[state.seasonMonth - 1]}`); if (window.innerWidth < 900) setSheet('peek'); }
+  else if (act === 'play-year') playYear();
+  else if (act === 'place-show') showPlace(+el.dataset.zone);
+  else if (act === 'place-nav') { const z = (state.ctx.season_zones || [])[+el.dataset.zone]; if (z) startNav({ ...zoneCenter(z), title: z.name || 'Район' }); }
+  else if (act === 'copy-link') copy(location.href.split('#')[0], 'Ссылка');
+  else if (act === 'locate-retry') { stopWatch(); startWatch(true); closeSheetOnPhone(); }
+  else if (act === 'filter-fish') { state.f.fish = new Set([el.dataset.name]); render(); drawSeasonZones(); toast(`На карте: ${el.dataset.name}`); closeSheetOnPhone(); }
+  else if (act === 'month-filter') { state.f.months = new Set([state.seasonMonth]); render(); toast(`На карте отчёты за ${MONTHS_FULL[state.seasonMonth - 1]}`); closeSheetOnPhone(); }
 }
 async function sharePoint(lat, lon, title) {
   const url = `${location.origin}${location.pathname}#pt=${lat.toFixed(5)},${lon.toFixed(5)}`;
@@ -539,11 +562,33 @@ function filteredWaypoints() {
 
 /* ----- Season tab ----- */
 function speciesList() { return (state.ctx.species || []).filter((s) => s && s.name_ru); }
+// "Лещ (и подлещик)" → "Лещ": the name the reports use, for colours and the fish filter.
+const SPECIES_ALIAS = { 'Кумжа': 'Форель' };
+function speciesKey(s) {
+  const first = String(s.name_ru || '').split(/[\s(]/)[0];
+  return SPECIES_ALIAS[first] || first;
+}
+const speciesColor = (s) => FISH_COLORS[speciesKey(s)] || OTHER_COLOR;
+const ACT = ['не ловится / запрет', 'слабо', 'хорошо', 'пик'];
+const dots = (v) => `<span title="${ACT[v]}">${'●'.repeat(v)}${'○'.repeat(3 - v)}</span>`;
+const monthList = (arr) => (Array.isArray(arr) ? arr : []).map(Number).filter((m) => m >= 1 && m <= 12);
+function seasonZoneById(id) { return id ? (state.ctx.season_zones || []).find((z) => z.id === id) : null; }
+function monthsText(arr) {
+  const ms = monthList(arr);
+  if (!ms.length) return '';
+  if (ms.length === 12) return 'круглый год';
+  return ms.map((m) => MONTHS[m - 1]).join(', ');
+}
+function isIceMonth(mo) {
+  const h = (state.ctx.hydro_calendar || []).find((x) => +x.month === mo);
+  if (h && h.ice) return /^\s*(лёд|лед|ледостав|становление|подл)/i.test(h.ice);
+  return [12, 1, 2, 3].includes(mo);
+}
 function seasonHtml() {
   const mo = state.seasonMonth;
   const sp = speciesList();
-  const hydro = (state.ctx.hydro_calendar || []).find((h) => +h.month === mo || String(h.month).toLowerCase().startsWith(MONTHS_FULL[mo - 1].slice(0, 3)));
-  const catchR = state.R.filter((r) => CATCH_KINDS.has(r.kind) && state.pass[state.R.indexOf(r)] !== undefined);
+  const hydro = (state.ctx.hydro_calendar || []).find((h) => +h.month === mo);
+  const ice = isIceMonth(mo);
   const byMonth = Array(13).fill(0);
   const fishInMonth = new Map();
   for (const r of state.R) {
@@ -553,63 +598,113 @@ function seasonHtml() {
     if (mm === mo) for (const x of r.fish || []) fishInMonth.set(x, (fishInMonth.get(x) || 0) + 1);
   }
   const max = Math.max(1, ...byMonth.slice(1));
-  const ranked = sp.map((s) => ({ s, v: +(s.activity_by_month || [])[mo - 1] || 0 })).sort((a, b) => b.v - a.v);
-  const isIce = hydro ? /лёд|лед|ледостав/i.test(String(hydro.ice || '')) && !/нет|чист/i.test(String(hydro.ice || '')) : [12, 1, 2, 3].includes(mo);
+  const ranked = sp.map((s) => ({ s, v: +(s.activity_by_month || [])[mo - 1] || 0, p: +(s.presence_by_month || [])[mo - 1] || 0 }))
+    .sort((a, b) => b.v - a.v || b.p - a.p);
+  const catchable = ranked.filter((x) => x.v > 0);
+  const offLimits = ranked.filter((x) => x.v === 0 && x.p >= 2);
+  const iceStats = state.ctx.ice_from_angler_reports?.areas || {};
+  const iceRows = [11, 12, 1, 2, 3, 4].includes(mo) ? Object.entries(iceStats) : [];
+  const q = (o) => (o ? `~${esc(o.median || '?')} (обычно ${esc(o.q25 || '?')}–${esc(o.q75 || '?')})` : '?');
   return `
     <div class="months" style="margin-top:6px">${MONTHS.map((m, i) => `<button type="button" class="chip ${mo === i + 1 ? 'on' : ''}" data-smonth="${i + 1}">${m}</button>`).join('')}</div>
-    <h2>Ладога в ${MONTHS_IN[mo - 1]}</h2>
-    ${hydro ? `<div class="card">${hydro.events ? `<p>${esc(hydro.events)}</p>` : ''}<dl class="kv">${hydro.ice ? `<dt>Лёд</dt><dd>${esc(hydro.ice)}</dd>` : ''}${hydro.water_temp_c != null && hydro.water_temp_c !== '' ? `<dt>Вода</dt><dd>${esc(hydro.water_temp_c)} °C</dd>` : ''}</dl></div>` : ''}
-    <h3>Что ловится ${sp.length ? '(по литературе и практике)' : ''}</h3>
-    ${sp.length ? ranked.map(({ s, v }) => `<div class="card" style="${v ? '' : 'opacity:.6'}">
-        <h4><span class="dot" style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${FISH_COLORS[s.name_ru] || OTHER_COLOR}"></span> ${esc(s.name_ru)} <span class="muted small">${'●'.repeat(v)}${'○'.repeat(3 - v)} ${['не ловится / запрет', 'слабо', 'хорошо', 'пик'][v]}</span></h4>
-        ${methodFor(s, isIce) ? `<div class="small">${esc(methodFor(s, isIce))}</div>` : ''}
+    <div class="row" style="margin-top:8px">
+      <button type="button" class="btn small ${state.playing ? '' : 'ghost'}" data-act="play-year">${state.playing ? '⏸ Стоп' : '▶ Год по месяцам'}</button>
+      <label class="check" style="padding:0"><input type="checkbox" data-overlay="seasonZones" ${state.overlays.seasonZones ? 'checked' : ''}> зоны на карте</label>
+    </div>
+    <h2>Ладога в ${MONTHS_IN[mo - 1]} ${ice ? '❄' : '🌊'}</h2>
+    ${hydro ? `<div class="card small">${hydro.events ? `<p style="margin-top:0">${esc(hydro.events)}</p>` : ''}<dl class="kv">${hydro.ice ? `<dt>Лёд</dt><dd>${esc(hydro.ice)}</dd>` : ''}${hydro.water_temp_c ? `<dt>Вода</dt><dd>${esc(hydro.water_temp_c)}${/°/.test(hydro.water_temp_c) ? '' : ' °C'}</dd>` : ''}${hydro.level ? `<dt>Уровень</dt><dd>${esc(hydro.level)}</dd>` : ''}</dl></div>` : ''}
+    ${iceRows.length ? `<details><summary class="small">Первый и последний лёд по отчётам рыбаков</summary>${iceRows.map(([area, v]) => `<div class="small" style="margin:4px 0"><b>${esc(area)}</b>: первый лёд ${q(v.first_ice_report)}, последний ${q(v.last_ice_report)}${v.winters_used ? `; зим в выборке: ${v.winters_used}` : ''}</div>`).join('')}</details>` : ''}
+    <h3>Что ловится в ${MONTHS_IN[mo - 1]}</h3>
+    ${sp.length ? '' : '<p class="muted">Справка по видам ещё собирается.</p>'}
+    ${catchable.map(({ s, v }) => `<div class="card">
+        <h4><span class="dot" style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${speciesColor(s)}"></span> ${esc(s.name_ru)} <span class="muted small">${dots(v)} ${ACT[v]}</span></h4>
+        ${methodFor(s, ice) ? `<div class="small">${esc(methodFor(s, ice))}</div>` : ''}
         ${zonesFor(s, mo).map((z) => `<div class="small muted">📍 ${esc(z.name || '')}${z.note ? ` — ${esc(z.note)}` : ''}</div>`).join('')}
-      </div>`).join('') : '<p class="muted">Справка по видам ещё собирается — обновится в следующей версии данных.</p>'}
-    <h3>Отчёты по месяцам (все годы)</h3>
+        <div class="btns" style="margin:6px 0 0"><button type="button" class="btn small ghost" data-act="filter-fish" data-name="${esc(speciesKey(s))}">Показать на карте</button></div>
+      </div>`).join('')}
+    ${offLimits.length ? `<h3>Есть в районе, но ловить нельзя или бесполезно</h3>
+      ${offLimits.map(({ s, p }) => `<div class="small" style="margin:6px 0">🚫 <b>${esc(s.name_ru)}</b> — ${['', 'единично', 'обычен', 'массовый ход или скопления'][p]}${s.protected ? ', охраняется (Красная книга ЛО)' : ', запретный срок или не берёт'}.${s.presence_note ? ` ${esc(s.presence_note)}` : ''}</div>`).join('')}` : ''}
+    ${timeseriesHtml(mo)}
+    <h3>Точки на карте по месяцам (все годы)</h3>
     <div class="bars">${byMonth.slice(1).map((n, i) => `<div class="${i + 1 === mo ? 'cur' : ''}" style="height:${Math.round((n / max) * 100)}%" title="${MONTHS_FULL[i]}: ${n}"></div>`).join('')}</div>
     <div class="bars-labels">${MONTHS.map((m) => `<span>${m}</span>`).join('')}</div>
-    <p class="small">${fishInMonth.size ? `В ${MONTHS_IN[mo - 1]} чаще всего сообщали: ${[...fishInMonth.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6).map(([f, n]) => `${f} (${n})`).join(', ')}.` : `Отчётов за ${MONTHS_FULL[mo - 1]} пока нет.`}</p>
-    <div class="btns">
-      <button type="button" class="btn" data-act="month-filter">Показать отчёты за ${MONTHS_FULL[mo - 1]}</button>
-    </div>
-    <label class="check"><input type="checkbox" data-overlay="seasonZones" ${state.overlays.seasonZones ? 'checked' : ''}> Рисовать на карте зоны, где рыба держится в ${MONTHS_IN[mo - 1]}</label>
-    ${sp.length ? `<h3>Календарь: когда ловится</h3>${calendarTable(sp, mo)}<p class="small muted">0 — запрет или почти не ловится, 1 — слабо, 2 — хорошо, 3 — пик. Обобщение по научным работам и отчётам рыболовов, конкретный год может сдвигаться на 2–3 недели.</p>` : ''}`;
+    <p class="small">${fishInMonth.size ? `В ${MONTHS_IN[mo - 1]} на карте чаще всего отмечали: ${[...fishInMonth.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6).map(([f, n]) => `${esc(f)} (${n})`).join(', ')}.` : `Отчётов за ${MONTHS_FULL[mo - 1]} пока нет.`}</p>
+    <div class="btns"><button type="button" class="btn" data-act="month-filter">Показать отчёты за ${MONTHS_FULL[mo - 1]}</button></div>
+    ${(state.ctx.wind_effects || []).length ? `<details><summary>Ветер, уровень воды и отрыв льда</summary>${state.ctx.wind_effects.map((w) => `<div class="card small"><b>${esc(w.wind || '')}</b><br>${esc(w.effect || '')}${w.fishing ? `<br>${esc(w.fishing)}` : ''}</div>`).join('')}</details>` : ''}
+    ${sp.length ? `<h3>Календарь клёва</h3>${calendarTable(sp, mo, 'activity_by_month')}
+      <p class="small muted">0 — запрет или почти не ловится, 1 — слабо, 2 — хорошо, 3 — пик. Составлено по научным работам (Правдин, Калесник, Лоция, Институт озероведения РАН, Красная книга ЛО) и сверено с 18,5 тыс. отчётов fisher.spb.ru; в конкретный год всё сдвигается на 2–3 недели.</p>
+      <details><summary>Календарь присутствия: миграции, нерест, ход</summary>${calendarTable(sp.filter((s) => (s.presence_by_month || []).length), mo, 'presence_by_month')}
+      <p class="small muted">Есть ли рыба в южных губах и устьях — независимо от запретов: 3 — массовый ход, нерест или нагул, 0 — ушла глубже или на север.</p></details>` : ''}`;
+}
+// Dated reports with and without coordinates (Telegram, forums): what people caught, and where, month by month.
+function timeseriesHtml(mo) {
+  const ts = state.ctx.timeseries;
+  if (!ts || !ts.total) return '';
+  const bm = ts.by_month || [];
+  const max = Math.max(1, ...bm);
+  const fish = Object.entries(ts.by_fish || {}).map(([f, arr]) => [f, +arr[mo - 1] || 0]).filter(([, n]) => n).sort((a, b) => b[1] - a[1]).slice(0, 7);
+  const areas = Object.entries(ts.by_sector || {}).map(([k, v]) => [k, +(v.by_month || [])[mo - 1] || 0, v.fish || {}]).filter(([k, n]) => n && !/не уточн/i.test(k)).sort((a, b) => b[1] - a[1]).slice(0, 6);
+  return `<h3>Что ловили в ${MONTHS_IN[mo - 1]} — по ${ts.total.toLocaleString('ru-RU')} ${plural(ts.total, 'датированному отчёту', 'датированным отчётам', 'датированным отчётам')}</h3>
+    <div class="bars">${bm.map((n, i) => `<div class="${i + 1 === mo ? 'cur' : ''}" style="height:${Math.round((n / max) * 100)}%" title="${MONTHS_FULL[i]}: ${n}"></div>`).join('')}</div>
+    <div class="bars-labels">${MONTHS.map((m) => `<span>${m}</span>`).join('')}</div>
+    ${fish.length ? `<div class="chips" style="margin-top:8px">${fish.map(([f, n]) => `<button type="button" class="chip" data-act="filter-fish" data-name="${esc(f)}"><span class="dot" style="background:${FISH_COLORS[f] || OTHER_COLOR}"></span>${esc(f)} <span class="n">${n}</span></button>`).join('')}</div>` : ''}
+    ${areas.length ? `<p class="small" style="margin-bottom:0"><b>Где чаще всего рыбачили:</b></p>${areas.map(([k, n, f]) => `<div class="small">• ${esc(k)} — ${n} ${plural(n, 'отчёт', 'отчёта', 'отчётов')}</div>`).join('')}` : ''}
+    <p class="small muted">Источники: ${(ts.by_source || []).slice(0, 5).map(([s2, n]) => `${esc(s2)} (${n})`).join(', ')}. Это то, о чём пишут рыбаки, а не учёт рыбы.</p>`;
 }
 function methodFor(s, ice) {
   const bm = s.best_methods || {};
   return (ice ? bm.ice : bm.open_water) || '';
 }
 function zonesFor(s, mo) {
-  return (s.zones || []).filter((z) => !z.months || !z.months.length || z.months.map(Number).includes(mo));
+  return (s.zones || []).filter((z) => !monthList(z.months).length || monthList(z.months).includes(mo));
 }
-function calendarTable(sp, mo) {
+function calendarTable(sp, mo, field) {
   return `<table class="cal"><tr><th></th>${MONTHS.map((m, i) => `<th class="${i + 1 === mo ? 'cur' : ''}">${m[0].toUpperCase()}</th>`).join('')}</tr>
-    ${sp.map((s) => `<tr><td>${esc(s.name_ru)}</td>${Array.from({ length: 12 }, (_, i) => { const v = +(s.activity_by_month || [])[i] || 0; return `<td class="c v${v} ${i + 1 === mo ? 'cur' : ''}" title="${esc(s.name_ru)}, ${MONTHS_FULL[i]}: ${v}">${v || ''}</td>`; }).join('')}</tr>`).join('')}
+    ${sp.map((s) => `<tr><td>${esc(s.name_ru.replace(/\s*\(.*\)/, ''))}</td>${Array.from({ length: 12 }, (_, i) => { const v = +(s[field] || [])[i] || 0; return `<td class="c v${v} ${i + 1 === mo ? 'cur' : ''}" title="${esc(s.name_ru)}, ${MONTHS_FULL[i]}: ${v}">${v || ''}</td>`; }).join('')}</tr>`).join('')}
   </table>`;
 }
-function zoneLayer(z, color, label) {
+// A zone is a circle (lat/lon/radius_km), a polygon, or a line with a width (line_buffer).
+function zoneLayer(z, color, label, extraHtml = '') {
   const style = { color, weight: 2, fillOpacity: 0.12, dashArray: '4 6' };
+  const pts = (arr) => (arr || []).map((p) => (Array.isArray(p) ? [+p[0], +p[1]] : [+p.lat, +p.lon]));
   let layer = null;
-  const poly = z.polygon || z.coords;
-  if (Array.isArray(poly) && poly.length > 2) layer = L.polygon(poly.map((p) => (Array.isArray(p) ? p : [p.lat, p.lon])), style);
-  else if (z.lat != null && z.lon != null) layer = L.circle([+z.lat, +z.lon], { ...style, radius: (+z.radius_km || 1) * 1000 });
-  if (layer) layer.bindTooltip(label, { sticky: true }).bindPopup(`<b>${esc(label)}</b>${z.note ? `<br>${esc(z.note)}` : ''}${safeUrl(z.source_url) ? `<br><a href="${esc(z.source_url)}" target="_blank" rel="noopener">источник</a>` : ''}`);
+  if (Array.isArray(z.polygon) && z.polygon.length > 2) layer = L.polygon(pts(z.polygon), style);
+  else if (Array.isArray(z.line) && z.line.length > 1) {
+    const km = +z.buffer_width_km || 1;
+    layer = L.polyline(pts(z.line), { color, weight: Math.max(6, Math.min(26, km * 7)), opacity: 0.35, lineCap: 'round' });
+  } else if (z.lat != null && z.lon != null) layer = L.circle([+z.lat, +z.lon], { ...style, radius: (+z.radius_km || 1) * 1000 });
+  if (!layer) return null;
+  const src = [].concat(z.sources || [], z.source_url || []).filter(safeUrl);
+  layer.bindTooltip(label, { sticky: true });
+  layer.bindPopup(`<b>${esc(label)}</b>${z.depth_m ? `<br>Глубины: ${esc(z.depth_m)} м` : ''}${monthsText(z.months) ? `<br>Месяцы: ${esc(monthsText(z.months))}` : ''}${z.description || z.note ? `<br>${esc(z.description || z.note)}` : ''}${extraHtml}${z.precision_m ? `<br><span style="color:#888">Граница условная, ±${String(Math.round(z.precision_m / 100) / 10).replace('.', ',')} км</span>` : ''}${src.length ? `<br>${src.slice(0, 3).map((u, i) => `<a href="${esc(u)}" target="_blank" rel="noopener">источник ${i + 1}</a>`).join(' · ')}` : ''}`, { maxWidth: 300 });
   return layer;
+}
+// A species zone borrows the outline of the season zone it refers to (zone_id), keeping its own months and note.
+function speciesZoneGeo(z) {
+  const base = seasonZoneById(z.zone_id);
+  return base ? { ...base, ...z, polygon: base.polygon, line: base.line, buffer_width_km: base.buffer_width_km, radius_km: z.radius_km || base.radius_km } : z;
 }
 function drawSeasonZones() {
   layers.seasonZones.clearLayers();
   if (!state.overlays.seasonZones) return;
   const mo = state.seasonMonth;
-  for (const s of speciesList()) {
-    if (state.f.fish.size && !state.f.fish.has(s.name_ru)) continue;
-    for (const z of zonesFor(s, mo)) {
-      const l = zoneLayer(z, FISH_COLORS[s.name_ru] || OTHER_COLOR, `${s.name_ru}: ${z.name || ''}`);
-      if (l) l.addTo(layers.seasonZones);
+  const sp = speciesList();
+  if (state.f.fish.size) {
+    for (const s of sp) {
+      if (!state.f.fish.has(speciesKey(s))) continue;
+      for (const z of zonesFor(s, mo)) {
+        const l = zoneLayer(speciesZoneGeo(z), speciesColor(s), `${s.name_ru}: ${z.name || ''}`);
+        if (l) l.addTo(layers.seasonZones);
+      }
     }
+    return;
   }
   for (const z of state.ctx.season_zones || []) {
-    if (z.months && z.months.length && !z.months.map(Number).includes(mo)) continue;
-    const l = zoneLayer(z, '#fab005', z.name || 'Сезонная зона');
+    const ms = monthList(z.months);
+    if (ms.length && !ms.includes(mo)) continue;
+    const here = sp.filter((s) => (s.zones || []).some((sz) => sz.zone_id === z.id && (!monthList(sz.months).length || monthList(sz.months).includes(mo))));
+    const extra = here.length ? `<br><b>В ${MONTHS_IN[mo - 1]}:</b> ${here.map((s) => esc(s.name_ru)).join(', ')}` : '';
+    const l = zoneLayer(z, '#fab005', z.name || 'Сезонная зона', extra);
     if (l) l.addTo(layers.seasonZones);
   }
 }
@@ -618,13 +713,28 @@ function showZone(id) {
   const s = speciesList()[si];
   const z = s?.zones?.[zi];
   if (!z) return;
-  const l = zoneLayer(z, FISH_COLORS[s.name_ru] || OTHER_COLOR, `${s.name_ru}: ${z.name || ''}`);
+  const l = zoneLayer(speciesZoneGeo(z), speciesColor(s), `${s.name_ru}: ${z.name || ''}`);
   if (!l) return;
   layers.seasonZones.clearLayers();
   l.addTo(layers.seasonZones);
   state.overlays.seasonZones = true; applyOverlays();
   map.fitBounds(l.getBounds(), { padding: [40, 40], maxZoom: 13 });
-  if (window.innerWidth < 900) setSheet('peek');
+  closeSheetOnPhone();
+  l.openPopup();
+}
+function playYear() {
+  if (state.playing) { clearInterval(state.playing); state.playing = null; showTab('season'); return; }
+  state.overlays.seasonZones = true; applyOverlays();
+  closeSheetOnPhone();
+  const step = () => {
+    state.seasonMonth = state.seasonMonth % 12 + 1;
+    drawSeasonZones();
+    const name = MONTHS_FULL[state.seasonMonth - 1];
+    toast(`${name[0].toUpperCase()}${name.slice(1)}${state.f.fish.size ? ` · ${[...state.f.fish].join(', ')}` : ''}`, 1500);
+  };
+  step();
+  state.playing = setInterval(step, 1800);
+  showTab('season');
 }
 
 /* ----- Fish tab ----- */
@@ -632,22 +742,201 @@ function fishHtml() {
   const sp = speciesList();
   if (!sp.length) return '<p class="muted">Справка по видам ещё собирается.</p>';
   const mo = new Date().getMonth() + 1;
-  return `<p class="small muted">Где держится, когда нерест и как ловить. Кнопка «на карте» рисует зону, «фильтр» оставляет на карте только отчёты с этой рыбой.</p>
-    ${sp.map((s, si) => `<div class="card">
-      <h4><span class="dot" style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${FISH_COLORS[s.name_ru] || OTHER_COLOR}"></span> ${esc(s.name_ru)} <span class="muted small"><i>${esc(s.latin || '')}</i></span></h4>
-      ${s.status ? `<div class="small"><b>Статус:</b> ${esc(s.status)}</div>` : ''}
-      <div class="bars" style="height:34px">${Array.from({ length: 12 }, (_, i) => { const v = +(s.activity_by_month || [])[i] || 0; return `<div class="${i + 1 === mo ? 'cur' : ''}" style="height:${v ? v * 33 : 4}%;${v ? '' : 'opacity:.3'}"></div>`; }).join('')}</div>
+  const miniBars = (arr, dim) => {
+    const vals = Array.from({ length: 12 }, (_, i) => +(arr || [])[i] || 0);
+    const mx = Math.max(1, ...vals);
+    return `<div class="bars" style="height:30px">${vals.map((v, i) => `<div class="${i + 1 === mo ? 'cur' : ''}" style="height:${v ? Math.max(8, (v / mx) * 100) : 4}%;${v ? '' : 'opacity:.3;'}${dim ? 'background:#91a7b3' : ''}"></div>`).join('')}</div>`;
+  };
+  return `<p class="small muted">Где держится, когда нерест и как ловить. «Показать» оставляет на карте только отчёты с этой рыбой, кнопки 📍 рисуют её зоны.</p>
+    ${sp.map((s, si) => {
+      const mentions = s.forum_evidence?.mentions_by_month || [];
+      const total = mentions.reduce((a, b) => a + (+b || 0), 0);
+      return `<div class="card">
+      <h4><span class="dot" style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${speciesColor(s)}"></span> ${esc(s.name_ru)} <span class="muted small"><i>${esc(s.latin || '')}</i></span></h4>
+      ${s.status ? `<div class="small">${s.protected ? '🚫 ' : ''}${esc(s.status)}</div>` : ''}
+      <div class="small muted" style="margin-top:6px">Клёв по месяцам</div>
+      ${miniBars(s.activity_by_month)}
+      ${total ? `<div class="small muted">Упоминания в отчётах fisher.spb.ru: ${total}</div>${miniBars(mentions, true)}` : ''}
       <div class="bars-labels">${MONTHS.map((m) => `<span>${m[0]}</span>`).join('')}</div>
-      ${s.habitat_summary ? `<p class="small">${esc(s.habitat_summary)}</p>` : ''}
-      ${s.spawning ? `<p class="small"><b>Нерест:</b> ${esc([s.spawning.months && (Array.isArray(s.spawning.months) ? s.spawning.months.map((x) => (Number.isFinite(+x) ? MONTHS_FULL[+x - 1] : x)).join(', ') : s.spawning.months), s.spawning.place, s.spawning.temp_c != null && s.spawning.temp_c !== '' ? `при ${s.spawning.temp_c} °C` : ''].filter(Boolean).join('; '))}</p>` : ''}
-      ${s.migration_summary ? `<p class="small"><b>Перемещения:</b> ${esc(s.migration_summary)}</p>` : ''}
-      ${s.best_methods ? `<p class="small">${s.best_methods.ice ? `<b>Со льда:</b> ${esc(s.best_methods.ice)}<br>` : ''}${s.best_methods.open_water ? `<b>По воде:</b> ${esc(s.best_methods.open_water)}` : ''}</p>` : ''}
+      ${s.ice_vs_open ? `<p class="small">${esc(s.ice_vs_open)}</p>` : ''}
+      ${s.habitat_summary ? `<p class="small"><b>Где держится:</b> ${esc(s.habitat_summary)}</p>` : ''}
+      ${s.spawning ? `<p class="small"><b>Нерест:</b> ${esc([monthsText(s.spawning.months), s.spawning.place, s.spawning.temp_c ? `вода ${s.spawning.temp_c}${/°/.test(s.spawning.temp_c) ? '' : ' °C'}` : ''].filter((x) => x && typeof x === 'string').join('; '))}</p>` : ''}
+      ${s.migration_summary ? `<p class="small"><b>Перемещения по сезонам:</b> ${esc(s.migration_summary)}</p>` : ''}
+      ${s.best_methods ? `<p class="small">${s.best_methods.ice ? `<b>❄ Со льда:</b> ${esc(s.best_methods.ice)}<br>` : ''}${s.best_methods.open_water ? `<b>🌊 По воде:</b> ${esc(s.best_methods.open_water)}` : ''}</p>` : ''}
       <div class="btns">
-        <button type="button" class="btn small" data-act="filter-fish" data-name="${esc(s.name_ru)}">Фильтр: ${esc(s.name_ru)}</button>
-        ${(s.zones || []).map((z, zi) => `<button type="button" class="btn small ghost" data-act="show-zone" data-zone="${si}:${zi}">📍 ${esc(z.name || 'зона')}</button>`).join('')}
+        ${s.protected ? '' : `<button type="button" class="btn small" data-act="filter-fish" data-name="${esc(speciesKey(s))}">Показать: ${esc(speciesKey(s))}</button>`}
+        ${(s.zones || []).map((z, zi) => `<button type="button" class="btn small ghost" data-act="show-zone" data-zone="${si}:${zi}">📍 ${esc((z.name || 'зона').slice(0, 42))}${monthsText(z.months) ? ` · ${esc(monthsText(z.months))}` : ''}</button>`).join('')}
       </div>
-      ${(s.sources || []).length ? `<details><summary class="small">Источники (${s.sources.length})</summary>${s.sources.map((u) => (safeUrl(u) ? `<div class="small"><a href="${esc(u)}" target="_blank" rel="noopener">${esc(u.replace(/^https?:\/\//, '').slice(0, 70))}</a></div>` : `<div class="small">${esc(u)}</div>`)).join('')}</details>` : ''}
-    </div>`).join('')}`;
+      ${(s.sources || []).length ? `<details><summary class="small">Источники (${s.sources.length})</summary>${s.sources.map((u) => (safeUrl(u) ? `<div class="small"><a href="${esc(u)}" target="_blank" rel="noopener">${esc(safeDecode(u.replace(/^https?:\/\//, '')).slice(0, 70))}</a></div>` : `<div class="small">${esc(u)}</div>`)).join('')}</details>` : ''}
+    </div>`;
+    }).join('')}`;
+}
+function safeDecode(u) { try { return decodeURIComponent(u); } catch { return u; } }
+
+/* ----- Depth tab ----- */
+const GENSHTAB_ATTR = 'Топокарта Генштаба СССР 1:100 000 (скан <a href="https://maps.vlasenko.net/soviet-military-topographic-map/map100k.html" target="_blank" rel="noopener">maps.vlasenko.net</a>)';
+const ISOBATH_ATTR = 'Изобаты (модель): GLDB v2, Kourzeneva &amp; Choulga, CC BY — не для навигации';
+function buildDepthLayers() {
+  const d = state.ctx.depth || {};
+  layers.genshtab.clearLayers();
+  for (const o of d.overlays || []) {
+    if (!Array.isArray(o.bounds)) continue;
+    L.imageOverlay(o.url, o.bounds, { opacity: state.genshtabOpacity, attribution: GENSHTAB_ATTR, interactive: false, className: 'genshtab' })
+      .addTo(layers.genshtab);
+  }
+}
+async function ensureIsobaths() {
+  const url = state.ctx.depth?.isobaths;
+  if (!url || state.isobathsLoaded) return;
+  state.isobathsLoaded = true;
+  try {
+    const gj = await fetch(url).then((r) => r.json());
+    L.geoJSON(gj, {
+      style: (f) => {
+        const m = +f.properties.depth_m;
+        return { color: m <= 4 ? '#74c0fc' : m <= 10 ? '#339af0' : m <= 20 ? '#1c7ed6' : '#1864ab', weight: m % 10 === 0 ? 2.2 : 1.3, opacity: 0.85, dashArray: m <= 4 ? '3 4' : null };
+      },
+      onEachFeature: (f, l) => l.bindTooltip(`${f.properties.depth_m} м (модель, ±0,5–1 км)`, { sticky: true }),
+      attribution: ISOBATH_ATTR,
+    }).addTo(layers.isobaths);
+  } catch { state.isobathsLoaded = false; toast('Не удалось загрузить изобаты'); }
+}
+function depthHtml() {
+  const d = state.ctx.depth || {};
+  const o = state.overlays;
+  const withDepth = state.R.filter((r) => r.depth).length;
+  const apps = d.phone_workflows || [];
+  const [main, ...others] = apps;
+  const appCard = (a, open) => `<details class="card" ${open ? 'open' : ''}><summary><b>${esc(a.app)}</b></summary>
+      <ol class="small" style="padding-left:18px;margin:6px 0">${(a.steps || []).map((st) => `<li style="margin:3px 0">${esc(st)}</li>`).join('')}</ol>
+      <dl class="kv small">${a.gpx_import ? `<dt>GPX</dt><dd>${esc(a.gpx_import)}</dd>` : ''}${a.depth_coverage_ladoga ? `<dt>Ладога</dt><dd>${esc(a.depth_coverage_ladoga)}</dd>` : ''}${a.cost ? `<dt>Цена</dt><dd>${esc(a.cost)}</dd>` : ''}</dl>
+    </details>`;
+  return `
+    <h2>Глубины</h2>
+    <p class="small">Самые свежие и точные глубины — у рыбаков с эхолотами: их изобаты собирает Garmin (Quickdraw) и показывает бесплатно в телефоне. На сайт эти данные переносить нельзя, поэтому схема такая: <b>глубины — в ActiveCaptain, наши точки — туда же файлом GPX</b>.</p>
+    <div class="btns"><button type="button" class="btn small" data-act="gpx-filter">GPX: точки по фильтру</button><a class="btn small ghost" href="downloads/ladoga_points.gpx" download>GPX: все точки</a></div>
+    ${main ? appCard(main, true) : ''}
+    ${others.length ? `<details><summary class="small">Другие приложения: ${others.map((a) => esc(String(a.app).split(/[ (,]/)[0])).join(', ')}</summary>${others.map((a) => appCard(a, false)).join('')}</details>` : ''}
+    <h3>На этой карте — общий рельеф дна</h3>
+    <p class="small muted">Помогают понять, где свал, банка или яма. Точным цифрам не верьте: съёмка старая, уровень Ладоги меняется на ±1 м (в 2026 году он примерно на 90 см ниже нормы).</p>
+    ${(d.overlays || []).length ? `<div class="card">
+      <label class="check" style="padding-top:0"><input type="checkbox" data-overlay="genshtab" ${o.genshtab ? 'checked' : ''}> <b>Старая армейская карта (Генштаб 1:100 000)</b></label>
+      <div class="small">Изобаты 2, 5, 10 и 20 м, отметки глубин, камни, отмели (Пересуха и Сидорова у Птинова), мысы, маяки. Съёмка 1970–80-х годов; наложена на GPS с точностью 10–25 м. ${d.overlays.length} ${plural(d.overlays.length, 'лист', 'листа', 'листов')}; листа с о. Сухо (P-36-125) в открытом доступе нет.</div>
+      <div class="small muted" style="margin-top:6px">Прозрачность</div>
+      <input type="range" id="genshtabOpacity" min="0.25" max="1" step="0.05" value="${state.genshtabOpacity}">
+      <p class="small muted" style="margin-bottom:0">Файлы по 1–2 МБ, грузятся только при включении. Слой справочный, открытой лицензии у старых карт нет.</p>
+    </div>` : ''}
+    ${d.isobaths ? `<div class="card">
+      <label class="check" style="padding-top:0"><input type="checkbox" data-overlay="isobaths" ${o.isobaths ? 'checked' : ''}> <b>Изобаты 2–70 м (открытая модель GLDB)</b></label>
+      <div class="small">Грубая модель дна с сеткой ~0,5×0,9 км: где губа мелкая, где уходит на 10–20 м. Линии ошибаются на 0,5–1 км — <b>не для навигации</b>.</div>
+      <div class="btns" style="margin-bottom:0"><a class="btn small ghost" href="downloads/ladoga_isobaths_model.gpx" download>Изобаты в GPX</a></div>
+    </div>` : ''}
+    <label class="check"><input type="checkbox" id="depthOnly" ${state.f.depthOnly ? 'checked' : ''}> Показать только отчёты, где рыбак указал глубину (${withDepth})</label>
+    <details><summary class="small">А можно Navionics прямо на эту карту?</summary>
+      <p class="small">Только с ключом Garmin Navionics Web API (заявку подаёт владелец сайта на garmin.com, из России могут отказать). Бесплатный тариф разрешает лишь отдельное окно с картой Navionics без наших точек, поверх — только платный. Для «глубины + точки» проще ActiveCaptain или Navionics Boating в телефоне.</p>
+    </details>`;
+}
+
+/* ----- Places tab: a guide to the named areas, built from the season zones and the reports inside them ----- */
+function pointInPolygon(lat, lon, poly) {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const [yi, xi] = poly[i], [yj, xj] = poly[j];
+    if ((yi > lat) !== (yj > lat) && lon < ((xj - xi) * (lat - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+function distToSegmentM(p, a, b) {
+  // Equirectangular projection is plenty at these distances.
+  const k = Math.cos(toRad(p.lat)) * 111320, m = 110540;
+  const ax = (a[1] - p.lon) * k, ay = (a[0] - p.lat) * m, bx = (b[1] - p.lon) * k, by = (b[0] - p.lat) * m;
+  const dx = bx - ax, dy = by - ay, len = dx * dx + dy * dy;
+  const t = len ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / len)) : 0;
+  return Math.hypot(ax + t * dx, ay + t * dy);
+}
+// Distance from a point to the zone's edge (0 inside).
+function zoneDistM(z, p) {
+  if (Array.isArray(z.polygon) && z.polygon.length > 2) {
+    if (pointInPolygon(p.lat, p.lon, z.polygon)) return 0;
+    let best = Infinity;
+    for (let i = 0; i < z.polygon.length; i++) best = Math.min(best, distToSegmentM(p, z.polygon[i], z.polygon[(i + 1) % z.polygon.length]));
+    return best;
+  }
+  if (Array.isArray(z.line) && z.line.length > 1) {
+    let best = Infinity;
+    for (let i = 0; i < z.line.length - 1; i++) best = Math.min(best, distToSegmentM(p, z.line[i], z.line[i + 1]));
+    return Math.max(0, best - ((+z.buffer_width_km || 1) * 1000) / 2);
+  }
+  return Math.max(0, distM(p, { lat: +z.lat, lon: +z.lon }) - (+z.radius_km || 1) * 1000);
+}
+function placeStats(z) {
+  if (z._stats) return z._stats;
+  const fish = new Map(), months = Array(12).fill(0);
+  let n = 0;
+  const access = [], hazards = [];
+  state.M.forEach((m, idx) => {
+    const d = zoneDistM(z, m);
+    const kind = m.kind;
+    if (CATCH_KINDS.has(kind) && d === 0) {
+      for (const i of m.r) {
+        const r = state.R[i];
+        if (!CATCH_KINDS.has(r.kind)) continue;
+        n += 1;
+        const mo = monthOf(r);
+        if (mo) months[mo - 1] += 1;
+        for (const f of r.fish || []) fish.set(f, (fish.get(f) || 0) + 1);
+      }
+    } else if (kind === 'launch' && d < 4000) access.push({ idx, d, title: state.R[m.r[0]].title || 'Спуск' });
+    else if ((kind === 'hazard' || kind === 'ice_incident') && d < 1500) hazards.push({ idx, title: state.R[m.r[0]].title || KINDS[kind].short });
+  });
+  access.sort((a, b) => a.d - b.d);
+  z._stats = { n, fish: [...fish.entries()].sort((a, b) => b[1] - a[1]), months, access, hazards };
+  return z._stats;
+}
+function zoneCenter(z) {
+  if (z.lat != null && z.lon != null) return { lat: +z.lat, lon: +z.lon };
+  const pts = z.polygon || z.line || [];
+  return { lat: pts.reduce((a, p) => a + p[0], 0) / pts.length, lon: pts.reduce((a, p) => a + p[1], 0) / pts.length };
+}
+function placesHtml() {
+  const zones = state.ctx.season_zones || [];
+  if (!zones.length) return '<p class="muted">Справочник мест ещё собирается.</p>';
+  const mo = new Date().getMonth() + 1;
+  const sp = speciesList();
+  const order = zones.map((z, i) => ({ z, i, n: placeStats(z).n })).sort((a, b) => b.n - a.n);
+  return `<p class="small muted">Районы южной Ладоги: что там за дно, какая рыба и когда, где спуститься на воду и чего опасаться. Цифры по рыбе — отчёты с этой карты внутри района.</p>
+    ${order.map(({ z, i }) => {
+      const st = placeStats(z);
+      const max = Math.max(1, ...st.months);
+      const nowSp = sp.filter((s) => (s.zones || []).some((x) => x.zone_id === z.id && monthList(x.months).includes(mo)));
+      return `<div class="card">
+        <h4>${esc(z.name || 'Район')}</h4>
+        <div class="small muted">${z.depth_m ? `глубины ${esc(z.depth_m)} м · ` : ''}${monthsText(z.months) ? `сезон: ${esc(monthsText(z.months))}` : ''}</div>
+        ${nowSp.filter((s) => +(s.activity_by_month || [])[mo - 1] > 0).length ? `<div class="small" style="margin-top:4px">В ${MONTHS_IN[mo - 1]} ловят: ${nowSp.filter((s) => +(s.activity_by_month || [])[mo - 1] > 0).map((s) => esc(s.name_ru.replace(/\s*\(.*\)/, ''))).join(', ')}</div>` : ''}
+        ${nowSp.filter((s) => !(+(s.activity_by_month || [])[mo - 1] > 0)).length ? `<div class="small muted">🚫 Есть, но ловить нельзя: ${nowSp.filter((s) => !(+(s.activity_by_month || [])[mo - 1] > 0)).map((s) => esc(s.name_ru.replace(/\s*\(.*\)/, ''))).join(', ')}</div>` : ''}
+        ${st.n ? `<div class="small" style="margin-top:4px"><b>${st.n} ${plural(st.n, 'отчёт', 'отчёта', 'отчётов')} на карте:</b> ${st.fish.slice(0, 6).map(([f, c]) => `${esc(f)} ${c}`).join(', ')}</div>
+          <div class="bars" style="height:26px">${st.months.map((v, k) => `<div class="${k + 1 === mo ? 'cur' : ''}" style="height:${v ? Math.max(8, (v / max) * 100) : 4}%;${v ? '' : 'opacity:.3'}" title="${MONTHS_FULL[k]}: ${v}"></div>`).join('')}</div>
+          <div class="bars-labels">${MONTHS.map((m) => `<span>${m[0]}</span>`).join('')}</div>` : ''}
+        <details><summary class="small">Описание</summary><p class="small">${esc(z.description || z.note || '')}</p></details>
+        ${st.access.length ? `<div class="small">⚓ ${st.access.slice(0, 3).map((a) => `<a href="#" data-open-marker="${a.idx}">${esc(a.title.replace(/^Слип \/ старт на воду: |^Парковка \/ выход к воде: /, ''))}</a>${a.d > 0 ? ` (${fmtDist(a.d)})` : ''}`).join(' · ')}</div>` : ''}
+        ${st.hazards.length ? `<div class="small">⚠️ ${st.hazards.slice(0, 3).map((h) => `<a href="#" data-open-marker="${h.idx}">${esc(h.title)}</a>`).join(' · ')}${st.hazards.length > 3 ? ` и ещё ${st.hazards.length - 3}` : ''}</div>` : ''}
+        <div class="btns" style="margin-bottom:0">
+          <button type="button" class="btn small" data-act="place-show" data-zone="${i}">Показать</button>
+          <button type="button" class="btn small ghost" data-act="place-nav" data-zone="${i}">🧭 Вести сюда</button>
+        </div>
+      </div>`;
+    }).join('')}`;
+}
+function showPlace(i) {
+  const z = (state.ctx.season_zones || [])[i];
+  if (!z) return;
+  const l = zoneLayer(z, '#fab005', z.name || 'Район');
+  if (!l) return;
+  layers.seasonZones.clearLayers();
+  l.addTo(layers.seasonZones);
+  state.overlays.seasonZones = true; applyOverlays();
+  map.fitBounds(l.getBounds(), { padding: [30, 30], maxZoom: 13 });
+  closeSheetOnPhone();
 }
 
 /* ----- Rules tab ----- */
@@ -774,22 +1063,46 @@ const meCircle = L.circle([0, 0], { radius: 1, color: '#1c7ed6', weight: 1, fill
 const navLine = L.polyline([], { color: '#fa5252', weight: 3, dashArray: '8 8', interactive: false });
 const navTarget = L.marker([0, 0], { interactive: false, icon: L.divIcon({ className: '', html: '<div class="target-ring"></div>', iconSize: [34, 34], iconAnchor: [17, 17] }) });
 
+// Layout helpers: a desktop has a permanent side panel; a phone on its side has a fold-away one.
+const phoneLandscape = () => window.matchMedia('(orientation: landscape) and (max-height: 540px) and (max-width: 1100px)').matches;
+const desktopLayout = () => window.matchMedia('(min-width: 900px) and (min-height: 541px)').matches;
+const closeSheetOnPhone = () => { if (!desktopLayout()) setSheet('peek'); };
+
+// Telegram, VK and other apps open links in their own browser, which seldom passes a site the location.
+function inAppBrowser() {
+  const ua = navigator.userAgent;
+  if (/Telegram|FBAN|FBAV|Instagram|VKClient|Line\/|; wv\)/i.test(ua)) return true;
+  return /iPhone|iPad/.test(ua) && !/Safari\//.test(ua);
+}
+
+// Location: a quick coarse fix first (Safari answers it in a second or two from Wi-Fi), then a
+// high-accuracy watch that keeps improving. No timeout on the watch — on the water GPS may need a minute.
 function startWatch(center) {
-  if (!navigator.geolocation) { toast('Этот браузер не сообщает геопозицию'); return; }
+  if (!navigator.geolocation) { showLocationHelp('unsupported'); return; }
   state.centerOnFix = center;
-  if (state.watchId != null) { if (center && state.me) map.setView([state.me.lat, state.me.lon], Math.max(map.getZoom(), 13)); return; }
-  $('#btnLocate').classList.add('on');
-  state.watchId = navigator.geolocation.watchPosition(onFix, onGeoError, { enableHighAccuracy: true, maximumAge: 5000, timeout: 30000 });
+  if (state.watchId != null) {
+    if (center && state.me) map.setView([state.me.lat, state.me.lon], Math.max(map.getZoom(), 13));
+    return;
+  }
+  if (inAppBrowser() && !store.get('ladoga-inapp-warned', false)) { store.set('ladoga-inapp-warned', true); showLocationHelp('inapp'); }
+  $('#btnLocate').classList.add('on', 'busy');
+  if (!state.me) toast('Определяю, где вы… Если телефон спросит — разрешите геопозицию', 4000);
+  navigator.geolocation.getCurrentPosition(onFix, onGeoError, { enableHighAccuracy: false, maximumAge: 120000, timeout: 15000 });
+  state.watchId = navigator.geolocation.watchPosition(onFix, onGeoError, { enableHighAccuracy: true, maximumAge: 3000 });
 }
 function stopWatch() {
   if (state.watchId != null) navigator.geolocation.clearWatch(state.watchId);
   state.watchId = null; state.me = null;
   layers.me.clearLayers();
-  $('#btnLocate').classList.remove('on');
+  $('#btnLocate').classList.remove('on', 'busy');
 }
 function onFix(pos) {
   const c = pos.coords;
-  state.me = { lat: c.latitude, lon: c.longitude, acc: c.accuracy, speed: c.speed, heading: c.heading, t: pos.timestamp };
+  // A coarse Wi-Fi fix must not overwrite a good GPS one that arrived a moment earlier.
+  if (state.me && state.me.acc < c.accuracy && Date.now() - state.me.t < 10000) return;
+  state.me = { lat: c.latitude, lon: c.longitude, acc: c.accuracy, speed: c.speed, heading: c.heading, t: Date.now() };
+  state.geoError = null;
+  $('#btnLocate').classList.remove('busy');
   if (!layers.me.hasLayer(meMarker)) { meMarker.addTo(layers.me); meCircle.addTo(layers.me); }
   meMarker.setLatLng([c.latitude, c.longitude]);
   meCircle.setLatLng([c.latitude, c.longitude]).setRadius(c.accuracy || 1);
@@ -798,11 +1111,57 @@ function onFix(pos) {
   updatePointFromMe();
 }
 function onGeoError(err) {
+  state.geoError = err.code;
   if (err.code === 1) {
     stopWatch();
-    const inApp = /Telegram|FBAN|FBAV|Instagram|VKClient|; wv\)/i.test(navigator.userAgent);
-    toast(inApp ? 'Откройте ссылку в Safari или Chrome: встроенный браузер мессенджера не даёт геопозицию' : 'Геопозиция запрещена. Разрешите её этому сайту в настройках браузера', 6000);
-  } else toast('Не удаётся определить место — жду сигнал GPS');
+    showLocationHelp(inAppBrowser() ? 'inapp' : 'denied');
+  } else if (!state.me) {
+    // POSITION_UNAVAILABLE or TIMEOUT: the watch keeps running and answers once the phone finds itself.
+    toast(err.code === 3 ? 'GPS пока ищет спутники. На открытом месте это до минуты; Wi-Fi ускоряет' : 'Телефон пока не знает, где он: проверьте, что геолокация включена', 5000);
+  }
+  updateNav();
+}
+function showLocationHelp(kind) {
+  const ua = navigator.userAgent;
+  const iOS = /iPhone|iPad|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const chromeIOS = /CriOS/.test(ua), yandex = /YaBrowser/.test(ua);
+  const url = location.href.split('#')[0];
+  let title = 'Разрешите геопозицию', lead = '', steps = [];
+  if (kind === 'unsupported') { title = 'Браузер не сообщает место'; lead = 'Откройте карту в Safari (iPhone) или Chrome (Android).'; }
+  else if (kind === 'inapp') {
+    title = iOS ? 'Откройте карту в Safari' : 'Откройте карту в браузере';
+    lead = 'Ссылка открылась внутри Telegram или другого приложения. Его встроенный браузер почти никогда не даёт сайтам геопозицию — навигатор к точке там не заработает.';
+    steps = iOS
+      ? ['Нажмите «Открыть в Safari» ниже.', 'Не открылось — нажмите «⋯» или значок компаса в углу экрана и выберите «Открыть в Safari».', 'В Safari нажмите «Поделиться» → «На экран „Домой“» — карта будет открываться как приложение.']
+      : ['Нажмите «⋮» в углу экрана → «Открыть в браузере» (или «в Chrome»).'];
+  } else if (iOS) {
+    lead = 'iPhone не пускает этот сайт к геопозиции. Проверьте по порядку:';
+    steps = [
+      '<b>Настройки → Конфиденциальность и безопасность → Службы геолокации</b> — включены.',
+      `Там же ниже: <b>${chromeIOS ? 'Chrome' : yandex ? 'Яндекс Браузер' : 'Сайты Safari'}</b> → «При использовании приложения» и включите <b>«Точная геопозиция»</b>.`,
+      'В Safari слева в адресной строке нажмите <b>«аА»</b> (или значок ⚙︎) → <b>«Настройки веб-сайта»</b> → <b>Геопозиция → «Разрешить»</b>.',
+      'Вернитесь сюда и нажмите «Попробовать ещё раз». Если снова тихо — закройте вкладку и откройте карту заново.',
+    ];
+  } else {
+    lead = 'Браузер не пускает этот сайт к геопозиции:';
+    steps = [
+      'Нажмите на значок замка слева от адреса → <b>Разрешения → Геоданные → Разрешить</b>.',
+      '<b>Настройки → Местоположение</b> телефона — включено; для браузера — «Разрешить во время использования» и «Точное местоположение».',
+      'Вернитесь и нажмите «Попробовать ещё раз».',
+    ];
+  }
+  state.tab = 'help';
+  $$('#tabs button').forEach((b) => b.classList.remove('active'));
+  $('#sheetBody').innerHTML = `<h2>${esc(title)}</h2>${lead ? `<p>${esc(lead)}</p>` : ''}
+    ${steps.length ? `<ol class="small" style="padding-left:18px">${steps.map((x) => `<li style="margin:6px 0">${x}</li>`).join('')}</ol>` : ''}
+    <div class="btns">
+      ${kind === 'inapp' && iOS ? `<a class="btn" href="x-safari-${esc(url)}">Открыть в Safari</a>` : ''}
+      <button type="button" class="btn ${kind === 'inapp' ? 'ghost' : ''}" data-act="copy-link">Скопировать ссылку</button>
+      ${kind !== 'unsupported' ? '<button type="button" class="btn ghost" data-act="locate-retry">Попробовать ещё раз</button>' : ''}
+    </div>
+    <p class="small muted">Без геопозиции карта, точки, фильтры и выгрузка GPX работают — не работают только «где я» и «вести к точке». Для навигации на воде GPX можно открыть в ActiveCaptain, Navionics или OsmAnd (вкладка «Глубины»).</p>`;
+  $('#sheetBody').scrollTop = 0;
+  setSheet('full');
 }
 $('#btnLocate').addEventListener('click', () => {
   if (state.watchId != null && !state.nav && state.me) {
@@ -838,7 +1197,12 @@ function stopNav() {
 function updateNav() {
   if (!state.nav) return;
   const t = state.nav;
-  if (!state.me) { $('#navDist').textContent = '—'; $('#navSub').textContent = 'Жду GPS… разрешите геопозицию, если спросит'; return; }
+  if (!state.me) {
+    $('#navDist').textContent = '—';
+    $('#navSub').innerHTML = state.geoError === 1 ? 'Геопозиция запрещена — <a href="#" id="navHelp" style="color:#4cc0dc">как включить</a>' : 'Жду GPS… разрешите геопозицию, если спросит';
+    $('#navHelp')?.addEventListener('click', (e) => { e.preventDefault(); showLocationHelp(inAppBrowser() ? 'inapp' : 'denied'); });
+    return;
+  }
   const d = distM(state.me, t), b = bearing(state.me, t);
   navLine.setLatLngs([[state.me.lat, state.me.lon], [t.lat, t.lon]]);
   const moving = state.me.speed != null && state.me.speed > 0.8;
@@ -858,11 +1222,17 @@ function updateNav() {
   if (heading == null) parts.push('стрелка: от севера');
   $('#navSub').textContent = parts.join(' · ');
   if (state.follow) {
-    if (d > 150) map.fitBounds(L.latLngBounds([[state.me.lat, state.me.lon], [t.lat, t.lon]]), { padding: [60, 60], maxZoom: 17, animate: false });
+    if (d > 150) map.fitBounds(L.latLngBounds([[state.me.lat, state.me.lon], [t.lat, t.lon]]), { ...navPadding(), maxZoom: 17, animate: false });
     else map.setView([state.me.lat, state.me.lon], 17, { animate: false });
   }
   if (d < 25 && !state.arrived) { state.arrived = true; navigator.vibrate?.([200, 100, 200]); toast('Вы на точке 🎣', 4000); }
   if (d > 60) state.arrived = false;
+}
+// Keep both ends of the course clear of the HUD on top and the sheet (bottom on a phone, left on a desktop).
+function navPadding() {
+  const hud = $('#navHud').getBoundingClientRect();
+  const wide = desktopLayout();
+  return { paddingTopLeft: [wide ? 430 : 40, hud.bottom + 30], paddingBottomRight: [40, wide || phoneLandscape() ? 40 : 130] };
 }
 map.on('dragstart', () => { if (state.nav) { state.follow = false; $('#navCenter').classList.remove('on'); } });
 $('#navCenter').addEventListener('click', () => { state.follow = !state.follow; $('#navCenter').classList.toggle('on', state.follow); updateNav(); });
@@ -903,7 +1273,7 @@ async function requestWakeLock() { try { wakeLock = await navigator.wakeLock?.re
 function releaseWakeLock() { try { wakeLock?.release(); } catch { /* ignore */ } wakeLock = null; }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && state.nav) requestWakeLock(); });
 
-$('#btnLayers').addEventListener('click', () => { showTab('layers'); setSheet(window.innerWidth < 900 ? 'half' : 'full'); });
+$('#btnLayers').addEventListener('click', () => { showTab('layers'); setSheet(desktopLayout() ? 'full' : 'half'); });
 
 /* ---------- context layers ---------- */
 function drawLines() {
@@ -940,6 +1310,7 @@ async function boot() {
   }
   state.R = points.reports; state.M = points.markers; state.meta = points; state.ctx = ctx || {};
   addExtraTileLayers();
+  buildDepthLayers();
   applyOverlays();
   drawLines(); drawMine(); drawRules(); drawSeasonZones();
   render();

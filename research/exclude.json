@@ -1,0 +1,6 @@
+{
+  "note": "Records to drop from the map even if a source lists them (url → reason).",
+  "urls": {
+    "https://ru.fishermap.org/location/20307/": "8,5 км от Ладоги вглубь суши (у р. Сарья) — не акватория"
+  }
+}
