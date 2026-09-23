@@ -64,7 +64,7 @@ const state = {
   fav: new Set(store.get('ladoga-fav', [])),
   mine: store.get('ladoga-mine', []),
   base: store.get('ladoga-base', 'sat'),
-  overlays: Object.assign({ seamarks: false, heat: false, cluster: true, radius: false, seasonZones: false, rules: false, lines: true, mine: true, tracks: false, genshtab: false, isobaths: false, charts: false, chartIso: false, shade: false, gridIso: false, community: false }, store.get('ladoga-overlays', {})),
+  overlays: Object.assign({ seamarks: false, heat: false, cluster: true, radius: false, seasonZones: false, rules: false, lines: true, mine: true, tracks: false, genshtab: false, isobaths: false, charts: false, chartIso: false, shade: false, gridIso: false, community: false, myDepth: true }, store.get('ladoga-overlays', {})),
   chartOpacity: store.get('ladoga-chart-opacity', 1),
   genshtabOpacity: store.get('ladoga-genshtab-opacity', 0.8),
   overlayOpacity: store.get('ladoga-overlay-opacity', 0.7),
@@ -678,7 +678,8 @@ function drawIsoLabels() {
   const z = map.getZoom();
   const iso = state.overlays.gridIso && depthModel.labels.length;
   const com = state.overlays.community && depthModel.community;
-  if ((!iso && !com) || z < 13) { if (map.hasLayer(layer)) map.removeLayer(layer); return; }
+  const mine = state.overlays.myDepth && typeof myDepthPoints === 'function' ? myDepthPoints() : [];
+  if ((!iso && !com && !mine.length) || z < 13) { if (map.hasLayer(layer)) map.removeLayer(layer); return; }
   if (!map.hasLayer(layer)) layer.addTo(map);
   const size = map.getSize();
   const view = map.getBounds().pad(0.1);
@@ -695,12 +696,13 @@ function drawIsoLabels() {
     taken.add(key); n += 1;
     L.marker([p.lat, p.lon], { interactive: false, keyboard: false, icon: L.divIcon({ className: '', html: `<span class="iso-label ${cls}">${text}</span>`, iconSize: null }) }).addTo(layer);
   };
+  for (const p of mine) add(p, 'my', num(p.m));
   if (com) for (const p of depthModel.communityMarks) add(p, 'community rock', `${p.rock ? '✚' : 'б'} ${num(p.m)}`);
   if (iso) for (const p of depthModel.labels) add(p, p.m <= 2 ? 'shallow' : '', String(p.m));
   if (com) for (const p of depthModel.communityIsoLabels) add(p, 'community', num(p.m));
   if (com && z >= 14) for (const p of depthModel.communityLabels) add(p, 'community sounding', num(p.m));
 }
-map.on('moveend zoomend', () => { if (state.overlays.gridIso || state.overlays.community) drawIsoLabels(); });
+map.on('moveend zoomend', () => { if (state.overlays.gridIso || state.overlays.community || state.overlays.myDepth) drawIsoLabels(); });
 // Community depth files (openly published Garmin / GPX / KML contours and soundings), when there are any.
 // Community depth files: freegpsmap 2007 and S. Novikov 2005 Garmin maps — amateur digitising of the same ГУНиО
 // charts, filling places the chart isolines miss (Petrokrepost bay, the Neva source, the deep lake). Lines that
@@ -1042,13 +1044,14 @@ function drawMine() {
   layers.mine.clearLayers();
   for (const p of state.mine) {
     const t = TAGS[p.tag] || TAGS.other;
-    L.marker([p.lat, p.lon], { icon: L.divIcon({ className: 'hit', html: `<div class="mark-dot" style="background:${t.color}">${esc(t.glyph)}</div>`, iconSize: [44, 44], iconAnchor: [22, 22] }), keyboard: false })
+    const dep = p.depth != null ? `<span class="poi-label">${String(p.depth).replace('.', ',')} м</span>` : '';
+    L.marker([p.lat, p.lon], { icon: L.divIcon({ className: 'hit', html: `<div class="mark-dot" style="background:${t.color}">${esc(t.glyph)}</div>${dep}`, iconSize: [44, 44], iconAnchor: [22, 22] }), keyboard: false })
       .on('click', () => openMineCard(p))
       .addTo(layers.mine);
   }
 }
-function addMine({ lat, lon, name, tag = 'other', trackId = null, note = '' }) {
-  const p = { id: `m${Date.now()}${Math.random().toString(36).slice(2, 5)}`, lat: +lat.toFixed(6), lon: +lon.toFixed(6), name, t: Date.now(), tag, trackId, note };
+function addMine({ lat, lon, name, tag = 'other', trackId = null, note = '', depth = null }) {
+  const p = { id: `m${Date.now()}${Math.random().toString(36).slice(2, 5)}`, lat: +lat.toFixed(6), lon: +lon.toFixed(6), name, t: Date.now(), tag, trackId, note, depth };
   state.mine.push(p);
   saveMine();
   if (!state.overlays.mine) { state.overlays.mine = true; applyOverlays(); }

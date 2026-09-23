@@ -166,6 +166,7 @@ function openMineCard(p, opts = {}) {
         <button type="button" class="tile-btn" data-act="mine-share" data-id="${esc(p.id)}">${ic('share')}<span>Поделиться</span></button>
         <button type="button" class="tile-btn" data-act="mine-menu" data-id="${esc(p.id)}">${ic('more-horiz')}<span>Ещё</span></button>
       </div>
+      ${p.depth != null ? `<p><b>Глубина по вашему эхолоту: ${String(p.depth).replace('.', ',')} м</b></p>` : ''}
       <div class="card"><div class="coord">${fmtDec(p.lat, p.lon)}</div><div class="coord">${fmtDM(p.lat, p.lon)}</div></div>
       ${p.note ? `<p>${esc(p.note)}</p>` : ''}`,
     onShow: () => selectRing(p.lat, p.lon),
@@ -522,8 +523,11 @@ function mePointsHtml() {
     <div class="chips" style="margin:4px 0 8px">${chips.map(([k, t]) => `<button type="button" class="chip ${f === k ? 'on' : ''}" data-points-filter="${k}">${esc(t)}</button>`).join('')}</div>
     ${f === 'all' || f === 'fav' ? `${f === 'all' && favs.length ? '<h3>Избранные отчёты</h3>' : ''}${favs.map(({ m, idx }) => listRow({ icon: 'star-fill', title: esc(pointTitle(m)), sub: `${esc(state.R[m.r[0]].sector || '')}${me ? ` · ${fmtDist(distM(me, m))} от вас` : ''}`, attrs: `data-open-marker="${idx}"` })).join('')}${f === 'fav' && !favs.length ? '<p class="muted">Нажмите «Сохранить» в карточке точки — она появится здесь.</p>' : ''}` : ''}
     ${f !== 'fav' ? `${f === 'all' && mine.length ? '<h3>Мои точки и метки</h3>' : ''}${mine.slice().reverse().map(rowMine).join('')}${!mine.length ? '<p class="muted">Своих точек пока нет. Долгое нажатие на карту (или правый клик) — «Новая точка»; «Метка» при записи трека и в навигаторе сохраняет место сразу.</p>' : ''}` : ''}
-    <div class="btns"><button type="button" class="btn small ghost" data-act="gpx-import">${ic('add')}Загрузить GPX</button>${state.mine.length ? `<button type="button" class="btn small ghost" data-act="gpx-mine">${ic('download')}Мои точки в GPX</button>` : ''}</div>
-    <p class="small muted">GPX с точками и треками из Garmin, Navionics, OsmAnd, Locus или другого телефона добавится сюда и на карту.</p>`;
+    <div class="btns"><button type="button" class="btn small ghost" data-act="gpx-import">${ic('add')}Загрузить GPX или CSV</button>${state.mine.length ? `<button type="button" class="btn small ghost" data-act="gpx-mine">${ic('download')}Мои точки в GPX</button>` : ''}</div>
+    <p class="small muted">GPX с точками и треками из Garmin, Navionics, OsmAnd, Locus или другого телефона добавится сюда и на карту.</p>
+    <h3>Мои замеры глубин</h3>
+    <p class="small">Самые свежие глубины — ваши: впишите глубину по эхолоту в метку или новую точку, либо загрузите файл замеров — CSV со столбцами «широта, долгота, глубина» (например, выгрузка Deeper) или GPX с глубинами. На карте они подписываются зелёным при приближении (слой «Мои замеры глубин»).</p>
+    ${depthSets.list.map((s) => `<div class="track-row"><button type="button" class="list-row" data-act="depthset-show" data-id="${esc(s.id)}">${ic('water')}<span class="lr-main"><span class="lr-title">${esc(s.name)}</span><span class="lr-sub">${s.n} ${plural(s.n, 'замер', 'замера', 'замеров')} · ${fmtDay(s.t)}</span></span></button><button type="button" class="icon-btn" data-act="depthset-del" data-id="${esc(s.id)}" aria-label="Удалить замеры">${ic('delete')}</button></div>`).join('')}`;
 }
 function offlineHtml() {
   const { iOS, installed } = platformInfo();
@@ -681,7 +685,7 @@ function openDepthHelp() {
       <p class="small">Глубины в приложении (включаются в «Слоях»): <b>навигационные карты ГУНиО</b> 1:10 000–1:125 000 — резкие, с отметками глубин (цифры видны при приближении — когда линейка внизу показывает 300 м и меньше); <b>цветная заливка и изобаты через 1 м</b> — модель дна, построенная по 18 тыс. отметкам глубин, распознанным с этих карт (ошибка в среднем 0,3 м, в 90 % мест до 1 м); изобаты, снятые с карт. У каждой точки, в навигаторе и под лодкой показана глубина по этой модели.</p>
       <div class="card small warn-card">Глубины на картах — от среднего многолетнего уровня озера. В 2026 году вода примерно на 0,9 м ниже, значит реально мельче. Съёмка 1930–80-х годов; не для судовождения.</div>
       ${state.ctx.depth?.community ? '<p class="small"><b>Любительские карты глубин Garmin</b> (freegpsmap 2007, С. Новиков 2005) — 25 тыс. отметок и 800 изобат, оцифрованных рыбаками с тех же карт ГУНиО. Совпадают с картами в пределах 15–20 м и дополняют их там, где изобат нет: бухта Петрокрепость, исток Невы, глубокая часть. Отметки видны подписями при сильном приближении, камни — ✚.</p>' : ''}
-      <p class="small">Самые свежие глубины — у рыбаков с эхолотами: их собирает Garmin (Quickdraw) и показывает в телефоне бесплатно, но выгрузить их нельзя. Схема такая: <b>глубины — в ActiveCaptain, наши точки — туда же файлом GPX</b>.</p>
+      <p class="small"><b>Garmin Quickdraw</b> (глубины с эхолотов рыбаков в ActiveCaptain) выгрузить нельзя: Garmin показывает их только внутри своих приложений после входа в аккаунт, открытой выгрузки нет. Можно держать ActiveCaptain рядом и переносить туда наши точки файлом GPX. А <b>свои замеры</b> — глубину по вашему эхолоту в метках или файл CSV/GPX с глубинами — можно загрузить сюда: «Моё › Точки › Мои замеры глубин».</p>
       <div class="btns"><button type="button" class="btn small" data-act="gpx-filter">GPX: точки по фильтру</button><a class="btn small ghost" href="downloads/ladoga_points.gpx" download>GPX: все точки</a>${d.isobaths ? '<a class="btn small ghost" href="downloads/ladoga_isobaths_model.gpx" download>Изобаты (модель) в GPX</a>' : ''}</div>
       ${apps.map((a, i) => appCard(a, i === 0)).join('')}
       <h3>Карты ГУНиО на этой карте</h3>
@@ -729,6 +733,7 @@ function layersTabHtml() {
     ${state.ctx.depth?.shade?.url ? `<label class="check switch"><span><b>Цветная заливка глубин</b><br><span class="small muted">модель дна по отметкам глубин карт: от светлого мелководья к тёмной глубине</span></span><input type="checkbox" data-overlay="shade" ${o.shade ? 'checked' : ''}></label>` : ''}
     ${state.ctx.depth?.isolines ? `<label class="check switch"><span><b>Изобаты через 1 м</b><br><span class="small muted">1–8, 10, 12, 15, 20… м по той же модели, с подписями глубин</span></span><input type="checkbox" data-overlay="gridIso" ${o.gridIso ? 'checked' : ''}></label>` : ''}
     ${state.ctx.depth?.chart_isobaths ? `<label class="check switch"><span>Изобаты 2–30 м, снятые с карт</span><input type="checkbox" data-overlay="chartIso" ${o.chartIso ? 'checked' : ''}></label>` : ''}
+    <label class="check switch"><span><b>Мои замеры глубин</b><br><span class="small muted">глубины из ваших меток и загруженных файлов эхолота, зелёные подписи</span></span><input type="checkbox" data-overlay="myDepth" ${o.myDepth ? 'checked' : ''}></label>
     ${state.ctx.depth?.community ? `<label class="check switch"><span>Любительские карты глубин Garmin<br><span class="small muted">freegpsmap 2007, С. Новиков 2005: оцифровка тех же карт ГУНиО, дополняет их в бухте Петрокрепость, у истока Невы и в глубокой части; отметки подписями при приближении, камни ✚</span></span><input type="checkbox" data-overlay="community" ${o.community ? 'checked' : ''}></label>` : ''}
     ${(state.ctx.depth?.overlays || []).length ? `<label class="check switch"><span>Старая армейская карта 1:100 000<br><span class="small muted">Генштаб 1970–80-х, справочно: навигационные карты и модель дна точнее</span></span><input type="checkbox" data-overlay="genshtab" ${o.genshtab ? 'checked' : ''}></label>
       ${o.genshtab ? `<input type="range" id="genshtabOpacity" min="0.25" max="1" step="0.05" value="${state.genshtabOpacity}">` : ''}` : ''}
@@ -1213,6 +1218,12 @@ function onContentChange(e) {
 }
 function onContentInput(e) {
   const t = e.target;
+  if (t.id === 'markDepth') {
+    const layer = topLayer();
+    const p = layer?.markId && state.mine.find((x) => x.id === layer.markId);
+    if (p) { layer.touched = true; p.depth = parseDepth(t.value); saveMine(); clearTimeout(t._timer); t._timer = setTimeout(() => { drawMine(); drawIsoLabels(); }, 400); }
+    return;
+  }
   if (t.id === 'searchInput') onSearchInput(t.value);
   else if (t.id === 'yearMin') {
     const v = +t.value, min = +t.min;

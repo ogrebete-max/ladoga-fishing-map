@@ -388,6 +388,7 @@ function quickMark() {
   openModal({
     key: 'mark', title: `Метка ${fmtTime(p.t)} сохранена`, markId: p.id,
     body: () => `<div class="tag-grid">${Object.entries(TAGS).map(([k, t]) => `<button type="button" data-tag="${k}"><span class="tag-dot" style="background:${t.color}"></span>${t.label}</button>`).join('')}</div>
+      <input type="text" id="markDepth" inputmode="decimal" placeholder="Глубина по эхолоту, м" autocomplete="off">
       <div class="btns"><button type="button" class="btn ghost" data-act="mark-name">${ic('edit')}Добавить название</button><button type="button" class="btn textdanger" data-act="mark-del">${ic('delete')}Удалить метку</button></div>`,
     onShow: (layer) => {
       layer.timer = setTimeout(() => { if (topLayer() === layer && !layer.touched) closeTop(); }, 8000);
@@ -418,10 +419,11 @@ function openNewPoint(lat, lon, opts = {}) {
     body: () => `<p class="coord" style="margin-top:0">${fmtDM(lat, lon)}<br><span class="small muted">${fmtDec(lat, lon)}${geo.me ? ` · ${fmtDist(distM(geo.me, { lat, lon }))} от вас` : ''}${depthAt({ lat, lon }) ? ` · глубина по карте ${esc(depthAt({ lat, lon }).text)}` : ''}</span></p>
       <div class="tag-grid">${Object.entries(TAGS).map(([k, t]) => `<button type="button" data-tag="${k}" class="${k === 'other' ? 'on' : ''}"><span class="tag-dot" style="background:${t.color}"></span>${t.label}</button>`).join('')}</div>
       <input type="text" id="npName" placeholder="Название (можно не писать)" autocomplete="off">
+      <input type="text" id="npDepth" inputmode="decimal" placeholder="Глубина по эхолоту, м (можно не писать)" autocomplete="off" style="margin-top:8px">
       <div class="btns"><button type="button" class="btn ghost" data-act="np-nav">${ic('navigation')}Вести сюда</button><button type="button" class="btn ghost" data-act="copy-text" data-text="${esc(`${fmtDM(lat, lon)} (${fmtDec(lat, lon)})`)}">${ic('content-copy')}Координаты</button></div>`,
     foot: () => `<button type="button" class="btn ghost" data-act="close-top">Отмена</button><button type="button" class="btn" data-act="np-save">Сохранить</button>`,
     onConfirm: (layer) => {
-      const p = addMine({ lat, lon, name: layer.value || `${TAGS[layer.tag]?.label || 'Точка'} ${fmtDay(Date.now())}`, tag: layer.tag });
+      const p = addMine({ lat, lon, name: layer.value || `${TAGS[layer.tag]?.label || 'Точка'} ${fmtDay(Date.now())}`, tag: layer.tag, depth: layer.depth });
       toast('Точка сохранена — Моё › Точки', { action: 'Показать', onAction: () => openMineCard(p) });
       refreshPage('me');
     },
@@ -479,7 +481,16 @@ function handleTrackAction(act, el) {
       toast('Метка удалена', { action: 'Отменить', ms: 10000, onAction: () => { state.mine.splice(i, 0, p); saveMine(); drawMine(); trk.marksDrawn = -1; drawCurTrack(); } });
       break;
     }
-    case 'np-save': confirmWith($('#npName')?.value.trim() || ''); break;
+    case 'np-save': { const l = topLayer(); if (l) l.depth = parseDepth($('#npDepth')?.value); confirmWith($('#npName')?.value.trim() || ''); break; }
+    case 'depthset-show': { const s = depthSets.list.find((x) => x.id === d.id); if (s) { state.overlays.myDepth = true; applyOverlays(); closeAll(); setFollowFree(); setTimeout(() => map.fitBounds(depthSetBounds(s), fitPadding(16)), 60); } break; }
+    case 'depthset-del': {
+      const i = depthSets.list.findIndex((x) => x.id === d.id);
+      if (i < 0) break;
+      const [s] = depthSets.list.splice(i, 1);
+      depthSets.del(s.id); applyOverlays(); refreshPage('me');
+      toast('Замеры удалены', { action: 'Отменить', ms: 10000, onAction: () => { depthSets.list.splice(i, 0, s); depthSets.put(s); applyOverlays(); refreshPage('me'); } });
+      break;
+    }
     case 'np-nav': { const l = topLayer(); if (l) startNav({ lat: l.lat, lon: l.lon, title: 'Точка на карте' }); break; }
     case 'rename-save': confirmWith($('#renameInput')?.value || ''); break;
     case 'gpx-import': pickGpx(); break;
@@ -489,24 +500,121 @@ function handleTrackAction(act, el) {
   return true;
 }
 
+/* ---------- my depths: echo-sounder readings in marks, and imported soundings (CSV / GPX) ---------- */
+// A separate small database, so the tracks database never needs an upgrade.
+const depthSets = {
+  p: null, list: [],
+  open() {
+    if (!this.p) this.p = new Promise((res, rej) => {
+      if (!('indexedDB' in window)) { rej(new Error('no indexedDB')); return; }
+      const r = indexedDB.open('ladoga-depths', 1);
+      r.onupgradeneeded = () => { if (!r.result.objectStoreNames.contains('sets')) r.result.createObjectStore('sets', { keyPath: 'id' }); };
+      r.onsuccess = () => res(r.result);
+      r.onerror = () => rej(r.error);
+    });
+    return this.p;
+  },
+  async run(mode, fn) {
+    const db = await this.open();
+    return new Promise((res, rej) => {
+      const tx = db.transaction('sets', mode);
+      const q = fn(tx.objectStore('sets'));
+      tx.oncomplete = () => res(q?.result);
+      tx.onerror = () => rej(tx.error);
+    });
+  },
+  async load() { try { this.list = (await this.run('readonly', (s) => s.getAll())) || []; } catch { this.list = []; } this.list.sort((a, b) => b.t - a.t); },
+  put(x) { return this.run('readwrite', (s) => s.put(x)).catch(() => toast('Не удалось сохранить замеры в телефоне')); },
+  del(id) { return this.run('readwrite', (s) => s.delete(id)).catch(() => {}); },
+};
+// All my depth readings as label points: imported soundings and marks with a depth.
+function myDepthPoints() {
+  const out = [];
+  for (const s of depthSets.list) for (const [lat, lon, m] of s.pts) out.push({ lat, lon, m });
+  for (const p of state.mine) if (p.depth != null && Number.isFinite(+p.depth)) out.push({ lat: p.lat, lon: p.lon, m: +p.depth });
+  return out;
+}
+const parseDepth = (v) => { const x = parseFloat(String(v ?? '').replace(',', '.')); return Number.isFinite(x) && x >= 0 && x < 250 ? Math.round(x * 10) / 10 : null; };
+// CSV from a sonar app (Deeper and others): columns latitude / longitude / depth in any order and language,
+// or just three numbers per line. Feet are converted; readings closer than ~10 m are averaged.
+function parseDepthCsv(text) {
+  const lines = String(text).split(/\r?\n/).filter((l) => l.trim());
+  if (!lines.length) return [];
+  const delim = [';', '\t', ','].find((d) => lines[0].includes(d)) || ',';
+  const split = (l) => l.split(delim).map((x) => x.trim().replace(/^"|"$/g, ''));
+  let head = split(lines[0]).map((h) => h.toLowerCase());
+  const col = (...names) => head.findIndex((h) => names.some((n) => h === n || h.startsWith(n)));
+  let iLat = col('latitude', 'lat', 'широта'), iLon = col('longitude', 'lon', 'lng', 'долгота'), iDep = col('depth', 'глубина', 'water depth', 'z');
+  let start = 1;
+  if (iLat < 0 || iLon < 0 || iDep < 0) {
+    const first = split(lines[0]).map((x) => parseFloat(x.replace(',', '.')));
+    if (first.length >= 3 && first.slice(0, 3).every(Number.isFinite)) { iLat = 0; iLon = 1; iDep = 2; start = 0; head = []; } else return [];
+  }
+  const feet = /ft|feet|фут/.test(head[iDep] || '');
+  const cells = new Map();
+  for (let i = start; i < lines.length; i++) {
+    const c = split(lines[i]);
+    const lat = parseFloat(String(c[iLat]).replace(',', '.')), lon = parseFloat(String(c[iLon]).replace(',', '.'));
+    let dep = parseFloat(String(c[iDep]).replace(',', '.'));
+    if (!Number.isFinite(lat) || !Number.isFinite(lon) || !Number.isFinite(dep)) continue;
+    if (feet) dep *= 0.3048;
+    dep = Math.abs(dep);
+    if (dep > 250 || !MAX_BOUNDS.contains([lat, lon])) continue;
+    const key = `${Math.round(lat / 0.00009)}:${Math.round(lon / 0.00018)}`;
+    const cell = cells.get(key) || { lat: 0, lon: 0, d: 0, n: 0 };
+    cell.lat += lat; cell.lon += lon; cell.d += dep; cell.n += 1;
+    cells.set(key, cell);
+  }
+  return [...cells.values()].map((c) => [+(c.lat / c.n).toFixed(6), +(c.lon / c.n).toFixed(6), Math.round((c.d / c.n) * 10) / 10]);
+}
+async function addDepthSet(name, pts) {
+  if (!pts.length) return null;
+  const set = { id: `d${Date.now()}`, name, t: Date.now(), n: pts.length, pts };
+  depthSets.list.unshift(set);
+  await depthSets.put(set);
+  state.overlays.myDepth = true; applyOverlays();
+  return set;
+}
+function depthSetBounds(set) { return L.latLngBounds(set.pts.map((p) => [p[0], p[1]])); }
+
 /* ---------- GPX in and out: points and tracks from a Garmin, Navionics, OsmAnd…; one backup file ---------- */
 function pickGpx() {
   const inp = Object.assign(document.createElement('input'), { type: 'file' });
   // iPhone greys out .gpx when a type filter is set: no filter there.
-  if (!platformInfo().iOS) inp.accept = '.gpx,application/gpx+xml,application/xml,text/xml';
-  inp.onchange = () => { if (inp.files?.[0]) importGpx(inp.files[0]); };
+  if (!platformInfo().iOS) inp.accept = '.gpx,.csv,.txt,application/gpx+xml,application/xml,text/xml,text/csv,text/plain';
+  inp.onchange = () => { if (inp.files?.[0]) importFile(inp.files[0]); };
   inp.click();
 }
-const TAG_BY_TYPE = Object.fromEntries(Object.entries(TAGS).map(([k, t]) => [t.label.toLowerCase(), k]));
-function importGpx(file) {
+// GPX (points, tracks, depths inside) or CSV (sonar soundings).
+function importFile(file) {
   const reader = new FileReader();
-  reader.onload = () => {
+  reader.onload = async () => {
+    const text = String(reader.result || '');
+    if (/^\s*</.test(text)) { importGpxText(text, file.name); return; }
+    const pts = parseDepthCsv(text);
+    if (!pts.length) { toast('В файле нет глубин этого района. Нужны столбцы: широта, долгота, глубина', 7000); return; }
+    const set = await addDepthSet(file.name.replace(/\.(csv|txt)$/i, ''), pts);
+    refreshPage('me');
+    toast(`Загружено ${set.n} ${plural(set.n, 'замер', 'замера', 'замеров')} глубины — слой «Мои замеры глубин»`, { action: 'Показать', onAction: () => { setFollowFree(); map.fitBounds(depthSetBounds(set), fitPadding(16)); } });
+  };
+  reader.readAsText(file);
+}
+const TAG_BY_TYPE = Object.fromEntries(Object.entries(TAGS).map(([k, t]) => [t.label.toLowerCase(), k]));
+function importGpxText(text, fileName) {
+  const file = { name: fileName };
+  {
     try {
-      const doc = new DOMParser().parseFromString(String(reader.result), 'application/xml');
+      const doc = new DOMParser().parseFromString(text, 'application/xml');
       if (doc.getElementsByTagName('parsererror').length) throw new Error('bad xml');
       const txt = (el, tag) => el.getElementsByTagName(tag)[0]?.textContent?.trim() || '';
       const inArea = (lat, lon) => Number.isFinite(lat) && Number.isFinite(lon) && MAX_BOUNDS.contains([lat, lon]);
       let nPts = 0, nTrk = 0, outside = 0;
+      const soundings = [];
+      // Depth in a waypoint or track point: <depth>, Garmin <gpxx:Depth>, OsmAnd/Locus extensions.
+      const gpxDepth = (el) => {
+        const hit = [...el.getElementsByTagName('*')].find((x) => /^(depth|gpxx:depth|gpxtpx:depth)$/i.test(x.localName || x.nodeName) || /depth$/i.test(x.localName || ''));
+        return hit ? parseDepth(hit.textContent) : null;
+      };
       const seen = new Set(state.mine.map((p) => `${p.lat.toFixed(5)},${p.lon.toFixed(5)}`));
       for (const w of doc.getElementsByTagName('wpt')) {
         const lat = +w.getAttribute('lat'), lon = +w.getAttribute('lon');
@@ -514,7 +622,7 @@ function importGpx(file) {
         const key = `${lat.toFixed(5)},${lon.toFixed(5)}`;
         if (seen.has(key)) continue;
         seen.add(key);
-        state.mine.push({ id: `m${Date.now()}${nPts}${Math.random().toString(36).slice(2, 5)}`, lat: +lat.toFixed(6), lon: +lon.toFixed(6), name: txt(w, 'name') || 'Точка из GPX', t: Date.parse(txt(w, 'time')) || Date.now(), tag: TAG_BY_TYPE[txt(w, 'type').toLowerCase()] || 'other', trackId: null, note: txt(w, 'desc') || txt(w, 'cmt') });
+        state.mine.push({ id: `m${Date.now()}${nPts}${Math.random().toString(36).slice(2, 5)}`, lat: +lat.toFixed(6), lon: +lon.toFixed(6), name: txt(w, 'name') || 'Точка из GPX', t: Date.parse(txt(w, 'time')) || Date.now(), tag: TAG_BY_TYPE[txt(w, 'type').toLowerCase()] || 'other', trackId: null, note: txt(w, 'desc') || txt(w, 'cmt'), depth: gpxDepth(w) });
         nPts += 1;
       }
       for (const el of [...doc.getElementsByTagName('trk'), ...doc.getElementsByTagName('rte')]) {
@@ -526,6 +634,8 @@ function importGpx(file) {
             const lat = +p.getAttribute('lat'), lon = +p.getAttribute('lon');
             if (!inArea(lat, lon)) continue;
             seg.push([+lat.toFixed(6), +lon.toFixed(6), Date.parse(txt(p, 'time')) || 0, null, null]);
+            const dp = gpxDepth(p);
+            if (dp != null) soundings.push([+lat.toFixed(6), +lon.toFixed(6), dp]);
           }
           if (seg.length > 1) segs.push(seg);
         }
@@ -541,11 +651,12 @@ function importGpx(file) {
       trk.list.sort((a, b) => b.start - a.start);
       saveMine(); drawMine();
       if (nTrk && !state.overlays.tracks) { state.overlays.tracks = true; applyOverlays(); }
-      drawSavedTracks(); refreshPage('me');
-      toast(nPts || nTrk ? `Загружено: ${nPts} ${plural(nPts, 'точка', 'точки', 'точек')}, ${nTrk} ${plural(nTrk, 'трек', 'трека', 'треков')}${outside ? `; вне района пропущено ${outside}` : ''}` : 'В файле нет точек и треков этого района', 6000);
-    } catch { toast('Не удалось прочитать файл — нужен GPX', 5000); }
-  };
-  reader.readAsText(file);
+      drawSavedTracks();
+      if (soundings.length) addDepthSet(`Глубины из ${file.name.replace(/\.gpx$/i, '')}`, soundings).then(() => refreshPage('me'));
+      refreshPage('me');
+      toast(nPts || nTrk ? `Загружено: ${nPts} ${plural(nPts, 'точка', 'точки', 'точек')}, ${nTrk} ${plural(nTrk, 'трек', 'трека', 'треков')}${soundings.length ? `, ${soundings.length} ${plural(soundings.length, 'замер', 'замера', 'замеров')} глубины` : ''}${outside ? `; вне района пропущено ${outside}` : ''}` : 'В файле нет точек и треков этого района', 6000);
+    } catch { toast('Не удалось прочитать файл — нужен GPX или CSV', 5000); }
+  }
 }
 // Everything of mine in one GPX: a backup, or to carry over to a sonar / another phone.
 function backupGpx() {
@@ -582,4 +693,6 @@ async function loadTracks() {
     });
   }
   drawCurTrack(); drawSavedTracks(); updateTrackUi();
+  await depthSets.load();
+  if (depthSets.list.length) applyOverlays();
 }
