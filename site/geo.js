@@ -626,7 +626,8 @@ function updateNavFields(force = false) {
   const depUnit = $('#nfDepth')?.nextElementSibling;
   const du = dep ? 'м · по карте' : 'нет карты';
   if (depUnit && depUnit.textContent !== du) depUnit.textContent = du;
-  $('#nfDepthBox').classList.toggle('shallow', !!dep && (dep.value ?? dep.max) <= (+state.settings.shallow || 2));
+  // The warning counts the water there is now: the lake is ~0,9 m below the charts' mean level in 2026.
+  $('#nfDepthBox').classList.toggle('shallow', !!dep && (dep.value ?? dep.max) + levelNow() <= (+state.settings.shallow || 2));
   updateNavArrow();
   navBanner();
   updateRecenter();

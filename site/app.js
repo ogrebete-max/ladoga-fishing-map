@@ -512,38 +512,64 @@ async function loadChartIsobaths() {
   }).catch(() => { chartState.iso = null; return null; });
   return chartState.iso;
 }
-// A depth grid digitised from the chart soundings (data/depth_grid.json): {lat0, lon0, dlat, dlon, rows, cols, scale, data}.
+// The depth model digitised from 18 000 chart soundings (data/depth_grid.json → data/depth/depth_*.json, one file
+// per chart, 50 m cells, 25 m in the 1:10 000 sheets; median error 0,27 m). A file loads only when a depth inside
+// it is asked for; row 0 is the northernmost, values are depth × scale in Uint16 LE (base64), nodata 65535.
 async function loadDepthGrid() {
   const url = state.ctx.depth?.grid;
-  if (!url || chartState.grid) return;
+  if (!url || chartState.gridIndex) return;
   try {
-    const g = await fetch(url).then((r) => (r.ok ? r.json() : null));
-    if (g && Array.isArray(g.data)) { chartState.grid = g; if (typeof onDepthReady === 'function') onDepthReady(); }
+    const idx = await fetch(url).then((r) => (r.ok ? r.json() : null));
+    if (!idx?.files) return;
+    idx.files.sort((a, b) => (a.priority ?? 9) - (b.priority ?? 9));
+    chartState.gridIndex = idx;
+    chartState.gridFiles = new Map();
+    if (typeof onDepthReady === 'function') onDepthReady();
   } catch { /* no grid */ }
 }
-function gridDepth(p) {
-  const g = chartState.grid;
-  if (!g) return null;
-  const fy = (p.lat - g.lat0) / g.dlat, fx = (p.lon - g.lon0) / g.dlon;
-  const y0 = Math.floor(fy), x0 = Math.floor(fx);
-  if (y0 < 0 || x0 < 0 || y0 >= g.rows - 1 || x0 >= g.cols - 1) return null;
-  const at = (y, x) => { const v = g.data[y * g.cols + x]; return v == null || v < -900 ? null : v / (g.scale || 1); };
-  const v00 = at(y0, x0), v01 = at(y0, x0 + 1), v10 = at(y0 + 1, x0), v11 = at(y0 + 1, x0 + 1);
-  const vals = [v00, v01, v10, v11];
-  if (vals.some((v) => v == null)) {
-    const ok = vals.filter((v) => v != null);
-    return ok.length >= 2 ? ok.reduce((a, b) => a + b, 0) / ok.length : null;
-  }
-  const tx = fx - x0, ty = fy - y0;
-  return v00 * (1 - tx) * (1 - ty) + v01 * tx * (1 - ty) + v10 * (1 - tx) * ty + v11 * tx * ty;
+function gridFile(f) {
+  let g = chartState.gridFiles.get(f.file);
+  if (g) return g.u ? g : null;
+  g = { loading: true };
+  chartState.gridFiles.set(f.file, g);
+  fetch(f.file).then((r) => r.json()).then((j) => {
+    const bin = atob(j.data), u = new Uint16Array(bin.length >> 1);
+    for (let i = 0; i < u.length; i++) u[i] = bin.charCodeAt(2 * i) | (bin.charCodeAt(2 * i + 1) << 8);
+    Object.assign(g, { ...j, data: null, u, loading: false });
+    if (typeof onDepthReady === 'function') onDepthReady();
+  }).catch(() => chartState.gridFiles.delete(f.file));
+  return null;
 }
+function gridDepth(p) {
+  const idx = chartState.gridIndex;
+  if (!idx) return null;
+  for (const f of idx.files) {
+    const [[S, W], [N, E]] = f.bounds;
+    if (p.lat < S || p.lat > N || p.lon < W || p.lon > E) continue;
+    const g = gridFile(f);
+    if (!g) continue; // still loading: the next file or the isobaths answer meanwhile
+    const fx = (p.lon - W) / g.dlon - 0.5, fy = (N - p.lat) / g.dlat - 0.5;
+    const x0 = Math.floor(fx), y0 = Math.floor(fy), tx = fx - x0, ty = fy - y0;
+    let s = 0, w = 0;
+    for (const [dy, dx, k] of [[0, 0, (1 - tx) * (1 - ty)], [0, 1, tx * (1 - ty)], [1, 0, (1 - tx) * ty], [1, 1, tx * ty]]) {
+      const y = y0 + dy, x = x0 + dx;
+      if (y < 0 || x < 0 || y >= g.ny || x >= g.nx) continue;
+      const v = g.u[y * g.nx + x];
+      if (v !== (g.nodata ?? 65535)) { s += (k * v) / (g.scale || 10); w += k; }
+    }
+    if (w > 0.05) return s / w;
+  }
+  return null;
+}
+// The lake stands about 0,9 m below its long-term mean in 2026: chart depths are that much deeper than the water now.
+const levelNow = () => +(chartState.gridIndex?.level_2026_correction_m ?? -0.9);
 // Depth at a place: the digitised grid if the place is on it, else the chart isobaths: on a line → "≈ 5 м";
 // between two → "5–10 м". null off the charts.
 function depthAt(p) {
   const gd = gridDepth(p);
   if (gd != null && gd >= 0) {
     const v = gd < 10 ? Math.round(gd * 10) / 10 : Math.round(gd);
-    return { text: `≈ ${String(v).replace('.', ',')} м`, min: v, max: v, value: v };
+    return { text: `≈ ${String(v).replace('.', ',')} м`, min: v, max: v, value: v, model: true };
   }
   const lines = chartState.isoLines;
   if (!lines) return null;
@@ -1210,7 +1236,11 @@ const PACKS = [
     urls: async () => {
       const list = await tileList('charts');
       if (!list.length) for (const c of chartState.items) list.push(new URL(c.url, location.href).href);
-      // the colour depth shading goes with the charts
+      // the depth model files and the colour depth shading go with the charts
+      try {
+        const gi = chartState.gridIndex || (state.ctx.depth?.grid ? await fetch(state.ctx.depth.grid).then((r) => r.json()) : null);
+        for (const f of gi?.files || []) list.push(new URL(f.file, location.href).href);
+      } catch { /* no grid */ }
       const sh = state.ctx.depth?.shade;
       if (sh?.list) {
         try {

@@ -665,7 +665,7 @@ function openDepthHelp() {
   openModal({
     title: 'Глубины и эхолот',
     body: () => `
-      <p class="small">На карте три источника глубин (включаются в «Слоях»): <b>навигационные карты ГУНиО</b> 1:10 000–1:50 000 с тысячами отметок глубин — самое точное; <b>изобаты</b> по этим картам; грубая модель дна GLDB. У каждой точки, в навигаторе и под лодкой показана глубина по картам.</p>
+      <p class="small">Глубины в приложении (включаются в «Слоях»): <b>навигационные карты ГУНиО</b> 1:10 000–1:125 000 — резкие, с отметками глубин (цифры читаются с масштаба 14); <b>цветная заливка и изобаты через 1 м</b> — модель дна, построенная по 18 тыс. отметкам глубин, распознанным с этих карт (ошибка в среднем 0,3 м, в 90 % мест до 1 м); изобаты, снятые с карт; грубая модель GLDB. У каждой точки, в навигаторе и под лодкой показана глубина по этой модели.</p>
       <div class="card small warn-card">Глубины на картах — от среднего многолетнего уровня озера. В 2026 году вода примерно на 0,9 м ниже, значит реально мельче. Съёмка 1930–80-х годов; не для судовождения.</div>
       ${state.ctx.depth?.community ? '<p class="small"><b>Любительские карты глубин Garmin</b> (freegpsmap 2007, С. Новиков 2005) — 25 тыс. отметок и 800 изобат, оцифрованных рыбаками с тех же карт ГУНиО. Совпадают с картами в пределах 15–20 м и дополняют их там, где изобат нет: бухта Петрокрепость, исток Невы, глубокая часть. Отметки видны подписями с масштаба 14, камни — ✚.</p>' : ''}
       <p class="small">Самые свежие глубины — у рыбаков с эхолотами: их собирает Garmin (Quickdraw) и показывает в телефоне бесплатно, но выгрузить их нельзя. Схема такая: <b>глубины — в ActiveCaptain, наши точки — туда же файлом GPX</b>.</p>
@@ -703,6 +703,7 @@ function layersTabHtml() {
   return `
     <div class="chips" style="margin:2px 0 4px">
       <button type="button" class="chip" data-act="preset" data-preset="depth">${ic('water')}Глубины</button>
+      <button type="button" class="chip" data-act="preset" data-preset="chart">${ic('anchor')}Карта ГУНиО</button>
       <button type="button" class="chip" data-act="preset" data-preset="now">${ic('set-meal')}Рыбалка сейчас</button>
       <button type="button" class="chip" data-act="preset" data-preset="clean">${ic('map')}Чистая карта</button>
     </div>
@@ -799,9 +800,14 @@ function applyPreset(k) {
   const o = state.overlays;
   for (const x of ['heat', 'seasonZones', 'rules', 'charts', 'chartIso', 'isobaths', 'genshtab', 'radius', 'shade', 'gridIso', 'community']) o[x] = false;
   if (k === 'depth') {
-    o.charts = true; o.chartIso = true; o.lines = true;
+    if (state.ctx.depth?.shade?.url) { o.shade = true; o.gridIso = !!state.ctx.depth?.isolines; } else { o.charts = true; o.chartIso = true; }
+    o.lines = true;
     if (map.getZoom() < 12) map.setZoom(12);
-    toast('Глубины: навигационные карты и изобаты. Цифры глубин читаются с масштаба 13–14', 5000);
+    toast('Глубины: заливка и изобаты через 1 м по отметкам карт; подписи глубин с масштаба 13', 5000);
+  } else if (k === 'chart') {
+    o.charts = true; o.lines = true;
+    if (map.getZoom() < 13) map.setZoom(13);
+    toast('Навигационные карты ГУНиО: цифры глубин читаются с масштаба 14', 5000);
   } else if (k === 'now') {
     const mo = new Date().getMonth() + 1;
     state.seasonMonth = mo;
