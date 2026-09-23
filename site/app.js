@@ -1250,7 +1250,8 @@ const PACKS = [
       }
       return list;
     },
-    estMB: () => layerMB('charts'),
+    // charts + the colour shading (~21 MB) + the depth grid (~7 MB) when the depth model is on the site
+    estMB: () => (layerMB('charts') || 0) + (state.ctx.depth?.shade?.url ? 21 : 0) + (state.ctx.depth?.grid ? 7 : 0) || null,
   },
   {
     id: 'genshtab', name: 'Армейская карта 1:100 000',
