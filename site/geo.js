@@ -21,11 +21,93 @@ const nav = {
   audio: null, lastFields: 0,
 };
 
+/* ---------- demo: a boat going to the Varetsky banks, to try the navigator at home ---------- */
+// The route runs over 3–5 m of water north of Птинов: a shallow bank ahead, a leg off course, then arrival.
+const DEMO = { on: false, timer: null, speed: 10, route: [[60.2835, 32.0845], [60.2870, 32.0835], [60.2905, 32.0955], [60.2907, 32.0985], [60.298, 32.107]], seg: 0, pos: null, t: 0 };
+function destPoint(p, brg, d) {
+  const lat = p.lat + (d * Math.cos(toRad(brg))) / 111320;
+  return { lat, lon: p.lon + (d * Math.sin(toRad(brg))) / (111320 * Math.cos(toRad(lat))) };
+}
+function startDemo() {
+  if (nav.on) { toast('Сначала завершите навигацию'); return; }
+  if (geo.watchId != null && geo.watchId !== 'demo') navigator.geolocation.clearWatch(geo.watchId);
+  Object.assign(geo, { watchId: 'demo', me: null, hist: [], sog: null, cog: null, cogVec: null, fastSince: 0, courseRot: false });
+  layers.me.clearLayers();
+  Object.assign(DEMO, { on: true, seg: 0, t: 0, pos: { lat: DEMO.route[0][0], lon: DEMO.route[0][1] } });
+  startNav({ lat: 60.298, lon: 32.107, title: 'Варецкие банки · демо' });
+  clearInterval(DEMO.timer);
+  DEMO.timer = setInterval(demoTick, 1000);
+  demoTick();
+}
+function demoTick() {
+  if (!DEMO.on) return;
+  let step = DEMO.speed, hdg = 0, speed = DEMO.speed;
+  if (DEMO.seg < DEMO.route.length - 1) {
+    while (step > 0 && DEMO.seg < DEMO.route.length - 1) {
+      const to = { lat: DEMO.route[DEMO.seg + 1][0], lon: DEMO.route[DEMO.seg + 1][1] };
+      const d = distM(DEMO.pos, to);
+      hdg = bearing(DEMO.pos, to);
+      if (d <= step) { DEMO.pos = to; step -= d; DEMO.seg += 1; } else { DEMO.pos = destPoint(DEMO.pos, hdg, step); step = 0; }
+    }
+  } else {
+    // At the point: a slow drift in a circle, to show «держу точку» and the drift.
+    DEMO.t += 1; hdg = (DEMO.t * 8) % 360; speed = 0.4;
+    DEMO.pos = destPoint(DEMO.pos, hdg, 0.4);
+  }
+  onFix({ coords: { latitude: DEMO.pos.lat, longitude: DEMO.pos.lon, accuracy: 4, speed, heading: hdg }, timestamp: Date.now() });
+}
+function stopDemo() {
+  if (!DEMO.on) return;
+  clearInterval(DEMO.timer);
+  DEMO.on = false;
+  if (geo.watchId === 'demo') { geo.watchId = null; geo.me = null; geo.sog = null; geo.cog = null; layers.me.clearLayers(); }
+  if (geo.follow !== 'free') setFollow('free');
+  updateLocateBtn();
+  toast('Демо закончено');
+}
+
+/* ---------- the dark screen: recording and navigation go on, the OLED screen spends almost nothing ---------- */
+const saver = { on: false, tapT: 0 };
+function showSaver() {
+  if (saver.on) return;
+  if (topLayer()?.kind === 'modal') closeTop();
+  saver.on = true;
+  const el = document.createElement('div');
+  el.className = 'saver'; el.id = 'saver';
+  el.innerHTML = '<b id="saverMain"></b><span id="saverSub"></span><small>Экран почти не тратит заряд. Двойное касание — вернуть карту.</small>';
+  el.addEventListener('pointerup', () => { const now = Date.now(); if (now - saver.tapT < 450) hideSaver(); saver.tapT = now; });
+  document.body.appendChild(el);
+  map.getContainer().style.visibility = 'hidden';
+  updateSaver();
+}
+function hideSaver() {
+  if (!saver.on) return;
+  saver.on = false;
+  $('#saver')?.remove();
+  map.getContainer().style.visibility = '';
+  map.invalidateSize();
+  if (geo.follow !== 'free' && geo.me) placeBoat(null);
+}
+function updateSaver() {
+  if (!saver.on) return;
+  const me = geo.me, t = trk.cur;
+  let main = '', sub = '';
+  if (nav.on) {
+    main = me ? (nav.hold ? `Снос ${Math.round(nav.d || 0)} м` : fmtDist(nav.d ?? distM(me, nav.target))) : '—';
+    sub = me ? `на ${Math.round(nav.brg ?? bearing(me, nav.target))}° ${rumb(nav.brg ?? 0)} · ${speedValue(geo.sog)} ${speedUnit()}` : 'Жду GPS';
+  } else if (t) {
+    main = fmtClock(trackDur(t));
+    sub = `Запись · ${fmtDist(t.dist)} · ${me ? `GPS ±${Math.round(me.acc)} м` : 'жду GPS'}`;
+  } else { hideSaver(); return; }
+  $('#saverMain').textContent = main;
+  $('#saverSub').textContent = sub;
+}
+
 /* ---------- position ---------- */
 function geoStart({ follow = null } = {}) {
   if (!navigator.geolocation) { showLocationHelp('unsupported'); return false; }
   if (follow) geo.wantFollow = follow;
-  if (geo.watchId != null) { if (geo.me && geo.wantFollow) applyWantFollow(); return true; }
+  if (geo.watchId != null) { if (geo.me && geo.wantFollow) applyWantFollow(); return true; } // also the demo
   if (platformInfo().inApp && !store.get('ladoga-inapp-warned', false)) { store.set('ladoga-inapp-warned', true); showLocationHelp('inapp'); }
   geo.searching = true; geo.error = null;
   // A quick coarse fix first (Safari answers it in a second or two from Wi‑Fi), then a high-accuracy watch
@@ -37,17 +119,19 @@ function geoStart({ follow = null } = {}) {
   return true;
 }
 function restartWatch() {
-  if (geo.watchId == null) return;
+  if (geo.watchId == null || geo.watchId === 'demo') return;
   navigator.geolocation.clearWatch(geo.watchId);
   geo.watchId = navigator.geolocation.watchPosition(onFix, onGeoError, { enableHighAccuracy: true, maximumAge: 1000 });
 }
 function geoRestart() {
-  if (geo.watchId != null) navigator.geolocation.clearWatch(geo.watchId);
+  if (DEMO.on) stopDemo();
+  if (geo.watchId != null && geo.watchId !== 'demo') navigator.geolocation.clearWatch(geo.watchId);
   geo.watchId = null;
   geoStart({ follow: geo.follow !== 'free' ? geo.follow : 'north' });
 }
 function geoStop() {
-  if (geo.watchId != null) navigator.geolocation.clearWatch(geo.watchId);
+  if (DEMO.on) stopDemo();
+  if (geo.watchId != null && geo.watchId !== 'demo') navigator.geolocation.clearWatch(geo.watchId);
   geo.watchId = null; geo.me = null; geo.searching = false; geo.sog = null; geo.cog = null; geo.hist = [];
   layers.me.clearLayers();
   setFollow('free');
@@ -221,7 +305,7 @@ function applyWantFollow() {
   setFollow(want);
 }
 function followMe() {
-  if (!geo.me || geo.follow === 'free') return;
+  if (!geo.me || geo.follow === 'free' || saver.on) return;
   applyRotation();
   placeBoat(null);
 }
@@ -385,6 +469,8 @@ function stopNavState() {
 function stopNav() {
   if (!nav.on) return;
   nav.on = false;
+  hideSaver();
+  if (DEMO.on) stopDemo();
   stopNavState();
   nav.target = null;
   store.set('ladoga-nav', null);
@@ -501,11 +587,10 @@ function navOnFix() {
     nav.hazard = hz;
     if (Date.now() - hazardsDrawnAt > 5000) { hazardsDrawnAt = Date.now(); drawNavHazards(); }
   }
-  if (geo.follow !== 'free' && me) {
+  if (saver.on && ((nav.hazard && nav.hazard.d < 300) || (nav.arrived && Date.now() - nav.arriveT < 3000))) hideSaver();
+  if (geo.follow !== 'free' && me && !saver.on) {
     applyRotation();
     placeBoat(autoZoom());
-  } else if (!me && geo.follow !== 'free') {
-    /* waiting for GPS: the target stays on screen */
   }
   updateNavFields();
   refreshMeIcon();
@@ -607,7 +692,7 @@ function updateNavFields(force = false) {
   }
   // GPS quality: colour and words, not colour alone.
   gpsDot.className = `gps-dot ${stale ? 'r' : me.acc <= 10 ? 'g' : me.acc <= 30 ? 'y' : 'r'}`;
-  setText('#ntGpsText', stale ? `${fmtClock(age)} назад` : `±${Math.round(me.acc)} м`);
+  setText('#ntGpsText', DEMO.on ? 'ДЕМО' : stale ? `${fmtClock(age)} назад` : `±${Math.round(me.acc)} м`);
   // Speed, course, depth.
   $('#navBottom').classList.toggle('stale', stale);
   setText('#nfSpeed', speedValue(geo.sog));
@@ -655,6 +740,7 @@ function navBanner() {
 }
 function setBanner(b) {
   const el = $('#navBanner');
+  document.body.classList.toggle('nav-banner-on', !!b);
   if (!b) { if (!el.hidden) { el.hidden = true; nav.banner = ''; } return; }
   if (nav.banner !== b.key) { nav.banner = b.key; el.className = `nav-banner ${b.cls}`; el.innerHTML = b.html; }
   el.hidden = false;
@@ -674,6 +760,8 @@ function handleNavAction(act, el) {
     case 'nav-hold': nav.hold = true; navBanner(); navOnFix(); break;
     case 'nav-mark': quickMark(); break;
     case 'nav-whole': closeTop(); wholeRoute(); break;
+    case 'saver': showSaver(); break;
+    case 'demo': startDemo(); break;
     case 'nav-orient': {
       const v = el.dataset.val;
       closeTop();
@@ -691,6 +779,7 @@ function openNavMore() {
     key: 'nav-more', title: 'Навигация',
     body: () => `
       ${listRow({ icon: 'route', title: 'Весь путь', sub: 'я и точка на одном экране', attrs: 'data-act="nav-whole"' })}
+      ${listRow({ icon: 'restart-alt', title: 'Погасить экран', sub: 'навигация идёт, чёрный экран бережёт заряд; двойное касание — назад', attrs: 'data-act="saver"' })}
       <h3>Карта</h3>
       <div class="seg">${[['north', 'Север'], ['course', 'По курсу'], ['compass', 'По компасу']].map(([k, t]) => `<button type="button" data-act="nav-orient" data-val="${k}" class="${cur === k ? 'on' : ''}">${t}</button>`).join('')}</div>
       ${sw('autoZoom', 'Автомасштаб', 'по скорости и расстоянию до точки')}
@@ -773,4 +862,5 @@ setInterval(() => {
     if (ar && (geo.follow === 'free' || nav.autoZoomPaused) && Date.now() - nav.lastTouch > ar * 1000) recenter();
   }
   if (typeof updateTrackUi === 'function') updateTrackUi();
+  updateSaver();
 }, 1000);

@@ -74,9 +74,10 @@ const state = {
   shown: { markers: 0, reports: 0 },
 };
 function saveSettings() { store.set('ladoga-settings', state.settings); }
+state.overlays.isobaths = false;
 
 function defaultFilters() {
-  return { fish: new Set(), months: new Set(), season: 'all', cls: new Set(['A', 'B', 'C']), kinds: new Set(Object.keys(KINDS).filter((k) => k !== 'service')), sources: new Set(), core: false, yearMin: 0, fav: false, depthOnly: false };
+  return { fish: new Set(), months: new Set(), season: 'all', cls: new Set(['A', 'B', 'C']), kinds: new Set(Object.keys(KINDS).filter((k) => k !== 'service' && k !== 'ice_incident')), sources: new Set(), core: false, yearMin: 0, fav: false, depthOnly: false };
 }
 
 /* ---------- utilities ---------- */

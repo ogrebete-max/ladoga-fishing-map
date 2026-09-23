@@ -111,7 +111,7 @@ function newSegment() {
 // Every fix while recording: a point when accuracy ≤ 50 m, ≥ 5 s and ≥ 5 m from the last one (as OsmAnd does).
 function trackOnFix(me) {
   const t = trk.cur;
-  if (!t || t.state !== 'rec') return;
+  if (!t || t.state !== 'rec' || (typeof DEMO !== 'undefined' && DEMO.on)) return;
   const now = me.t;
   if (trk.lastFixT && now - trk.lastFixT > 6 * 60000) newSegment(); // a long silence starts a new segment
   trk.lastFixT = now;
@@ -173,7 +173,7 @@ function finishRec(name) {
   trk.cur = null; trk.durBefore = 0; trk.activeSince = 0;
   trackStore.put(t);
   drawCurTrack(); drawSavedTracks(); updateTrackUi(); wakeUpdate(); refreshPage('me');
-  toast('Трек сохранён — Моё › Треки', { action: 'Открыть', onAction: () => showPage('me', 'tracks') });
+  toast('Трек сохранён — он в «Моё › Треки»', { action: 'Все треки', onAction: () => showPage('me', 'tracks') });
 }
 function deleteTrack(id) {
   const i = trk.list.findIndex((x) => x.id === id);
@@ -216,6 +216,20 @@ function drawSavedTracks() {
     L.polyline(ll, { color: TRACK_COLOR, weight: 3, opacity: 0.7 }).on('click', () => openTrackCard(t.id)).addTo(layers.tracks);
   }
 }
+// What the recording is doing right now: GPS quality, how many points, a warning when nothing comes.
+function recGpsHtml() {
+  const t = trk.cur;
+  if (!t) return '';
+  if (typeof DEMO !== 'undefined' && DEMO.on) return '<span class="gps-dot y"></span> Демо: в трек не пишется';
+  if (t.state === 'paused') return '<span class="gps-dot"></span> Пауза: точки не пишутся';
+  const me = geo.me;
+  const n = t.segs.reduce((a, sg) => a + sg.length, 0);
+  if (!me) return '<span class="gps-dot r"></span> Жду GPS — трек начнёт писаться, как только телефон найдёт спутники';
+  const age = Date.now() - me.t;
+  const cls = age > 10000 ? 'r' : me.acc <= 10 ? 'g' : me.acc <= 30 ? 'y' : 'r';
+  const gps = age > 10000 ? `нет сигнала ${fmtClock(age)}` : `GPS ±${Math.round(me.acc)} м`;
+  return `<span class="gps-dot ${cls}"></span> ${gps} · ${n} ${plural(n, 'точка', 'точки', 'точек')} в треке${me.acc > 50 ? ' · точность слабая, точки ждут' : ''}`;
+}
 // The pill on the map, the button in navigation, the open recording sheet — once a second.
 function updateTrackUi() {
   const t = trk.cur;
@@ -224,7 +238,7 @@ function updateTrackUi() {
   const pill = $('#btnTrack');
   if (pill) {
     pill.classList.toggle('rec', rec); pill.classList.toggle('paused', paused);
-    const txt = rec ? `Запись ${fmtClock(trackDur(t))} · ${fmtDist(t.dist)}` : paused ? `Пауза ${fmtClock(trackDur(t))}` : 'Трек';
+    const txt = rec ? (geo.me ? `Запись ${fmtClock(trackDur(t))} · ${fmtDist(t.dist)}` : `Запись ${fmtClock(trackDur(t))} · жду GPS`) : paused ? `Пауза ${fmtClock(trackDur(t))}` : 'Трек';
     const el = $('#trackPillText');
     if (el.textContent !== txt) el.textContent = txt;
     pill.setAttribute('aria-label', rec ? 'Идёт запись трека — управление' : paused ? 'Запись на паузе — управление' : 'Записать трек');
@@ -237,7 +251,12 @@ function updateTrackUi() {
     if (nb.dataset.icon !== icon) { nb.dataset.icon = icon; nb.querySelector('use').setAttribute('href', `#i-${icon}`); }
     if ($('#navTrackText').textContent !== txt) $('#navTrackText').textContent = txt;
   }
-  if (t) { const html = statsHtml(t); $$('.rec-stats').forEach((el) => { if (el.innerHTML !== html) el.innerHTML = html; }); }
+  if (t) {
+    const html = statsHtml(t);
+    $$('.rec-stats').forEach((el) => { if (el.innerHTML !== html) el.innerHTML = html; });
+    const g = recGpsHtml();
+    $$('.rec-gps').forEach((el) => { if (el.innerHTML !== g) el.innerHTML = g; });
+  }
 }
 function onTrackButton() {
   if (!trk.cur) startRec(); else openRecSheet();
@@ -251,12 +270,14 @@ function openRecSheet(opts = {}) {
     key: 'rec',
     title: () => (trk.cur?.state === 'rec' ? 'Идёт запись трека' : 'Запись на паузе'),
     body: () => `<div class="rec-stats">${statsHtml(t)}</div>
+      <div class="rec-gps">${recGpsHtml()}</div>
       <div class="tag-grid" style="grid-template-columns:repeat(3,1fr)">
         ${t.state === 'rec' ? `<button type="button" data-act="rec-pause">${ic('pause')}Пауза</button>` : `<button type="button" data-act="rec-resume">${ic('play-arrow')}Продолжить</button>`}
         <button type="button" data-act="rec-mark">${ic('flag')}Метка</button>
         <button type="button" data-act="rec-stop" style="color:var(--danger)">${ic('stop')}Стоп</button>
       </div>
-      <p class="small muted">Не блокируйте экран кнопкой и не сворачивайте приложение — в фоне браузер трек не пишет. Экран сам не погаснет.</p>`,
+      <button type="button" class="btn ghost" data-act="saver" style="width:100%">${ic('restart-alt')}Погасить экран — запись продолжится</button>
+      <p class="small muted">Сайт пишет трек, только пока открыт: не блокируйте телефон кнопкой и не сворачивайте приложение. Чтобы беречь заряд — «Погасить экран»: чёрный экран почти не тратит батарею, двойное касание возвращает карту. Все треки — в «Моё › Треки».</p>`,
   }, opts);
 }
 function openSaveSheet(opts = {}) {
@@ -270,7 +291,6 @@ function openSaveSheet(opts = {}) {
       <div style="margin-top:10px">${statsHtml(t)}</div>
       <div class="btns"><button type="button" class="btn ghost" data-act="track-continue">${ic('play-arrow')}Продолжить запись</button><button type="button" class="btn textdanger" data-act="track-discard">${ic('delete')}Удалить трек</button></div>`,
     foot: () => `<button type="button" class="btn" data-act="track-save">${ic('check-circle')}Сохранить</button>`,
-    onConfirm: (layer) => finishRec(layer.value),
   }, opts);
 }
 function openTrackCard(id, opts = {}) {
@@ -340,6 +360,7 @@ function tracksPageHtml() {
     ${t ? `<div class="card ${t.state === 'rec' ? 'danger-card' : 'warn-card'}">
       <b>${t.state === 'rec' ? '● Идёт запись' : 'Запись на паузе'}</b>
       <div class="rec-stats">${statsHtml(t)}</div>
+      <div class="rec-gps">${recGpsHtml()}</div>
       <div class="btns" style="margin-bottom:0">
         ${t.state === 'rec' ? `<button type="button" class="btn ghost" data-act="rec-pause">${ic('pause')}Пауза</button>` : `<button type="button" class="btn ghost" data-act="rec-resume">${ic('play-arrow')}Продолжить</button>`}
         <button type="button" class="btn ghost" data-act="rec-mark">${ic('flag')}Метка</button>
@@ -359,6 +380,7 @@ function tracksPageHtml() {
 // «⚑ Метка»: saved at once where the boat is; a sheet with tags stays 8 s for a tap.
 function quickMark() {
   const me = geo.me;
+  if (typeof DEMO !== 'undefined' && DEMO.on) { toast('В демо метки не сохраняются'); return; }
   if (!me) { toast('Ещё нет GPS — метку поставить некуда'); return; }
   const p = addMine({ lat: me.lat, lon: me.lon, name: `Метка ${fmtTime(Date.now())}`, tag: 'other', trackId: trk.cur?.id || null });
   drawCurTrack();
@@ -425,7 +447,14 @@ function handleTrackAction(act, el) {
     case 'rec-resume': resumeRec(); if (topLayer()?.key === 'rec') renderModalBody(topLayer()); break;
     case 'rec-mark': quickMark(); break;
     case 'rec-stop': openSaveSheet({ replace: topLayer()?.kind === 'modal' }); break;
-    case 'track-save': confirmWith($('#tsName')?.value || ''); break;
+    case 'track-save': {
+      const name = $('#tsName')?.value || '';
+      const id = trk.cur?.id;
+      finishRec(name);
+      if (id) openTrackCard(id, { replace: true });
+      break;
+    }
+    case 'saver': showSaver(); break;
     case 'track-continue': closeTop(); resumeRec(); break;
     case 'track-discard': { const id = trk.cur?.id; closeTop(); if (id) deleteTrack(id); break; }
     case 'track-open': if (t) openTrackCard(t.id); break;

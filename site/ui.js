@@ -111,6 +111,7 @@ function dropTop() { popLayer(); syncChrome(); }
 function reattach(layer) { layer.attached = true; history.pushState({ l: attachedCount() }, '', baseUrl()); syncChrome(); }
 window.addEventListener('popstate', (e) => {
   ui.backPending = 0;
+  if (typeof saver !== 'undefined' && saver.on) hideSaver(); // Back wakes the screen first
   const want = e.state?.l ?? 0;
   while (attachedCount() > want) {
     const top = topLayer();
@@ -387,6 +388,9 @@ function renderChips() {
   }
   if (!navigator.onLine) chips.push(`<button type="button" class="schip offline ${regionSaved() ? '' : 'warn'}" data-chip="offline">${ic('cloud-off')}${regionSaved() ? 'Без сети' : 'Без сети · район не скачан'}</button>`);
   if (geo.me && geo.me.acc > 50 && Date.now() - geo.me.t < 15000) chips.push(`<button type="button" class="schip gps" data-chip="gps">GPS ±${Math.round(geo.me.acc / 10) * 10} м</button>`);
+  // With a depth layer on but the map too far out for the digits: one tap brings them.
+  const o = state.overlays;
+  if ((o.charts || o.gridIso || o.community) && map.getZoom() < 14 && !nav.on) chips.push(`<button type="button" class="schip" data-chip="zoom-depth">${ic('add')}Приблизить — видны цифры глубин</button>`);
   const af = activeFilters();
   if (af.length && !ui.stack.some((l) => l.kind === 'months')) chips.push(`<button type="button" class="schip" data-chip="filter">${ic('tune')}${esc(af.map((x) => x[1]).join(' · ').slice(0, 42))}<span class="x" data-chip="filter-clear" role="button" aria-label="Сбросить фильтр">✕</span></button>`);
   const html = chips.join('');
@@ -496,7 +500,9 @@ $('#statusChips').addEventListener('click', (e) => {
   else if (k === 'gps') toast(`Точность GPS ±${Math.round(geo.me?.acc || 0)} м. На открытом месте, подальше от стен и мостов, будет точнее`, 5000);
   else if (k === 'filter-clear') { resetFilters(); toast('Фильтр сброшен'); }
   else if (k === 'filter') openLayersSheet('filter');
+  else if (k === 'zoom-depth') { setFollowFree(); map.setZoom(14); }
 });
+map.on('zoomend', () => renderChips());
 // A tap on the empty map closes the card; a long press (right click) puts a point there.
 map.on('click', () => {
   if (state.playing) setAutoplay(false);

@@ -504,7 +504,7 @@ function rulesHtml() {
     <h3 id="r-ice">Лёд</h3>
     ${(state.ctx.practical?.ice_rules_general || []).map((b) => `<details class="card small"><summary>${esc(b.title)}</summary><p>${esc(b.text)}</p>${safeUrl(b.source_url) ? `<a href="${esc(b.source_url)}" target="_blank" rel="noopener">источник</a>` : ''}</details>`).join('')}
     ${ice.map((b) => `<details class="card small"><summary>${esc(b.title || b.type || '')}</summary><p>${esc(b.description || b.summary || '')}</p>${safeUrl(b.source_url) ? `<a href="${esc(b.source_url)}" target="_blank" rel="noopener">источник</a>` : ''}</details>`).join('')}
-    ${incidents ? `<p class="small">На карте ${incidents} ${plural(incidents, 'случай', 'случая', 'случаев')} на льду (оранжевые точки) за 2009–2026: отрывы льдин, провалы, машины под лёд. Это и опасные места, и места, куда массово выходят рыбаки.</p>` : ''}`;
+    ${incidents ? `<p class="small">Есть ${incidents} ${plural(incidents, 'случай', 'случая', 'случаев')} на льду за 2009–2026 по сводкам МЧС: отрывы льдин, провалы, машины под лёд. Это и опасные места, и места, куда массово выходят рыбаки. На карте они включаются в «Слои и фильтр → Фильтр → Что показывать».</p>` : ''}`;
 }
 
 /* ---------- Моё › Точки, Без сети, Ещё ---------- */
@@ -540,8 +540,16 @@ function offlineHtml() {
   const mainBtn = running && running.includes('core')
     ? `<button type="button" class="btn ghost" data-act="pack-stop">${ic('pause')}Пауза</button>`
     : `<button type="button" class="btn" data-act="region-download">${ic('download')}${core?.complete ? 'Обновить' : core ? 'Докачать' : `Скачать район · ~${mainMB} МБ`}</button>`;
+  const saved = regionSaved();
   return `
-    <p class="small">На воде и на льду связь пропадает. Скачайте район заранее по Wi‑Fi — карта, точки, справочники, глубины и навигатор будут работать без сети. Только этот участок Ладоги, без «карты мира».</p>
+    <div class="card">
+      <b>Чтобы всё работало без интернета</b>
+      <div class="checklist">
+        <div class="step ${installed ? 'done' : ''}"><span class="num">${installed ? '✓' : 1}</span><span class="txt">Установить приложение${installed ? ' — установлено' : ' на телефон (или компьютер)'}</span>${installed ? '' : '<button type="button" class="btn small" data-act="install">Как</button>'}</div>
+        <div class="step ${saved ? 'done' : ''}"><span class="num">${saved ? '✓' : 2}</span><span class="txt">Скачать район${saved ? ' — скачан' : ' — кнопка ниже, лучше по Wi‑Fi'}</span></div>
+      </div>
+      <p class="small muted" style="margin-bottom:0">Сохраняется всё: само приложение, точки, справочники, правила, карта района, навигационные карты и глубины. Дальше оно открывается с иконки и работает без сети — на iPhone, Android и компьютере. Без сети не будет только свежей погоды.</p>
+    </div>
     <div class="card">
       <b>Район южной Ладоги</b>
       <div id="packMain" style="margin:6px 0">${regionStatus()}</div>
@@ -602,6 +610,11 @@ function moreHtml() {
   const used = sources.filter((x) => x.status === 'used');
   const { installed } = platformInfo();
   return `
+    <div class="card">
+      <b>Попробовать навигатор дома</b>
+      <p class="small">Демо: лодка сама идёт к Варецким банкам — видно скорость, курс, глубину под лодкой, предупреждение о мели, уход с курса и прибытие. Геопозиция не нужна; завершить — кнопкой «Завершить».</p>
+      <button type="button" class="btn" data-act="demo">${ic('navigation')}Запустить демо</button>
+    </div>
     <h3>Экран</h3>
     <div class="small muted">Тема</div>
     ${seg('theme', [['system', 'Как в системе'], ['sun', 'По солнцу'], ['day', 'День'], ['night', 'Ночь']], s.theme)}
@@ -665,16 +678,16 @@ function openDepthHelp() {
   openModal({
     title: 'Глубины и эхолот',
     body: () => `
-      <p class="small">Глубины в приложении (включаются в «Слоях»): <b>навигационные карты ГУНиО</b> 1:10 000–1:125 000 — резкие, с отметками глубин (цифры читаются с масштаба 14); <b>цветная заливка и изобаты через 1 м</b> — модель дна, построенная по 18 тыс. отметкам глубин, распознанным с этих карт (ошибка в среднем 0,3 м, в 90 % мест до 1 м); изобаты, снятые с карт; грубая модель GLDB. У каждой точки, в навигаторе и под лодкой показана глубина по этой модели.</p>
+      <p class="small">Глубины в приложении (включаются в «Слоях»): <b>навигационные карты ГУНиО</b> 1:10 000–1:125 000 — резкие, с отметками глубин (цифры видны при приближении — когда линейка внизу показывает 300 м и меньше); <b>цветная заливка и изобаты через 1 м</b> — модель дна, построенная по 18 тыс. отметкам глубин, распознанным с этих карт (ошибка в среднем 0,3 м, в 90 % мест до 1 м); изобаты, снятые с карт. У каждой точки, в навигаторе и под лодкой показана глубина по этой модели.</p>
       <div class="card small warn-card">Глубины на картах — от среднего многолетнего уровня озера. В 2026 году вода примерно на 0,9 м ниже, значит реально мельче. Съёмка 1930–80-х годов; не для судовождения.</div>
-      ${state.ctx.depth?.community ? '<p class="small"><b>Любительские карты глубин Garmin</b> (freegpsmap 2007, С. Новиков 2005) — 25 тыс. отметок и 800 изобат, оцифрованных рыбаками с тех же карт ГУНиО. Совпадают с картами в пределах 15–20 м и дополняют их там, где изобат нет: бухта Петрокрепость, исток Невы, глубокая часть. Отметки видны подписями с масштаба 14, камни — ✚.</p>' : ''}
+      ${state.ctx.depth?.community ? '<p class="small"><b>Любительские карты глубин Garmin</b> (freegpsmap 2007, С. Новиков 2005) — 25 тыс. отметок и 800 изобат, оцифрованных рыбаками с тех же карт ГУНиО. Совпадают с картами в пределах 15–20 м и дополняют их там, где изобат нет: бухта Петрокрепость, исток Невы, глубокая часть. Отметки видны подписями при сильном приближении, камни — ✚.</p>' : ''}
       <p class="small">Самые свежие глубины — у рыбаков с эхолотами: их собирает Garmin (Quickdraw) и показывает в телефоне бесплатно, но выгрузить их нельзя. Схема такая: <b>глубины — в ActiveCaptain, наши точки — туда же файлом GPX</b>.</p>
       <div class="btns"><button type="button" class="btn small" data-act="gpx-filter">GPX: точки по фильтру</button><a class="btn small ghost" href="downloads/ladoga_points.gpx" download>GPX: все точки</a>${d.isobaths ? '<a class="btn small ghost" href="downloads/ladoga_isobaths_model.gpx" download>Изобаты (модель) в GPX</a>' : ''}</div>
       ${apps.map((a, i) => appCard(a, i === 0)).join('')}
       <h3>Карты ГУНиО на этой карте</h3>
       ${[...new Map(chartState.items.map((c) => [c.chart, c])).values()].sort((a, b) => a.scale - b.scale).map((c) => listRow({ icon: 'map', title: `№ ${esc(c.chart)} ${esc(c.title || '')}`, sub: `1:${Number(c.scale).toLocaleString('ru-RU')}, ${esc(c.year || '')}`, attrs: `data-act="chart-show" data-chart="${esc(c.chart)}"` })).join('')}
       <h3>Банки и мели из лоции</h3>
-      <p class="small">${state.M.filter((m) => m.kind === 'structure' || m.kind === 'hazard').length} точек с наименьшими глубинами (Железница 1,2 м, Астречье 0,8 м, Варецкие Луды, Сухская 2,6 м…) видны с масштаба 11, подписи — с 13. В навигации приложение предупреждает о мели впереди по курсу.</p>
+      <p class="small">${state.M.filter((m) => m.kind === 'structure' || m.kind === 'hazard').length} точек с наименьшими глубинами (Железница 1,2 м, Астречье 0,8 м, Варецкие Луды, Сухская 2,6 м…) видны при приближении, подписи — ещё ближе. В навигации приложение предупреждает о мели впереди по курсу.</p>
       <details><summary class="small">А можно Navionics прямо на эту карту?</summary>
         <p class="small">Только с ключом Garmin Navionics Web API (заявку подаёт владелец сайта, из России могут отказать); поверх своих данных — только платно. Для «глубины + точки» проще ActiveCaptain или Navionics Boating в телефоне.</p>
       </details>`,
@@ -710,15 +723,14 @@ function layersTabHtml() {
     <h3 style="margin-top:4px">Подложка</h3>
     <div class="base-tiles">${Object.entries(BASES).map(([k, b]) => `<button type="button" class="base-tile ${state.base === k ? 'on' : ''}" data-act="base-set" data-base="${k}" style="${baseThumb(k) ? `background-image:url('${baseThumb(k)}')` : ''}" title="${esc(b.full || b.name)}">${esc(b.name)}</button>`).join('')}</div>
     <h3>Глубины</h3>
-    ${hasCharts ? `<label class="check switch"><span><b>Навигационные карты ГУНиО</b><br><span class="small muted">отметки глубин, изобаты, камни, створы · 1:10 000–1:50 000</span></span><input type="checkbox" data-overlay="charts" ${o.charts ? 'checked' : ''}></label>
+    ${hasCharts ? `<label class="check switch"><span><b>Навигационные карты ГУНиО</b><br><span class="small muted">цифры глубин, изобаты, камни, створы; цифры читаются при приближении</span></span><input type="checkbox" data-overlay="charts" ${o.charts ? 'checked' : ''}></label>
       <div class="small muted">Прозрачность карт</div>
       <input type="range" id="chartOpacity" min="0.3" max="1" step="0.05" value="${state.chartOpacity}">` : ''}
     ${state.ctx.depth?.shade?.url ? `<label class="check switch"><span><b>Цветная заливка глубин</b><br><span class="small muted">модель дна по отметкам глубин карт: от светлого мелководья к тёмной глубине</span></span><input type="checkbox" data-overlay="shade" ${o.shade ? 'checked' : ''}></label>` : ''}
     ${state.ctx.depth?.isolines ? `<label class="check switch"><span><b>Изобаты через 1 м</b><br><span class="small muted">1–8, 10, 12, 15, 20… м по той же модели, с подписями глубин</span></span><input type="checkbox" data-overlay="gridIso" ${o.gridIso ? 'checked' : ''}></label>` : ''}
     ${state.ctx.depth?.chart_isobaths ? `<label class="check switch"><span>Изобаты 2–30 м, снятые с карт</span><input type="checkbox" data-overlay="chartIso" ${o.chartIso ? 'checked' : ''}></label>` : ''}
-    ${state.ctx.depth?.community ? `<label class="check switch"><span>Любительские карты глубин Garmin<br><span class="small muted">freegpsmap 2007, С. Новиков 2005: оцифровка тех же карт ГУНиО, дополняет их в бухте Петрокрепость, у истока Невы и в глубокой части; отметки подписями с масштаба 14, камни ✚</span></span><input type="checkbox" data-overlay="community" ${o.community ? 'checked' : ''}></label>` : ''}
-    ${state.ctx.depth?.isobaths ? `<label class="check switch"><span>Модель дна GLDB<br><span class="small muted">грубо, ±0,5–1 км, не для навигации</span></span><input type="checkbox" data-overlay="isobaths" ${o.isobaths ? 'checked' : ''}></label>` : ''}
-    ${(state.ctx.depth?.overlays || []).length ? `<label class="check switch"><span>Армейская карта 1:100 000<br><span class="small muted">изобаты 2–20 м, камни, отмели · 1970–80-е</span></span><input type="checkbox" data-overlay="genshtab" ${o.genshtab ? 'checked' : ''}></label>
+    ${state.ctx.depth?.community ? `<label class="check switch"><span>Любительские карты глубин Garmin<br><span class="small muted">freegpsmap 2007, С. Новиков 2005: оцифровка тех же карт ГУНиО, дополняет их в бухте Петрокрепость, у истока Невы и в глубокой части; отметки подписями при приближении, камни ✚</span></span><input type="checkbox" data-overlay="community" ${o.community ? 'checked' : ''}></label>` : ''}
+    ${(state.ctx.depth?.overlays || []).length ? `<label class="check switch"><span>Старая армейская карта 1:100 000<br><span class="small muted">Генштаб 1970–80-х, справочно: навигационные карты и модель дна точнее</span></span><input type="checkbox" data-overlay="genshtab" ${o.genshtab ? 'checked' : ''}></label>
       ${o.genshtab ? `<input type="range" id="genshtabOpacity" min="0.25" max="1" step="0.05" value="${state.genshtabOpacity}">` : ''}` : ''}
     <button type="button" class="btn small ghost" data-act="depth-help">Глубины и эхолот — как пользоваться</button>
     <h3>На карте</h3>
@@ -803,11 +815,11 @@ function applyPreset(k) {
     if (state.ctx.depth?.shade?.url) { o.shade = true; o.gridIso = !!state.ctx.depth?.isolines; } else { o.charts = true; o.chartIso = true; }
     o.lines = true;
     if (map.getZoom() < 12) map.setZoom(12);
-    toast('Глубины: заливка и изобаты через 1 м по отметкам карт; подписи глубин с масштаба 13', 5000);
+    toast('Глубины: заливка и изобаты через 1 м по отметкам карт. Приблизьте — появятся подписи глубин', 5000);
   } else if (k === 'chart') {
     o.charts = true; o.lines = true;
     if (map.getZoom() < 13) map.setZoom(13);
-    toast('Навигационные карты ГУНиО: цифры глубин читаются с масштаба 14', 5000);
+    toast('Навигационные карты ГУНиО. Приблизьте карту, чтобы читать цифры глубин (линейка внизу — 300 м и меньше)', 6000);
   } else if (k === 'now') {
     const mo = new Date().getMonth() + 1;
     state.seasonMonth = mo;
