@@ -511,6 +511,21 @@ map.on('contextmenu', (e) => {
   if (nav.on || topLayer()?.kind === 'modal') return;
   openNewPoint(e.latlng.lat, e.latlng.lng, { replace: topLayer()?.kind === 'card' });
 });
+// A mouse over the map (computer, tablet with a mouse): coordinates and the chart depth under the pointer.
+if (matchMedia('(pointer: fine)').matches) {
+  let hoverT = 0;
+  map.on('mousemove', (e) => {
+    const now = performance.now();
+    if (now - hoverT < 90) return;
+    hoverT = now;
+    const el = $('#cursorInfo');
+    const p = { lat: e.latlng.lat, lon: e.latlng.lng };
+    const d = depthAt(p);
+    el.textContent = `${fmtDM(p.lat, p.lon)}${d ? ` · ${d.text}` : ''}`;
+    el.hidden = false;
+  });
+  map.on('mouseout', () => { $('#cursorInfo').hidden = true; });
+}
 window.addEventListener('online', () => { renderChips(); refreshPage(); loadWeather(); });
 window.addEventListener('offline', () => { renderChips(); refreshPage(); });
 let resizeTimer;

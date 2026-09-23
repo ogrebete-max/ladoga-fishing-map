@@ -131,6 +131,8 @@ body[data-mode="nav"] .fab.compass { top: calc(140px + var(--safe-t)); display: 
 .hint-card p svg.i { width: 18px; height: 18px; vertical-align: -4px; }
 .hint-card .btns { flex: none; display: flex; flex-direction: column; gap: 6px; }
 body:not([data-layout="compact"]) .hint-card { bottom: 88px; right: 80px; }
+.cursor-info { position: absolute; left: 16px; bottom: 112px; background: rgba(10, 15, 20, .82); color: #fff; border-radius: 8px; padding: 4px 8px; font: 600 13px/1.3 var(--mono); pointer-events: none; white-space: nowrap; }
+body[data-mode="nav"] .cursor-info, body[data-layout="compact"] .cursor-info { display: none; }
 .attr-line { position: absolute; left: 50%; transform: translateX(-50%); bottom: 2px; font-size: 10px; color: #fff; text-shadow: 0 0 3px #000; white-space: nowrap; pointer-events: none; opacity: .85; }
 
 /* What is visible in each state (§5.9) */

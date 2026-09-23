@@ -392,7 +392,7 @@ function onTagPick(tag, el) {
 function openNewPoint(lat, lon, opts = {}) {
   openModal({
     key: 'new-point', title: 'Новая точка', tag: 'other', lat, lon,
-    body: () => `<p class="coord" style="margin-top:0">${fmtDM(lat, lon)}<br><span class="small muted">${fmtDec(lat, lon)}${geo.me ? ` · ${fmtDist(distM(geo.me, { lat, lon }))} от вас` : ''}</span></p>
+    body: () => `<p class="coord" style="margin-top:0">${fmtDM(lat, lon)}<br><span class="small muted">${fmtDec(lat, lon)}${geo.me ? ` · ${fmtDist(distM(geo.me, { lat, lon }))} от вас` : ''}${depthAt({ lat, lon }) ? ` · глубина по карте ${esc(depthAt({ lat, lon }).text)}` : ''}</span></p>
       <div class="tag-grid">${Object.entries(TAGS).map(([k, t]) => `<button type="button" data-tag="${k}" class="${k === 'other' ? 'on' : ''}"><span class="tag-dot" style="background:${t.color}"></span>${t.label}</button>`).join('')}</div>
       <input type="text" id="npName" placeholder="Название (можно не писать)" autocomplete="off">
       <div class="btns"><button type="button" class="btn ghost" data-act="np-nav">${ic('navigation')}Вести сюда</button><button type="button" class="btn ghost" data-act="copy-text" data-text="${esc(`${fmtDM(lat, lon)} (${fmtDec(lat, lon)})`)}">${ic('content-copy')}Координаты</button></div>`,
