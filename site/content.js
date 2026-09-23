@@ -527,7 +527,7 @@ function mePointsHtml() {
 }
 function offlineHtml() {
   const { iOS, installed } = platformInfo();
-  const core = packInfo('core'), charts = packInfo('charts'), detail = packInfo('detail');
+  const core = packInfo('core'), charts = packInfo('charts');
   const running = offline.running;
   const pr = offline.progress;
   const mainMB = PACKS[0].estMB() + (PACKS[1].estMB() || 30);
@@ -549,18 +549,26 @@ function offlineHtml() {
       ${iOS && !installed ? `<div class="card small warn-card" style="margin-top:8px">На iPhone сначала установите приложение на экран «Домой» и качайте в нём: скачанное в Safari в приложение не попадёт. <button type="button" class="btn small ghost" data-act="install">Как установить</button></div>` : ''}
       <div class="btns" style="margin-bottom:0">${mainBtn}</div>
     </div>
-    <div class="card">
-      <b>Подробная карта у берега</b> <span class="muted small">~${PACKS[2].estMB()} МБ</span>
-      <div id="packDetail" class="small" style="margin:6px 0">${running === 'detail' && pr ? progressHtml(pr) : detail ? (detail.complete ? `${ic('check-circle')} Загружена` : `Скачано ${detail.done} из ${detail.total}`) : '<span class="muted">Не скачана</span>'}</div>
-      <div class="small muted">Самый крупный масштаб спутника в 1 км от мест рыбалки, слипов и банок. Лучше по Wi‑Fi.</div>
-      <div class="btns" style="margin-bottom:0">${running === 'detail' ? `<button type="button" class="btn small ghost" data-act="pack-stop">${ic('pause')}Пауза</button>` : `<button type="button" class="btn small ghost" data-act="pack-run" data-pack="detail">${detail?.complete ? 'Обновить' : detail ? 'Докачать' : 'Скачать'}</button>`}</div>
-    </div>
+    ${extraPackCard('detail', 'Подробная карта у берега', 'Самый крупный масштаб спутника в 1 км от мест рыбалки, слипов и банок. Лучше по Wi‑Fi.')}
+    ${extraPackCard('genshtab', 'Армейская карта 1:100 000', 'Листы Генштаба 1970–80-х: изобаты 2–20 м, камни, отмели. Справочно — навигационные карты точнее.')}
     <h3>Без сети работает</h3>
     <div class="ok-list">${['карта района (скачанная часть)', 'GPS, навигатор, компас', 'треки и метки', 'точки, справочники, правила', 'глубины по навигационным картам'].map((t) => `<div>${ic('check-circle')} ${t}</div>`).join('')}</div>
     <h3>Не работает</h3>
     <div class="ok-list muted">${[`погода${state.wx?.at ? ` (последняя — ${fmtDay(state.wx.at)} ${fmtTime(state.wx.at)})` : ''}`, 'маршрут на машине', 'ссылки на источники'].map((t) => `<div>${ic('cloud-off')} ${t}</div>`).join('')}</div>
     <p class="small muted" id="storageLine"></p>
     <button type="button" class="btn small textdanger" data-act="pack-delete">${ic('delete')}Удалить все сохранённые карты</button>`;
+}
+function extraPackCard(id, title, note) {
+  const pack = PACKS.find((p) => p.id === id);
+  if (!pack) return '';
+  const info = packInfo(id), running = offline.running === id, pr = offline.progress;
+  const mb = pack.estMB();
+  return `<div class="card">
+      <b>${esc(title)}</b>${mb ? ` <span class="muted small">~${mb} МБ</span>` : ''}
+      <div id="pack-${id}" class="small" style="margin:6px 0">${running && pr ? progressHtml(pr) : info ? (info.complete ? `${ic('check-circle')} Загружена` : `Скачано ${info.done} из ${info.total}`) : '<span class="muted">Не скачана</span>'}</div>
+      <div class="small muted">${esc(note)}</div>
+      <div class="btns" style="margin-bottom:0">${running ? `<button type="button" class="btn small ghost" data-act="pack-stop">${ic('pause')}Пауза</button>` : `<button type="button" class="btn small ghost" data-act="pack-run" data-pack="${id}">${info?.complete ? 'Обновить' : info ? 'Докачать' : 'Скачать'}</button>`}</div>
+    </div>`;
 }
 function progressHtml(pr) {
   const share = pr.total ? (pr.done + pr.failed) / pr.total : 0;
@@ -574,7 +582,7 @@ function onPackProgress() {
   if (offline.shownRunning !== offline.running) { offline.shownRunning = offline.running; refreshPage('me'); renderChips(); return; }
   if (!offline.running) return;
   const pr = offline.progress;
-  const el = $(offline.running === 'detail' ? '#packDetail' : '#packMain');
+  const el = $(offline.running.includes('core') ? '#packMain' : `#pack-${offline.running}`);
   if (el && pr) el.innerHTML = progressHtml(pr);
   else refreshPage('me');
 }

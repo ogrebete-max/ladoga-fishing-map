@@ -65,7 +65,7 @@ const state = {
   mine: store.get('ladoga-mine', []),
   base: store.get('ladoga-base', 'sat'),
   overlays: Object.assign({ seamarks: false, heat: false, cluster: true, radius: false, seasonZones: false, rules: false, lines: true, mine: true, tracks: false, genshtab: false, isobaths: false, charts: false, chartIso: false }, store.get('ladoga-overlays', {})),
-  chartOpacity: store.get('ladoga-chart-opacity', 0.85),
+  chartOpacity: store.get('ladoga-chart-opacity', 1),
   genshtabOpacity: store.get('ladoga-genshtab-opacity', 0.8),
   overlayOpacity: store.get('ladoga-overlay-opacity', 0.7),
   settings: Object.assign({ theme: 'system', units: 'kmh', autoZoom: true, navShowPoints: false, keepAwake: false, sound: true, arrivalR: 30, orient: 'course', autoReturn: 15, shallow: 2 }, store.get('ladoga-settings', {})),
@@ -1092,23 +1092,20 @@ const PACKS = [
   {
     id: 'charts', name: 'Навигационные карты глубин',
     urls: async () => {
-      const list = [];
-      try {
-        const idx = chartState.index || await fetch('tiles/index.json', { cache: 'no-cache' }).then((r) => (r.ok ? r.json() : null));
-        for (const l of idx?.layers || []) {
-          if (!l.list) continue;
-          const txt = await fetch(l.list).then((r) => (r.ok ? r.text() : ''));
-          for (const line of txt.split(/\r?\n/)) if (line.trim()) list.push(new URL(line.trim(), location.href).href);
-        }
-      } catch { /* no tile index yet */ }
+      const list = await tileList('charts');
       if (!list.length) for (const c of chartState.items) list.push(new URL(c.url, location.href).href);
-      for (const o of state.ctx.depth?.overlays || []) list.push(new URL(o.url, location.href).href);
       return list;
     },
-    estMB: () => {
-      const bytes = (chartState.index?.layers || []).reduce((a, l) => a + (+l.total_bytes || 0), 0);
-      return bytes ? Math.round(bytes / 1048576) : null;
+    estMB: () => layerMB('charts'),
+  },
+  {
+    id: 'genshtab', name: 'Армейская карта 1:100 000',
+    urls: async () => {
+      const list = await tileList('genshtab');
+      if (!list.length) for (const o of state.ctx.depth?.overlays || []) list.push(new URL(o.url, location.href).href);
+      return list;
     },
+    estMB: () => layerMB('genshtab'),
   },
   {
     id: 'detail', name: 'Подробный спутник у берега',
@@ -1116,6 +1113,23 @@ const PACKS = [
     estMB: () => Math.round(nearTiles(15, 15, 1).length * 28 / 1024),
   },
 ];
+// The tiles of one layer listed in tiles/index.json (a text file, one path per line).
+async function tileList(id) {
+  const list = [];
+  try {
+    const idx = chartState.index || await fetch('tiles/index.json', { cache: 'no-cache' }).then((r) => (r.ok ? r.json() : null));
+    const l = (idx?.layers || []).find((x) => x.id === id);
+    if (l?.list) {
+      const txt = await fetch(l.list, { cache: 'no-cache' }).then((r) => (r.ok ? r.text() : ''));
+      for (const line of txt.split(/\r?\n/)) if (line.trim()) list.push(new URL(line.trim(), location.href).href);
+    }
+  } catch { /* no tile index yet */ }
+  return list;
+}
+function layerMB(id) {
+  const l = (chartState.index?.layers || []).find((x) => x.id === id);
+  return l?.total_bytes ? Math.round(l.total_bytes / 1048576) : null;
+}
 const packInfo = (id) => store.get(`ladoga-pack-${id}`, null);
 const offline = { running: null, cancel: false, progress: null };
 // Downloads the listed packs one after another; progress goes to offline.progress and to onPackProgress().
