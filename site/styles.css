@@ -466,6 +466,8 @@ button.card.today-wx { display: flex; gap: 12px; align-items: center; }
 .iso-label { display: inline-block; transform: translate(-50%, -50%); font: 700 11px/1 var(--font); color: #0b4a7a; text-shadow: 0 0 2px #fff, 0 0 3px #fff, 0 0 4px #fff; white-space: nowrap; pointer-events: none; }
 .iso-label.shallow { color: #b33b00; }
 .iso-label.community { color: #862e9c; font-weight: 600; }
+.iso-label.community.sounding { font-style: italic; font-size: 10.5px; }
+.iso-label.community.rock { color: #c2255c; font-weight: 800; }
 .marker-cluster { background: rgba(11, 37, 51, .35); border-radius: 50%; }
 .marker-cluster div { background: #0b2533; color: #fff; width: 30px; height: 30px; margin: 5px; border-radius: 50%; display: grid; place-items: center; font-weight: 800; font-size: 12px; }
 .zone-tag-wrap { background: none; border: 0; }

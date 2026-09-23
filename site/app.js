@@ -308,6 +308,7 @@ function applyOverlays() {
   if (depthModel.iso) toggle(depthModel.iso, !!o.gridIso);
   if (o.community && !depthModel.community) loadCommunityDepth();
   if (depthModel.community) toggle(depthModel.community, !!o.community);
+  if (depthModel.communityDup) toggle(depthModel.communityDup, !!o.community && !o.chartIso);
   drawIsoLabels();
   updateCharts();
   if (o.isobaths) ensureIsobaths();
@@ -599,7 +600,7 @@ async function ensureIsobaths() {
 /* ---------- the depth model from the chart soundings: colour shading, isolines every metre ---------- */
 const ISO_COLORS = { 1: '#e8590c', 2: '#f08c00', 3: '#74c0fc', 4: '#4dabf7', 5: '#339af0', 6: '#228be6', 7: '#1c7ed6', 8: '#1971c2', 10: '#1864ab', 12: '#364fc7', 15: '#3b5bdb', 20: '#5f3dc4', 25: '#6741d9', 30: '#212529' };
 const isoColor = (m) => ISO_COLORS[m] || (m < 3 ? '#e8590c' : m < 10 ? '#1c7ed6' : '#5f3dc4');
-const depthModel = { shade: null, iso: null, isoLoading: null, labels: [], labelLayer: L.layerGroup(), community: null, communityLoading: null, communityLabels: [] };
+const depthModel = { shade: null, iso: null, isoLoading: null, labels: [], labelLayer: L.layerGroup(), community: null, communityDup: null, communityLoading: null, communityLabels: [], communityIsoLabels: [], communityMarks: [] };
 function buildDepthModel() {
   const sh = state.ctx.depth?.shade;
   if (sh?.url && !depthModel.shade) {
@@ -643,33 +644,62 @@ function isoLabelPoints(gj, stepM) {
   }
   return out;
 }
+// Depth labels on screen, decluttered: one per cell of ~30 px, rocks and banks first, then line labels, then soundings.
 function drawIsoLabels() {
-  const L0 = depthModel.labelLayer;
-  L0.clearLayers();
-  const on = (state.overlays.gridIso && depthModel.labels.length) || (state.overlays.community && depthModel.communityLabels.length);
-  if (!on || map.getZoom() < 13) { if (map.hasLayer(L0)) map.removeLayer(L0); return; }
-  if (!map.hasLayer(L0)) L0.addTo(map);
-  const view = map.getBounds().pad(0.15);
+  const layer = depthModel.labelLayer;
+  layer.clearLayers();
+  const z = map.getZoom();
+  const iso = state.overlays.gridIso && depthModel.labels.length;
+  const com = state.overlays.community && depthModel.community;
+  if ((!iso && !com) || z < 13) { if (map.hasLayer(layer)) map.removeLayer(layer); return; }
+  if (!map.hasLayer(layer)) layer.addTo(map);
+  const size = map.getSize();
+  const view = map.getBounds().pad(0.1);
+  const cell = z >= 16 ? 24 : z >= 15 ? 28 : 34;
+  const taken = new Set();
   let n = 0;
+  const num = (m) => String(Math.round(m * 10) / 10).replace('.', ',');
   const add = (p, cls, text) => {
-    if (n > 220 || !view.contains([p.lat, p.lon])) return;
-    n += 1;
-    L.marker([p.lat, p.lon], { interactive: false, keyboard: false, icon: L.divIcon({ className: '', html: `<span class="iso-label ${cls}">${text}</span>`, iconSize: null }) }).addTo(L0);
+    if (n > 600 || !view.contains([p.lat, p.lon])) return;
+    const pt = map.latLngToContainerPoint([p.lat, p.lon]);
+    if (pt.x < -10 || pt.y < -10 || pt.x > size.x + 10 || pt.y > size.y + 10) return;
+    const key = `${Math.floor(pt.x / cell)}:${Math.floor(pt.y / (cell * 0.66))}`;
+    if (taken.has(key)) return;
+    taken.add(key); n += 1;
+    L.marker([p.lat, p.lon], { interactive: false, keyboard: false, icon: L.divIcon({ className: '', html: `<span class="iso-label ${cls}">${text}</span>`, iconSize: null }) }).addTo(layer);
   };
-  if (state.overlays.gridIso) for (const p of depthModel.labels) add(p, p.m <= 2 ? 'shallow' : '', String(p.m));
-  if (state.overlays.community && map.getZoom() >= 14) for (const p of depthModel.communityLabels) add(p, 'community', String(p.m).replace('.', ','));
+  if (com) for (const p of depthModel.communityMarks) add(p, 'community rock', `${p.rock ? '✚' : 'б'} ${num(p.m)}`);
+  if (iso) for (const p of depthModel.labels) add(p, p.m <= 2 ? 'shallow' : '', String(p.m));
+  if (com) for (const p of depthModel.communityIsoLabels) add(p, 'community', num(p.m));
+  if (com && z >= 14) for (const p of depthModel.communityLabels) add(p, 'community sounding', num(p.m));
 }
 map.on('moveend zoomend', () => { if (state.overlays.gridIso || state.overlays.community) drawIsoLabels(); });
 // Community depth files (openly published Garmin / GPX / KML contours and soundings), when there are any.
+// Community depth files: freegpsmap 2007 and S. Novikov 2005 Garmin maps — amateur digitising of the same ГУНиО
+// charts, filling places the chart isolines miss (Petrokrepost bay, the Neva source, the deep lake). Lines that
+// repeat the chart isolines (dup_chart) are drawn only while that layer is off.
 function loadCommunityDepth() {
   const url = state.ctx.depth?.community;
   if (!url || depthModel.communityLoading) return depthModel.communityLoading;
   depthModel.communityLoading = fetch(url).then((r) => r.json()).then((gj) => {
     const renderer = L.canvas({ padding: 0.3 });
-    const lines = { ...gj, features: (gj.features || []).filter((f) => /LineString/.test(f.geometry?.type)) };
-    depthModel.community = L.geoJSON(lines, { renderer, interactive: false, style: () => ({ color: '#ae3ec9', weight: 1.4, opacity: 0.85, dashArray: '5 4', interactive: false }) });
-    depthModel.communityLabels = (gj.features || []).filter((f) => f.geometry?.type === 'Point' && f.properties?.depth_m != null)
-      .map((f) => ({ lat: f.geometry.coordinates[1], lon: f.geometry.coordinates[0], m: +f.properties.depth_m }));
+    const feats = gj.features || [];
+    const lineStyle = (f) => ({ color: +f.properties.depth_m <= 2 ? '#c2255c' : '#ae3ec9', weight: 1.4, opacity: 0.85, dashArray: '6 4', interactive: false });
+    const lines = feats.filter((f) => f.properties?.kind === 'contour');
+    depthModel.community = L.geoJSON({ type: 'FeatureCollection', features: lines.filter((f) => !f.properties.dup_chart) }, { renderer, interactive: false, style: lineStyle });
+    depthModel.communityDup = L.geoJSON({ type: 'FeatureCollection', features: lines.filter((f) => f.properties.dup_chart) }, { renderer, interactive: false, style: lineStyle });
+    depthModel.communityIsoLabels = isoLabelPoints({ features: lines }, 1800);
+    depthModel.communityLabels = []; depthModel.communityMarks = [];
+    for (const f of feats) {
+      if (f.properties?.kind !== 'sounding' || f.properties.depth_m == null) continue;
+      const coords = f.geometry.type === 'MultiPoint' ? f.geometry.coordinates : [f.geometry.coordinates];
+      const note = f.properties.note || '';
+      for (const c of coords) {
+        const p = { lat: c[1], lon: c[0], m: +f.properties.depth_m };
+        if (/камень|банка/.test(note)) depthModel.communityMarks.push({ ...p, rock: note === 'камень' });
+        else depthModel.communityLabels.push(p);
+      }
+    }
     applyOverlays();
     return depthModel.community;
   }).catch(() => { depthModel.communityLoading = null; return null; });
