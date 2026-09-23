@@ -9,10 +9,13 @@ Every output pixel is traced back to the ORIGINAL scan pixels through the georef
 (Web Mercator -> WGS84 -> SK-42 -> chart polynomial / Gauss-Krueger homography -> scan pixel) and resampled
 exactly once: cubic spline interpolation where the scan is finer than the tile, and supersampling + Lanczos-3
 reduction (i.e. a Lanczos kernel scaled to the pixel footprint - antialiasing) where the tile is coarser than the
-scan.  Everything outside the neat line (margins, scales, legends) is transparent; inside one scale tier each
-pixel comes from the sheet it lies deepest in, so frames/titles of one sheet give way to the neighbour.
-A mild unsharp mask keeps the soundings crisp.  Only tiles that touch the chart coverage inside the project
-bbox (lat 59.85-60.80, lon 30.90-33.40) are made.
+scan.  Everything outside the neat line (margins, scales) is transparent; title blocks / notes / source diagrams
+inside the neat line (all on land) are painted with the sheet's own land tint; inside one scale tier each pixel
+comes from the sheet it lies deepest in (seam in the middle of the overlap).  Between tiers the most detailed
+sheet is on top only from the zoom where its soundings are legible (>= 8 px), otherwise it goes underneath.
+Scans get a mild non-local-means denoise once (not a median: that erased the figures of the old overlays), tiles
+a mild unsharp mask.  Only tiles that touch the chart coverage inside the project bbox (lat 59.85-60.80,
+lon 30.90-33.40) are made.  index.json keeps layers written there by other builders.
 
   python scripts/build_chart_tiles.py charts   [--workers 8] [--zooms 9-16] [--fmt webp] [--q 88]
   python scripts/build_chart_tiles.py genshtab [--workers 8] [--zooms 9-14]
@@ -59,8 +62,8 @@ COARSE = 8          # the exact geo mapping is evaluated every COARSE output px 
 KRAS_E = math.sqrt(2 / 298.3 - (1 / 298.3) ** 2)
 
 # ---------------------------------------------------------------- sources
-# tier: stacking order (0 = bottom). cutouts: scan-pixel rectangles (x0, y0, x1, y1) inside the neat line that must
-# not be shown (e.g. an inset drawn over land at the wrong place).
+# tier: scale class (0 = 1:125 000 ... 4 = 1:10 000). cutouts: scan-pixel rectangles (x0, y0, x1, y1) inside the neat
+# line that are painted with the land tint around them (legends, emblems, an inset drawn over land at the wrong place).
 CHART_SOURCES = [
     # cutouts = title blocks, notes, 'схема использованных материалов', emblems drawn inside the neat line (on land)
     {"id": "23030", "key": "15", "tier": 0, "year": 1999, "cutouts": [(6090, 4180, 7600, 5550)]},
@@ -760,11 +763,20 @@ def write_index():
         layers.append(entry)
         with open(os.path.join(SITE_TILES, f"{layer}_tiles.txt"), "w", encoding="utf-8", newline="\n") as f:
             f.write("\n".join(sorted(urls, key=lambda u: [int(p) if p.isdigit() else p for p in u.replace('.', '/').split('/')])) + "\n")
+    # keep layers written into the same index by other builders (e.g. a 'depth' layer), replace only ours
+    ip = os.path.join(SITE_TILES, "index.json")
+    if os.path.exists(ip):
+        try:
+            old = json.load(open(ip, encoding="utf-8"))
+            ours = {l["id"] for l in layers}
+            layers += [l for l in old.get("layers", []) if l.get("id") not in ours and l.get("id") not in LAYERS]
+        except (ValueError, KeyError):
+            pass
     idx = {"generated": time.strftime("%Y-%m-%d"), "tile_scheme": "XYZ (Google/OSM), EPSG:3857, 256 px",
            "layers": layers}
     json.dump(idx, open(os.path.join(SITE_TILES, "index.json"), "w", encoding="utf-8"), ensure_ascii=False, indent=1)
     for l in layers:
-        print(f"index: {l['id']}: {l['total_tiles']} tiles, {l['total_bytes'] / 1e6:.1f} MB")
+        print(f"index: {l.get('id')}: {l.get('total_tiles', '?')} tiles, {(l.get('total_bytes') or 0) / 1e6:.1f} MB")
 
 
 def test(args):

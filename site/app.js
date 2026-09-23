@@ -64,7 +64,7 @@ const state = {
   fav: new Set(store.get('ladoga-fav', [])),
   mine: store.get('ladoga-mine', []),
   base: store.get('ladoga-base', 'sat'),
-  overlays: Object.assign({ seamarks: false, heat: false, cluster: true, radius: false, seasonZones: false, rules: false, lines: true, mine: true, tracks: false, genshtab: false, isobaths: false, charts: false, chartIso: false }, store.get('ladoga-overlays', {})),
+  overlays: Object.assign({ seamarks: false, heat: false, cluster: true, radius: false, seasonZones: false, rules: false, lines: true, mine: true, tracks: false, genshtab: false, isobaths: false, charts: false, chartIso: false, shade: false, gridIso: false, community: false }, store.get('ladoga-overlays', {})),
   chartOpacity: store.get('ladoga-chart-opacity', 1),
   genshtabOpacity: store.get('ladoga-genshtab-opacity', 0.8),
   overlayOpacity: store.get('ladoga-overlay-opacity', 0.7),
@@ -303,6 +303,12 @@ function applyOverlays() {
   toggle(layers.isobaths, o.isobaths);
   toggle(chartState.isoLayer, o.chartIso);
   if (o.chartIso) loadChartIsobaths();
+  if (depthModel.shade) toggle(depthModel.shade, !!o.shade);
+  if (o.gridIso && !depthModel.iso) loadGridIsolines();
+  if (depthModel.iso) toggle(depthModel.iso, !!o.gridIso);
+  if (o.community && !depthModel.community) loadCommunityDepth();
+  if (depthModel.community) toggle(depthModel.community, !!o.community);
+  drawIsoLabels();
   updateCharts();
   if (o.isobaths) ensureIsobaths();
   if (o.genshtab) layers.genshtab.eachLayer((l) => l.setOpacity(state.genshtabOpacity));
@@ -588,6 +594,86 @@ async function ensureIsobaths() {
       },
     }).addTo(layers.isobaths);
   } catch { state.isobathsLoaded = false; toast('Не удалось загрузить изобаты'); }
+}
+
+/* ---------- the depth model from the chart soundings: colour shading, isolines every metre ---------- */
+const ISO_COLORS = { 1: '#e8590c', 2: '#f08c00', 3: '#74c0fc', 4: '#4dabf7', 5: '#339af0', 6: '#228be6', 7: '#1c7ed6', 8: '#1971c2', 10: '#1864ab', 12: '#364fc7', 15: '#3b5bdb', 20: '#5f3dc4', 25: '#6741d9', 30: '#212529' };
+const isoColor = (m) => ISO_COLORS[m] || (m < 3 ? '#e8590c' : m < 10 ? '#1c7ed6' : '#5f3dc4');
+const depthModel = { shade: null, iso: null, isoLoading: null, labels: [], labelLayer: L.layerGroup(), community: null, communityLoading: null, communityLabels: [] };
+function buildDepthModel() {
+  const sh = state.ctx.depth?.shade;
+  if (sh?.url && !depthModel.shade) {
+    depthModel.shade = L.tileLayer(sh.url, {
+      pane: 'charts', zIndex: 0, minZoom: 8, maxZoom: 18, minNativeZoom: +sh.minZoom || 9, maxNativeZoom: +sh.maxNativeZoom || 15,
+      opacity: 0.85, errorTileUrl: CLEAR_TILE, bounds: regionBounds().pad(0.05),
+    });
+  }
+}
+// Isolines every metre near the shore (1–8, 10, 12, 15, 20, 25, 30 m), drawn on canvas; depth labels from z13.
+function loadGridIsolines() {
+  const url = state.ctx.depth?.isolines;
+  if (!url || depthModel.isoLoading) return depthModel.isoLoading;
+  depthModel.isoLoading = fetch(url).then((r) => r.json()).then((gj) => {
+    const renderer = L.canvas({ padding: 0.3 });
+    depthModel.iso = L.geoJSON(gj, {
+      renderer, interactive: false,
+      style: (f) => { const m = +f.properties.depth_m; return { color: isoColor(m), weight: m <= 2 ? 2.2 : m % 5 === 0 ? 2 : 1.2, opacity: 0.9, interactive: false }; },
+    });
+    depthModel.labels = isoLabelPoints(gj, 1500);
+    applyOverlays();
+    return depthModel.iso;
+  }).catch(() => { depthModel.isoLoading = null; return null; });
+  return depthModel.isoLoading;
+}
+// A label every `stepM` metres along each line (and one on any line longer than 300 m).
+function isoLabelPoints(gj, stepM) {
+  const out = [];
+  for (const f of gj.features || []) {
+    const m = +f.properties.depth_m;
+    const parts = f.geometry.type === 'MultiLineString' ? f.geometry.coordinates : [f.geometry.coordinates];
+    for (const part of parts) {
+      let run = stepM / 2, total = 0;
+      for (let i = 1; i < part.length; i++) {
+        const a = { lat: part[i - 1][1], lon: part[i - 1][0] }, b = { lat: part[i][1], lon: part[i][0] };
+        const d = distM(a, b);
+        total += d; run += d;
+        if (run >= stepM && total > 300) { run = 0; out.push({ lat: b.lat, lon: b.lon, m }); }
+      }
+    }
+  }
+  return out;
+}
+function drawIsoLabels() {
+  const L0 = depthModel.labelLayer;
+  L0.clearLayers();
+  const on = (state.overlays.gridIso && depthModel.labels.length) || (state.overlays.community && depthModel.communityLabels.length);
+  if (!on || map.getZoom() < 13) { if (map.hasLayer(L0)) map.removeLayer(L0); return; }
+  if (!map.hasLayer(L0)) L0.addTo(map);
+  const view = map.getBounds().pad(0.15);
+  let n = 0;
+  const add = (p, cls, text) => {
+    if (n > 220 || !view.contains([p.lat, p.lon])) return;
+    n += 1;
+    L.marker([p.lat, p.lon], { interactive: false, keyboard: false, icon: L.divIcon({ className: '', html: `<span class="iso-label ${cls}">${text}</span>`, iconSize: null }) }).addTo(L0);
+  };
+  if (state.overlays.gridIso) for (const p of depthModel.labels) add(p, p.m <= 2 ? 'shallow' : '', String(p.m));
+  if (state.overlays.community && map.getZoom() >= 14) for (const p of depthModel.communityLabels) add(p, 'community', String(p.m).replace('.', ','));
+}
+map.on('moveend zoomend', () => { if (state.overlays.gridIso || state.overlays.community) drawIsoLabels(); });
+// Community depth files (openly published Garmin / GPX / KML contours and soundings), when there are any.
+function loadCommunityDepth() {
+  const url = state.ctx.depth?.community;
+  if (!url || depthModel.communityLoading) return depthModel.communityLoading;
+  depthModel.communityLoading = fetch(url).then((r) => r.json()).then((gj) => {
+    const renderer = L.canvas({ padding: 0.3 });
+    const lines = { ...gj, features: (gj.features || []).filter((f) => /LineString/.test(f.geometry?.type)) };
+    depthModel.community = L.geoJSON(lines, { renderer, interactive: false, style: () => ({ color: '#ae3ec9', weight: 1.4, opacity: 0.85, dashArray: '5 4', interactive: false }) });
+    depthModel.communityLabels = (gj.features || []).filter((f) => f.geometry?.type === 'Point' && f.properties?.depth_m != null)
+      .map((f) => ({ lat: f.geometry.coordinates[1], lon: f.geometry.coordinates[0], m: +f.properties.depth_m }));
+    applyOverlays();
+    return depthModel.community;
+  }).catch(() => { depthModel.communityLoading = null; return null; });
+  return depthModel.communityLoading;
 }
 
 /* ---------- lanes, extra tile layers ---------- */
@@ -1075,7 +1161,7 @@ function appFiles() {
     'data/points.json', 'data/context.json', 'downloads/ladoga_points.gpx'];
   $$('script[src], link[rel="stylesheet"][href]').forEach((el) => files.push(el.getAttribute('src') || el.getAttribute('href')));
   const d = state.ctx.depth || {};
-  for (const u of [d.isobaths, d.chart_isobaths, d.grid, d.isolines]) if (u) files.push(u);
+  for (const u of [d.isobaths, d.chart_isobaths, d.grid, d.isolines, d.community]) if (u) files.push(u);
   return [...new Set(files.map(abs))];
 }
 const PACKS = [
@@ -1094,6 +1180,14 @@ const PACKS = [
     urls: async () => {
       const list = await tileList('charts');
       if (!list.length) for (const c of chartState.items) list.push(new URL(c.url, location.href).href);
+      // the colour depth shading goes with the charts
+      const sh = state.ctx.depth?.shade;
+      if (sh?.list) {
+        try {
+          const txt = await fetch(sh.list, { cache: 'no-cache' }).then((r) => (r.ok ? r.text() : ''));
+          for (const line of txt.split(/\r?\n/)) if (line.trim()) list.push(new URL(line.trim(), location.href).href);
+        } catch { /* no shading list */ }
+      }
       return list;
     },
     estMB: () => layerMB('charts'),

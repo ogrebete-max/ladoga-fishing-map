@@ -168,7 +168,7 @@ python scripts/build_chart_tiles.py genshtab --workers 8 --q 85
 python scripts/build_chart_tiles.py index              # index.json и *_tiles.txt по файлам на диске
 python research/raw/tiles_src/compare_tiles.py charts  # сравнительные картинки старое/новое
 ```
-Нужны `research/raw/charts2` (сканы + georef), `research/raw/tiles_src` (новые сканы, их привязка), `research/raw/depth/genshtab`; Python 3.12 + numpy, scipy, Pillow, pyproj, opencv-python-headless (NLM), по желанию imagequant/pyoxipng (только для теста PNG-8). BLAS принудительно однопоточный — параллельность даёт пул процессов. Кэши `research/raw/tiles_src/cache/*.npy` (≈ 1,7 ГБ, планарные RGB после NLM) можно удалить — `prepare` их пересоздаст.
+Нужны `research/raw/charts2` (сканы + georef), `research/raw/tiles_src` (новые сканы, их привязка), `research/raw/depth/genshtab`; Python 3.12 + numpy, scipy, Pillow, pyproj, opencv-python-headless (NLM), по желанию imagequant/pyoxipng (только для теста PNG-8). BLAS принудительно однопоточный — параллельность даёт пул процессов. Кэши `research/raw/tiles_src/cache/*.npy` (≈ 1,6 ГБ, планарные RGB после NLM) можно удалить — `prepare` их пересоздаст.
 
 ## 8. Ограничения
 

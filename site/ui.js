@@ -596,6 +596,7 @@ async function boot() {
   setBase(state.base);
   buildDepthLayers();
   buildCharts();
+  buildDepthModel();
   loadChartTiles();
   applyOverlays();
   drawLines(); drawMine(); drawRules(); drawSeasonZones();

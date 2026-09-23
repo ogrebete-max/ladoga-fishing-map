@@ -225,6 +225,8 @@ def research_reports():
         except Exception as error:  # a broken agent file must not stop the build
             print(f"skip {path.name}: {error}")
             continue
+        if not isinstance(payload, dict):
+            continue  # not a points file (a list of sources, a report table…)
         slug = payload.get("agent") or path.stem
         points = list(payload.get("points") or [])
         singles = [w for w in payload.get("dated_reports_with_coords") or [] if w.get("latitude") is not None]
@@ -353,15 +355,28 @@ def tackle_context():
             "legal_common": t.get("legal_common"), "total": total}
 
 
+def depth_shade():
+    """The coloured depth tiles (site/tiles/depth/{z}/{x}/{y}.png) if the depth model has been built."""
+    base = ROOT / "site" / "tiles" / "depth"
+    zooms = sorted(int(d.name) for d in base.iterdir() if d.is_dir() and d.name.isdigit()) if base.exists() else []
+    if not zooms:
+        return {}
+    ext = next((f.suffix for f in (base / str(zooms[-1])).rglob("*") if f.is_file()), ".png")
+    listing = ROOT / "site" / "tiles" / "depth_tiles.txt"
+    return {"url": f"tiles/depth/{{z}}/{{x}}/{{y}}{ext}", "minZoom": zooms[0], "maxNativeZoom": zooms[-1],
+            "list": "tiles/depth_tiles.txt" if listing.exists() else ""}
+
+
 def load_json(name):
     path = RESEARCH / f"{name}.json"
     if name in SKIP or not path.exists():
         return {}
     try:
-        return json.loads(path.read_text(encoding="utf-8-sig"))
+        payload = json.loads(path.read_text(encoding="utf-8-sig"))
     except Exception as error:
         print(f"skip {name}: {error}")
         return {}
+    return payload if isinstance(payload, dict) else {}
 
 
 def main():
@@ -508,6 +523,10 @@ def main():
             "chart_isobaths": "data/depth_chart_isobaths.geojson" if (SITE_DATA / "depth_chart_isobaths.geojson").exists() else "",
             "overlays": overlays,
             "isobaths": "data/depth_isobaths.geojson" if (SITE_DATA / "depth_isobaths.geojson").exists() else "",
+            "grid": "data/depth_grid.json" if (SITE_DATA / "depth_grid.json").exists() else "",
+            "isolines": "data/depth_isolines.geojson" if (SITE_DATA / "depth_isolines.geojson").exists() else "",
+            "community": "data/depth_community.geojson" if (SITE_DATA / "depth_community.geojson").exists() else "",
+            "shade": depth_shade(),
             "phone_workflows": depth.get("phone_workflows") or [],
         },
         "lines": nav.get("lines") or [],

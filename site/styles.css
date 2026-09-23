@@ -463,6 +463,9 @@ button.card.today-wx { display: flex; gap: 12px; align-items: center; }
 .boat.stale svg { fill: #adb5bd; }
 .target-ring { width: 34px; height: 34px; border-radius: 50%; border: 3px solid #fa5252; background: rgba(250, 82, 82, .15); animation: pulse 1.6s infinite; }
 @keyframes pulse { 0% { transform: scale(.8); opacity: 1; } 100% { transform: scale(1.5); opacity: .2; } }
+.iso-label { display: inline-block; transform: translate(-50%, -50%); font: 700 11px/1 var(--font); color: #0b4a7a; text-shadow: 0 0 2px #fff, 0 0 3px #fff, 0 0 4px #fff; white-space: nowrap; pointer-events: none; }
+.iso-label.shallow { color: #b33b00; }
+.iso-label.community { color: #862e9c; font-weight: 600; }
 .marker-cluster { background: rgba(11, 37, 51, .35); border-radius: 50%; }
 .marker-cluster div { background: #0b2533; color: #fff; width: 30px; height: 30px; margin: 5px; border-radius: 50%; display: grid; place-items: center; font-weight: 800; font-size: 12px; }
 .zone-tag-wrap { background: none; border: 0; }

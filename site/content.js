@@ -711,7 +711,10 @@ function layersTabHtml() {
     ${hasCharts ? `<label class="check switch"><span><b>Навигационные карты ГУНиО</b><br><span class="small muted">отметки глубин, изобаты, камни, створы · 1:10 000–1:50 000</span></span><input type="checkbox" data-overlay="charts" ${o.charts ? 'checked' : ''}></label>
       <div class="small muted">Прозрачность карт</div>
       <input type="range" id="chartOpacity" min="0.3" max="1" step="0.05" value="${state.chartOpacity}">` : ''}
-    ${state.ctx.depth?.chart_isobaths ? `<label class="check switch"><span>Изобаты 2–30 м по навигационным картам</span><input type="checkbox" data-overlay="chartIso" ${o.chartIso ? 'checked' : ''}></label>` : ''}
+    ${state.ctx.depth?.shade?.url ? `<label class="check switch"><span><b>Цветная заливка глубин</b><br><span class="small muted">модель дна по отметкам глубин карт: от светлого мелководья к тёмной глубине</span></span><input type="checkbox" data-overlay="shade" ${o.shade ? 'checked' : ''}></label>` : ''}
+    ${state.ctx.depth?.isolines ? `<label class="check switch"><span><b>Изобаты через 1 м</b><br><span class="small muted">1–8, 10, 12, 15, 20… м по той же модели, с подписями глубин</span></span><input type="checkbox" data-overlay="gridIso" ${o.gridIso ? 'checked' : ''}></label>` : ''}
+    ${state.ctx.depth?.chart_isobaths ? `<label class="check switch"><span>Изобаты 2–30 м, снятые с карт</span><input type="checkbox" data-overlay="chartIso" ${o.chartIso ? 'checked' : ''}></label>` : ''}
+    ${state.ctx.depth?.community ? `<label class="check switch"><span>Глубины от рыбаков (карты Garmin и др.)<br><span class="small muted">изобаты и отметки из открытых файлов сообщества</span></span><input type="checkbox" data-overlay="community" ${o.community ? 'checked' : ''}></label>` : ''}
     ${state.ctx.depth?.isobaths ? `<label class="check switch"><span>Модель дна GLDB<br><span class="small muted">грубо, ±0,5–1 км, не для навигации</span></span><input type="checkbox" data-overlay="isobaths" ${o.isobaths ? 'checked' : ''}></label>` : ''}
     ${(state.ctx.depth?.overlays || []).length ? `<label class="check switch"><span>Армейская карта 1:100 000<br><span class="small muted">изобаты 2–20 м, камни, отмели · 1970–80-е</span></span><input type="checkbox" data-overlay="genshtab" ${o.genshtab ? 'checked' : ''}></label>
       ${o.genshtab ? `<input type="range" id="genshtabOpacity" min="0.25" max="1" step="0.05" value="${state.genshtabOpacity}">` : ''}` : ''}
@@ -793,7 +796,7 @@ function filterTabHtml() {
 // Quick sets of layers: depths for reading the bottom, the fishing of this month, a clean map.
 function applyPreset(k) {
   const o = state.overlays;
-  for (const x of ['heat', 'seasonZones', 'rules', 'charts', 'chartIso', 'isobaths', 'genshtab', 'radius']) o[x] = false;
+  for (const x of ['heat', 'seasonZones', 'rules', 'charts', 'chartIso', 'isobaths', 'genshtab', 'radius', 'shade', 'gridIso', 'community']) o[x] = false;
   if (k === 'depth') {
     o.charts = true; o.chartIso = true; o.lines = true;
     if (map.getZoom() < 12) map.setZoom(12);
