@@ -249,7 +249,7 @@ html[data-theme="night"] .nt-arrow { background: #1f1f1f; }
 .nav-banner.ok { background: var(--ok); color: #fff; }
 .nav-banner .nbb { display: flex; gap: 8px; margin-left: auto; flex-wrap: wrap; }
 .nav-banner button { min-height: 48px; border: 0; border-radius: 10px; padding: 0 12px; font-weight: 800; background: rgba(255, 255, 255, .92); color: #0a0f14; }
-.recenter { position: fixed; z-index: 1100; left: 50%; transform: translateX(-50%); bottom: calc(190px + var(--safe-b)); min-width: 196px; height: 52px; padding: 0 16px; border-radius: 26px; border: 0;
+.recenter { position: fixed; z-index: 1100; left: 50%; transform: translateX(-50%); bottom: calc(190px + var(--safe-b)); min-width: 196px; height: 52px; padding: 0 18px; white-space: nowrap; border-radius: 26px; border: 0;
   background: var(--accent); color: var(--on-accent); font-weight: 800; font-size: 16px; display: flex; align-items: center; justify-content: center; gap: 8px; box-shadow: var(--fab-shadow); }
 .nav-bottom { position: fixed; z-index: 1100; left: 0; right: 0; bottom: 0; background: var(--bg); color: var(--ink); padding: 8px 12px calc(8px + var(--safe-b)); box-shadow: 0 -2px 12px rgba(0, 0, 0, .3); }
 .nb-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }

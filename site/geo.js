@@ -327,8 +327,11 @@ map.on('dragstart', () => {
     updateRecenter();
   } else if (geo.follow !== 'free') setFollow('free');
 });
+// Only a zoom by the user's own fingers or wheel pauses the auto-zoom (+/− buttons go through userZoom).
+geo.userTouchT = 0;
+for (const ev of ['pointerdown', 'wheel', 'touchstart']) map.getContainer().addEventListener(ev, () => { geo.userTouchT = Date.now(); }, { passive: true });
 map.on('zoomstart', () => {
-  if (geo.progZoom || !nav.on) return;
+  if (geo.progZoom || !nav.on || Date.now() - geo.userTouchT > 1500) return;
   nav.autoZoomPaused = true; nav.lastTouch = Date.now();
   updateRecenter(); updateZoomAuto();
 });
