@@ -1,7 +1,8 @@
 # Ладога · рыболовная карта
 
 Сайт-приложение рыболова южной Ладоги (Волховская губа, Креницы, о. Птинов, Варецкие банки, о. Сухо,
-Дубно, Лигово, Вороново, Кобона, Леднево, Шлиссельбург, Свирская губа): https://ogrebete-max.github.io/ladoga-fishing-map/
+Дубно, Лигово, Вороново, Кобона, Леднево, Шлиссельбург, Свирская губа): **https://195.133.61.136/ladoga/** — свой сервер
+в Москве (тот же VPS, что у «СПб Топливо»); копия на GitHub Pages: https://ogrebete-max.github.io/ladoga-fishing-map/
 Ставится на телефон как приложение (кнопка «Установить»), работает без сети в сохранённом районе.
 
 ## Что внутри
@@ -33,7 +34,11 @@
 
 ## Устройство
 
-- `site/` — статический сайт (Leaflet), публикуется workflow `.github/workflows/pages.yml` при push в main.
+- `site/` — статический сайт (Leaflet). Основная публикация — `scripts/deploy_vps.sh` (из Git Bash, после commit и
+  push): сервер сам забирает `site/` с GitHub (частичный клон в `/var/www/ladoga/src`), собирает версию в
+  `/var/www/ladoga/releases/<время>` (неизменённые файлы — жёсткие ссылки) и разом переключает `/var/www/ladoga/current`;
+  Caddy отдаёт его по `/ladoga/` (настройка — `server/Caddyfile` в репозитории spb-fuel-intelligence). Копия на GitHub
+  Pages собирается workflow `.github/workflows/pages.yml` при push в main.
 - `python scripts/build_data.py` собирает `site/data/*.json` и `site/downloads/*` из `data/baseline/`
   (первое исследование) и `research/*.json` (по файлу на направление поиска, схема в `research/BRIEF.md`).
   `SKIP_AGENTS=имя1,имя2` временно исключает файлы, которые ещё дописываются.
