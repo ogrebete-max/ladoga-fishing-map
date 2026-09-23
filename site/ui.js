@@ -527,6 +527,9 @@ function onResize() {
 window.addEventListener('resize', onResize);
 window.addEventListener('orientationchange', onResize);
 
+// iPhone ignores user-scalable=no: a pinch outside the map would zoom the whole page and lose the buttons.
+document.addEventListener('gesturestart', (e) => { if (!map.getContainer().contains(e.target)) e.preventDefault(); }, { passive: false });
+
 /* ---------- keyboard (by physical key: works in the Russian layout too) ---------- */
 document.addEventListener('keydown', (e) => {
   const field = e.target.closest?.('input, textarea, select, [contenteditable="true"]');
@@ -608,6 +611,7 @@ async function boot() {
   } else store.set('ladoga-nav', null);
   updateLocateBtn(); updateTrackUi(); updateCompassBtn(); onFilterChange();
   syncChrome();
+  refreshLayersSheet(); refreshPage(); // opened while the data was still loading
   loadWeather();
   setInterval(() => loadWeather(), 30 * 60000);
 }
