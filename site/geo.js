@@ -311,12 +311,9 @@ function placeBoat(z) {
   const rotated = Math.abs(angleDiff(0, map.getBearing())) > 0.5 && (geo.follow === 'course' || geo.follow === 'compass');
   const yShare = rotated ? 0.72 : 0.5;
   const want = L.point((fr.left + fr.right) / 2, fr.top + yShare * (fr.bottom - fr.top));
-  const size = map.getSize();
   const boat = map.latLngToContainerPoint([me.lat, me.lon]);
-  if (boat.distanceTo(want) >= 3) {
-    const c = map.containerPointToLatLng(L.point(size.x / 2, size.y / 2).add(boat.subtract(want)));
-    map.setView(c, map.getZoom(), { animate: false });
-  }
+  // A screen-space shift (the map pane itself never rotates), cheaper than a new view on every fix.
+  if (boat.distanceTo(want) >= 3) map.panBy(boat.subtract(want), { animate: false });
   if (z != null && z !== map.getZoom()) {
     geo.progZoom = true;
     map.setZoomAround([me.lat, me.lon], z, { animate: true });

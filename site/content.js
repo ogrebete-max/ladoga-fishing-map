@@ -570,7 +570,9 @@ function progressHtml(pr) {
     <div class="small">${Math.round(share * 100)} % · ${Math.round(pr.bytes / 1048576)} МБ${left != null ? ` · осталось ~${Math.max(1, left)} мин` : ''}${pr.failed ? ` · не скачалось ${pr.failed}` : ''}</div>`;
 }
 function onPackProgress() {
-  if (!offline.running) { refreshPage('me'); renderChips(); return; }
+  // Start and end redraw the page (buttons change); in between only the bar moves.
+  if (offline.shownRunning !== offline.running) { offline.shownRunning = offline.running; refreshPage('me'); renderChips(); return; }
+  if (!offline.running) return;
   const pr = offline.progress;
   const el = $(offline.running === 'detail' ? '#packDetail' : '#packMain');
   if (el && pr) el.innerHTML = progressHtml(pr);
@@ -1037,7 +1039,7 @@ function handleAction(act, el) {
     case 'gpx-filter': download('ladoga_filtered.gpx', gpx(filteredWaypoints())); break;
     case 'gpx-mine': download('ladoga_my_points.gpx', gpx(state.mine.map((p) => ({ lat: p.lat, lon: p.lon, name: p.name, desc: p.note, t: p.t, type: TAGS[p.tag]?.label })))); break;
     case 'new-point': openNewPoint(+d.lat, +d.lon, { replace: true }); break;
-    case 'mine-open': { const p = findMine(d.id); if (p) { revealMap(); openMineCard(p); } break; }
+    case 'mine-open': { const p = findMine(d.id); if (p) openMineCard(p); break; }
     case 'mine-nav': { const p = findMine(d.id); if (p) startNav({ lat: p.lat, lon: p.lon, title: p.name }); break; }
     case 'mine-share': { const p = findMine(d.id); if (p) sharePoint(p.lat, p.lon, p.name); break; }
     case 'mine-menu': { const p = findMine(d.id); if (p) openMineMenu(p); break; }

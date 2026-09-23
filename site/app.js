@@ -1122,8 +1122,8 @@ const offline = { running: null, cancel: false, progress: null };
 async function runPacks(ids) {
   if (!('caches' in window)) { toast('Этот браузер не умеет хранить карту без сети'); return; }
   if (offline.running) { toast('Уже идёт загрузка'); return; }
-  try { await navigator.storage?.persist?.(); } catch { /* not supported */ }
   offline.running = ids.join('+'); offline.cancel = false;
+  try { await navigator.storage?.persist?.(); } catch { /* not supported */ }
   const lists = [];
   for (const id of ids) {
     const pack = PACKS.find((p) => p.id === id);

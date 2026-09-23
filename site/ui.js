@@ -165,10 +165,7 @@ function syncChrome() {
   if (r0.left !== r1.left || r0.top !== r1.top || r0.width !== r1.width || r0.height !== r1.height) {
     map.invalidateSize({ pan: false });
     const dx = r1.left - r0.left, dy = r1.top - r0.top;
-    if ((dx || dy) && geo.follow === 'free') {
-      const size = map.getSize();
-      map.setView(map.containerPointToLatLng(L.point(size.x / 2 + dx, size.y / 2 + dy)), map.getZoom(), { animate: false });
-    }
+    if ((dx || dy) && geo.follow === 'free') map.panBy([dx, dy], { animate: false });
     if (geo.follow !== 'free') requestAnimationFrame(() => placeBoat(null));
   }
 }
