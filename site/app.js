@@ -136,6 +136,9 @@ const pointKey = (lat, lon) => `${lat.toFixed(5)},${lon.toFixed(5)}`;
 /* ---------- map ---------- */
 const map = L.map('map', { zoomControl: false, attributionControl: true, maxZoom: 19, worldCopyJump: false })
   .setView([60.2, 32.15], 10);
+map.setMinZoom(8);
+map.setMaxBounds(L.latLngBounds([59.45, 30.2], [61.2, 34.1]));
+map.options.maxBoundsViscosity = 0.7;
 map.attributionControl.setPrefix('<a href="https://leafletjs.com" target="_blank" rel="noopener">Leaflet</a>');
 L.control.zoom({ position: 'bottomright' }).addTo(map);
 L.control.scale({ imperial: false, position: 'bottomleft' }).addTo(map);
@@ -363,6 +366,7 @@ function showTab(tab) {
   body.innerHTML = ({ today: todayHtml, filter: filterHtml, places: placesHtml, season: seasonHtml, fish: fishHtml, tackle: tackleHtml, depth: depthHtml, rules: rulesHtml, layers: layersHtml, data: dataHtml }[tab] || (() => ''))();
   body.scrollTop = 0;
   if (toLayers) setTimeout(() => $('#layersSection')?.scrollIntoView({ block: 'start' }), 50);
+  if (tab === 'filter') storageLine();
   if (tab === 'filter' || tab === 'data') refreshCounts();
 }
 
@@ -636,7 +640,9 @@ function handleAction(act, el) {
   else if (act === 'sos-locate') { startWatch(true); toast('Определяю место…'); setTimeout(() => { if (state.tab === 'sos') openSos(); }, 4000); }
   else if (act === 'open-weather') openWeather();
   else if (act === 'zone-open') { const z = (state.ctx.season_zones || []).find((x) => x.id === el.dataset.zoneId); if (z) { const l = zoneLayer(z, '#fab005', (z.name || '').slice(0, 30)); if (l) { layers.seasonZones.clearLayers(); l.addTo(layers.seasonZones); state.overlays.seasonZones = true; applyOverlays(); map.fitBounds(l.getBounds(), { padding: [30, 30], maxZoom: 13 }); } openZoneCard(z); } }
-  else if (act === 'offline') downloadOffline(el);
+  else if (act === 'pack-run') runPack(el.dataset.pack);
+  else if (act === 'pack-stop') { offline.cancel = true; }
+  else if (act === 'pack-delete') deletePacks();
   else if (act === 'track-toggle') { setTracking(!state.track.on); showTab('data'); }
   else if (act === 'track-gpx') { if (state.track.pts.length > 1) download(`ladoga_track_${new Date().toISOString().slice(0, 10)}.gpx`, trackGpx()); else toast('Трек пуст'); }
   else if (act === 'track-clear') { if (window.confirm('Стереть записанный трек?')) { state.track = { on: false, pts: [] }; store.set(TRACK_KEY, state.track); drawTrack(); showTab('data'); } }
@@ -1511,11 +1517,7 @@ function layersHtml() {
       ${extra.map(([k, ov]) => `<label class="check"><input type="checkbox" data-overlay="${k}" ${o[k] ? 'checked' : ''}> ${esc(ov.name)}</label>${ov.note ? `<div class="small muted" style="margin:-4px 0 4px 26px">${esc(ov.note)}</div>` : ''}`).join('')}
       <div class="small">Прозрачность старых карт</div>
       <input type="range" id="overlayOpacity" min="0.2" max="1" step="0.05" value="${state.overlayOpacity}">` : ''}
-    <h3>Без интернета</h3>
-    <p class="small">На воде связь пропадает. Приблизьте карту к месту рыбалки и сохраните спутниковую подложку этого района в телефон — она откроется и без сети. Точки, справочники и старые карты сохраняются вместе с ней.</p>
-    <div class="btns"><button type="button" class="btn" data-act="offline">📥 Сохранить карту этого района</button></div>
-    ${store.get('ladoga-offline-at', 0) ? `<p class="small muted">Последний раз сохраняли ${new Date(store.get('ladoga-offline-at', 0)).toLocaleString('ru-RU')}.</p>` : ''}
-    <p class="small muted">Просмотренные участки тоже остаются в телефоне, пока браузер не очистит память.</p>`;
+    ${offlineHtml()}`;
 }
 
 /* ----- Data tab ----- */
@@ -2040,13 +2042,18 @@ function trackGpx() {
   return `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="ladoga-fishing-map" xmlns="http://www.topografix.com/GPX/1/1">\n<trk><name>Ладога ${new Date(pts[0]?.[2] || Date.now()).toLocaleDateString('ru-RU')}</name><trkseg>\n${pts.map((p) => `<trkpt lat="${p[0]}" lon="${p[1]}"><time>${new Date(p[2]).toISOString()}</time></trkpt>`).join('\n')}\n</trkseg></trk>\n</gpx>\n`;
 }
 
-/* ---------- offline: save the satellite map of the visible area into the phone ---------- */
+/* ---------- offline packs: this part of Ladoga, not the world ----------
+   A pack is a list of URLs saved into its own cache (never trimmed by the service worker). The core pack
+   holds the app, the data and the satellite map of the whole area at overview scales plus the shore near
+   the places at close range; the charts pack holds the depth charts; the detail pack the closest satellite. */
 const SAT_URL = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
 const LABELS_URL = 'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}';
+const REGION = { s: 59.85, w: 30.9, n: 60.8, e: 33.4 };
+const PACK_CACHE = 'ladoga-pack-v1';
+const lon2x = (lon, z) => Math.floor(((lon + 180) / 360) * 2 ** z);
+const lat2y = (lat, z) => { const r = toRad(lat); return Math.floor(((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2) * 2 ** z); };
 function tilesFor(bounds, z0, z1) {
   const out = [];
-  const lon2x = (lon, z) => Math.floor(((lon + 180) / 360) * 2 ** z);
-  const lat2y = (lat, z) => { const r = toRad(lat); return Math.floor(((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2) * 2 ** z); };
   for (let z = z0; z <= z1; z++) {
     const x0 = lon2x(bounds.getWest(), z), x1 = lon2x(bounds.getEast(), z);
     const y0 = lat2y(bounds.getNorth(), z), y1 = lat2y(bounds.getSouth(), z);
@@ -2054,42 +2061,136 @@ function tilesFor(bounds, z0, z1) {
   }
   return out;
 }
-async function downloadOffline(el) {
+const regionBounds = () => L.latLngBounds([REGION.s, REGION.w], [REGION.n, REGION.e]);
+// Tiles within `km` of any place anglers use (reports, slips, banks, landmarks): the shore and the fishing grounds.
+function nearTiles(z0, z1, km) {
+  const out = new Map();
+  const dLat = km / 111, dLon = km / 55.6;
+  for (const m of state.M) {
+    if (m.kind === 'service' || m.kind === 'ice_incident') continue;
+    for (let z = z0; z <= z1; z++) {
+      for (let x = lon2x(m.lon - dLon, z); x <= lon2x(m.lon + dLon, z); x++) {
+        for (let y = lat2y(m.lat + dLat, z); y <= lat2y(m.lat - dLat, z); y++) out.set(`${z}/${x}/${y}`, { z, x, y });
+      }
+    }
+  }
+  return [...out.values()];
+}
+function appFiles() {
+  const abs = (u) => new URL(u, location.href).href;
+  const files = ['./', 'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png',
+    'vendor/leaflet.js', 'vendor/leaflet.css', 'vendor/leaflet.markercluster.js', 'vendor/MarkerCluster.css', 'vendor/leaflet-heat.js',
+    'data/points.json', 'data/context.json', 'downloads/ladoga_points.gpx'];
+  $$('script[src], link[rel="stylesheet"][href]').forEach((el) => files.push(el.getAttribute('src') || el.getAttribute('href')));
+  const d = state.ctx.depth || {};
+  for (const u of [d.isobaths, d.chart_isobaths, d.grid, d.isolines]) if (u) files.push(u);
+  return [...new Set(files.map(abs))];
+}
+const PACKS = [
+  {
+    id: 'core', name: 'Основной пакет',
+    note: 'Приложение, все точки и справочники, спутник всего района в обзорном масштабе и берег рядом с местами крупнее.',
+    urls: () => [
+      ...appFiles(),
+      ...tilesFor(regionBounds(), 9, 12).map((t) => L.Util.template(SAT_URL, t)),
+      ...nearTiles(13, 14, 1).map((t) => L.Util.template(SAT_URL, t)),
+      ...tilesFor(regionBounds(), 9, 12).map((t) => L.Util.template(LABELS_URL, t)),
+    ],
+  },
+  {
+    id: 'charts', name: 'Навигационные карты глубин',
+    note: 'Карты ГУНиО с отметками глубин и изобатами — всё, что есть по району.',
+    urls: async () => {
+      const list = [];
+      try {
+        const idx = await fetch('tiles/index.json', { cache: 'no-cache' }).then((r) => (r.ok ? r.json() : null));
+        for (const l of idx?.layers || []) {
+          if (!l.list) continue;
+          const txt = await fetch(l.list).then((r) => (r.ok ? r.text() : ''));
+          for (const line of txt.split(/\r?\n/)) if (line.trim()) list.push(new URL(line.trim(), location.href).href);
+        }
+      } catch { /* no tile index yet */ }
+      if (!list.length) for (const c of chartState.items) list.push(new URL(c.url, location.href).href);
+      for (const o of state.ctx.depth?.overlays || []) list.push(new URL(o.url, location.href).href);
+      return list;
+    },
+  },
+  {
+    id: 'detail', name: 'Подробный спутник у берега',
+    note: 'Самый крупный масштаб спутника в 1 км от мест рыбалки, слипов и банок. Большой: качайте по Wi‑Fi.',
+    urls: () => nearTiles(15, 15, 1).map((t) => L.Util.template(SAT_URL, t)),
+  },
+];
+const packInfo = (id) => store.get(`ladoga-pack-${id}`, null);
+const offline = { running: null, cancel: false };
+async function runPack(id) {
   if (!('caches' in window)) { toast('Этот браузер не умеет хранить карту без сети'); return; }
-  const z0 = Math.max(9, map.getZoom());
-  const z1 = Math.min(16, z0 + 3);
-  const tiles = tilesFor(map.getBounds(), z0, z1);
-  const urls = [];
-  for (const t of tiles) urls.push(L.Util.template(SAT_URL, t));
-  for (const t of tiles.filter((t) => t.z <= 14)) urls.push(L.Util.template(LABELS_URL, t));
-  // Our own layers: the old army maps, the model isobaths and the data.
-  for (const o of state.ctx.depth?.overlays || []) urls.push(new URL(o.url, location.href).href);
-  if (state.ctx.depth?.isobaths) urls.push(new URL(state.ctx.depth.isobaths, location.href).href);
-  if (state.ctx.depth?.chart_isobaths) urls.push(new URL(state.ctx.depth.chart_isobaths, location.href).href);
-  const view = map.getBounds();
-  for (const c of chartState.items) if (view.intersects(c.b)) urls.push(new URL(c.url, location.href).href);
-  if (tiles.length > 2600) { toast(`Слишком большой район (${tiles.length} фрагментов). Приблизьте карту к месту рыбалки.`, 5000); return; }
-  const mb = Math.round((tiles.length * 30) / 1024);
-  if (!window.confirm(`Сохранить в телефон спутниковую карту видимого района (приближения ${z0}–${z1}, около ${mb} МБ)? Нужен Wi‑Fi или быстрый интернет.`)) return;
-  const cache = await caches.open('ladoga-tiles-v1');
-  let done = 0, failed = 0, i = 0;
-  const status = () => { el.textContent = `Сохраняю… ${Math.round(((done + failed) / urls.length) * 100)}%`; };
+  if (offline.running) { toast('Уже идёт загрузка'); return; }
+  const pack = PACKS.find((p) => p.id === id);
+  if (!pack) return;
+  try { await navigator.storage?.persist?.(); } catch { /* not supported */ }
+  offline.running = id; offline.cancel = false;
+  const urls = [...new Set(await pack.urls())];
+  const cache = await caches.open(PACK_CACHE);
+  let done = 0, failed = 0, bytes = 0, i = 0;
+  const show = () => {
+    const el = $(`#pack-${id}`);
+    if (el) el.innerHTML = `<div class="pack-bar"><span style="width:${Math.round(((done + failed) / urls.length) * 100)}%"></span></div><div class="small">${done + failed} из ${urls.length} · ${Math.round(bytes / 1048576)} МБ${failed ? ` · не скачалось ${failed}` : ''}</div>`;
+  };
   const worker = async () => {
-    while (i < urls.length) {
+    while (i < urls.length && !offline.cancel) {
       const url = urls[i++];
       try {
+        if (await cache.match(url)) { done += 1; continue; } // resume: what is saved stays saved
         const same = url.startsWith(location.origin);
-        const res = await fetch(url, same ? {} : { mode: 'cors' });
-        if (res.ok) { await cache.put(url, res); done += 1; } else failed += 1;
+        const res = await fetch(url, same ? { cache: 'no-cache' } : { mode: 'cors' });
+        if (!res.ok) { failed += 1; continue; }
+        const blob = await res.clone().blob();
+        bytes += blob.size;
+        await cache.put(url, res);
+        done += 1;
       } catch { failed += 1; }
-      if ((done + failed) % 20 === 0) status();
+      if ((done + failed) % 25 === 0) show();
     }
   };
-  status();
+  show();
   await Promise.all(Array.from({ length: 6 }, worker));
-  el.textContent = '📥 Сохранить карту этого района';
-  toast(failed ? `Сохранено ${done} из ${urls.length}; часть не скачалась — попробуйте ещё раз` : `Готово: карта района сохранена (${done} фрагментов). Она откроется и без интернета.`, 6000);
-  store.set('ladoga-offline-at', Date.now());
+  const complete = !offline.cancel && failed === 0;
+  store.set(`ladoga-pack-${id}`, { at: Date.now(), total: urls.length, done, failed, complete });
+  offline.running = null;
+  toast(offline.cancel ? 'Загрузка остановлена — продолжится с того же места' : complete ? `«${pack.name}» сохранён в телефоне` : `Сохранено ${done} из ${urls.length}; остальное докачается при следующем запуске`, 5000);
+  if (state.tab === 'filter') showTab('layers');
+}
+async function deletePacks() {
+  if (!window.confirm('Удалить из телефона все сохранённые карты района? Приложение и данные останутся, карты снова будут грузиться из интернета.')) return;
+  await caches.delete(PACK_CACHE);
+  for (const p of PACKS) store.set(`ladoga-pack-${p.id}`, null);
+  toast('Сохранённые карты удалены');
+  showTab('layers');
+}
+async function storageLine() {
+  try {
+    const est = await navigator.storage?.estimate?.();
+    const el = $('#storageLine');
+    if (el && est) el.textContent = `Занято в телефоне: ${Math.round((est.usage || 0) / 1048576)} МБ${est.quota ? ` из доступных ~${Math.round(est.quota / 1073741824)} ГБ` : ''}.`;
+  } catch { /* ignore */ }
+}
+function offlineHtml() {
+  const est = (p) => {
+    if (p.id === 'core') return Math.round((tilesFor(regionBounds(), 9, 12).length * 2 + nearTiles(13, 14, 1).length) * 26 / 1024) + 3;
+    if (p.id === 'detail') return Math.round(nearTiles(15, 15, 1).length * 28 / 1024);
+    return null;
+  };
+  return `<h3 id="offlineSection">Без интернета</h3>
+    <p class="small">На воде и на льду связь пропадает. Скачайте район заранее по Wi‑Fi — карта, точки, справочники, погода последней загрузки и навигатор будут работать без сети. Только этот участок Ладоги, без «карты мира».</p>
+    ${PACKS.map((p) => { const info = packInfo(p.id); const size = est(p); return `<div class="card small">
+      <b>${esc(p.name)}</b>${size ? ` <span class="muted">~${size} МБ</span>` : ''}<br>${esc(p.note)}
+      <div id="pack-${p.id}" style="margin-top:6px">${info ? `${info.complete ? '✅ Сохранён' : `⏳ Сохранено ${info.done} из ${info.total}`} · ${new Date(info.at).toLocaleDateString('ru-RU')}` : '<span class="muted">Не скачан</span>'}</div>
+      <div class="btns" style="margin-bottom:0">
+        ${offline.running === p.id ? '<button type="button" class="btn small ghost" data-act="pack-stop">⏸ Остановить</button>' : `<button type="button" class="btn small" data-act="pack-run" data-pack="${p.id}">${info?.complete ? 'Обновить' : info ? 'Докачать' : '📥 Скачать'}</button>`}
+      </div></div>`; }).join('')}
+    <p class="small muted" id="storageLine"></p>
+    <button type="button" class="btn small ghost" data-act="pack-delete">Удалить сохранённые карты</button>`;
 }
 
 /* ---------- SOS: phones, where I am in words a rescuer can take down, what to do on a drifting floe ---------- */
@@ -2195,6 +2296,11 @@ function showInstallHelp() {
   });
 })();
 
+/* ---------- offline badge ---------- */
+function updateOnline() { $('#offlineBadge').hidden = navigator.onLine; }
+window.addEventListener('online', updateOnline);
+window.addEventListener('offline', updateOnline);
+
 /* ---------- first-visit hint ---------- */
 function closeHint() { $('#hint').hidden = true; store.set('ladoga-hint-v1', true); }
 $('#hintOk').addEventListener('click', closeHint);
@@ -2235,6 +2341,7 @@ async function boot() {
     }
   }
   if (!store.get('ladoga-hint-v1', false)) $('#hint').hidden = false;
+  updateOnline();
   drawTrack();
   if (state.track.on) startWatch(false);
   loadWeather();

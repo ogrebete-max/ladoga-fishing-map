@@ -1,6 +1,6 @@
 // Offline support: the app shell and data come from the cache when the lake has
 // no signal; map tiles that were viewed once are kept for later (up to TILE_MAX).
-const VERSION = 'ladoga-v12';
+const VERSION = 'ladoga-v13';
 const SHELL = ['./', 'index.html', 'app.js', 'styles.css', 'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png',
   'vendor/leaflet.js', 'vendor/leaflet.css', 'vendor/leaflet.markercluster.js', 'vendor/MarkerCluster.css', 'vendor/leaflet-heat.js',
   'data/points.json', 'data/context.json'];
@@ -12,7 +12,8 @@ self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(VERSION).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
 });
 self.addEventListener('activate', (event) => {
-  event.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== VERSION && k !== TILE_CACHE).map((k) => caches.delete(k))))
+  // The region packs (ladoga-pack-*) are the user's downloads: never delete them on an update.
+  event.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== VERSION && k !== TILE_CACHE && !k.startsWith('ladoga-pack-')).map((k) => caches.delete(k))))
     .then(() => self.clients.claim()));
 });
 
@@ -23,7 +24,7 @@ async function networkFirst(request) {
     if (response.ok) cache.put(request, response.clone());
     return response;
   } catch {
-    return (await cache.match(request, { ignoreSearch: true })) || Response.error();
+    return (await caches.match(request)) || (await caches.match(request, { ignoreSearch: true })) || Response.error();
   }
 }
 let trimming = false;
@@ -36,9 +37,10 @@ async function trimTiles(cache) {
   } finally { trimming = false; }
 }
 async function tile(request) {
-  const cache = await caches.open(TILE_CACHE);
-  const hit = await cache.match(request);
+  // A tile from a downloaded region pack or from earlier browsing — whichever cache has it.
+  const hit = await caches.match(request);
   if (hit) return hit;
+  const cache = await caches.open(TILE_CACHE);
   const response = await fetch(request);
   // Opaque responses are padded to megabytes in the quota; keep only CORS ones.
   if (response.ok && response.type !== 'opaque') {
@@ -52,7 +54,10 @@ self.addEventListener('fetch', (event) => {
   const { request } = event;
   if (request.method !== 'GET') return;
   const url = new URL(request.url);
-  if (url.origin === self.location.origin) {
+  if (url.origin === self.location.origin && /\/(tiles|overlays)\//.test(url.pathname)) {
+    // Chart tiles and map sheets never change under the same name: the saved copy first.
+    event.respondWith(caches.match(request).then((hit) => hit || fetch(request)));
+  } else if (url.origin === self.location.origin) {
     // Always try the network first so a new release shows at once; fall back offline.
     event.respondWith(networkFirst(request));
   } else if (TILE_HOSTS.test(url.hostname) || /\/\d+\/\d+\/\d+(\.png|\.jpg|\.jpeg)?$/i.test(url.pathname)) {

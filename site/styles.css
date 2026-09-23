@@ -331,3 +331,8 @@ label.check.pack input { margin-top: 2px; flex: none; }
 .labels-on .poi-label { display: block; }
 
 .nav-warn { margin-top: 4px; padding: 4px 8px; border-radius: 8px; background: #c92a2a; color: #fff; font-weight: 700; font-size: 13px; }
+
+/* offline packs */
+.pack-bar { height: 8px; border-radius: 4px; background: var(--paper); overflow: hidden; margin: 4px 0; }
+.pack-bar span { display: block; height: 100%; background: var(--accent); }
+.offline-badge { pointer-events: auto; background: #343a40; color: #fff; border-radius: 999px; padding: 7px 12px; font-size: 13px; font-weight: 600; box-shadow: var(--shadow); }
