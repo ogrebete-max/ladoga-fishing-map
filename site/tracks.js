@@ -351,6 +351,7 @@ function tracksPageHtml() {
         <button type="button" class="icon-btn" data-act="track-menu" data-id="${esc(x.id)}" aria-label="Действия с треком">${ic('more-vert')}</button>
       </div>`).join('') : '<p class="muted">Сохранённых треков пока нет. Нажмите «Трек» на карте — запись начнётся сразу.</p>'}
     <label class="check switch"><span>Показывать все треки на карте</span><input type="checkbox" data-overlay="tracks" ${state.overlays.tracks ? 'checked' : ''}></label>
+    <div class="btns"><button type="button" class="btn small ghost" data-act="gpx-import">${ic('add')}Загрузить GPX</button>${trk.list.length || state.mine.length ? `<button type="button" class="btn small ghost" data-act="gpx-backup">${ic('download')}Всё моё в GPX</button>` : ''}</div>
     <p class="small muted">Трек пишется, пока приложение открыто и экран включён: браузеры не дают геопозицию в фоне. Поэтому при записи экран не гаснет. Треки хранятся только в этом телефоне — сохраняйте важные в GPX.</p>`;
 }
 
@@ -452,9 +453,77 @@ function handleTrackAction(act, el) {
     case 'np-save': confirmWith($('#npName')?.value.trim() || ''); break;
     case 'np-nav': { const l = topLayer(); if (l) startNav({ lat: l.lat, lon: l.lon, title: 'Точка на карте' }); break; }
     case 'rename-save': confirmWith($('#renameInput')?.value || ''); break;
+    case 'gpx-import': pickGpx(); break;
+    case 'gpx-backup': backupGpx(); break;
     default: return false;
   }
   return true;
+}
+
+/* ---------- GPX in and out: points and tracks from a Garmin, Navionics, OsmAnd…; one backup file ---------- */
+function pickGpx() {
+  const inp = Object.assign(document.createElement('input'), { type: 'file' });
+  // iPhone greys out .gpx when a type filter is set: no filter there.
+  if (!platformInfo().iOS) inp.accept = '.gpx,application/gpx+xml,application/xml,text/xml';
+  inp.onchange = () => { if (inp.files?.[0]) importGpx(inp.files[0]); };
+  inp.click();
+}
+const TAG_BY_TYPE = Object.fromEntries(Object.entries(TAGS).map(([k, t]) => [t.label.toLowerCase(), k]));
+function importGpx(file) {
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const doc = new DOMParser().parseFromString(String(reader.result), 'application/xml');
+      if (doc.getElementsByTagName('parsererror').length) throw new Error('bad xml');
+      const txt = (el, tag) => el.getElementsByTagName(tag)[0]?.textContent?.trim() || '';
+      const inArea = (lat, lon) => Number.isFinite(lat) && Number.isFinite(lon) && MAX_BOUNDS.contains([lat, lon]);
+      let nPts = 0, nTrk = 0, outside = 0;
+      const seen = new Set(state.mine.map((p) => `${p.lat.toFixed(5)},${p.lon.toFixed(5)}`));
+      for (const w of doc.getElementsByTagName('wpt')) {
+        const lat = +w.getAttribute('lat'), lon = +w.getAttribute('lon');
+        if (!inArea(lat, lon)) { outside += 1; continue; }
+        const key = `${lat.toFixed(5)},${lon.toFixed(5)}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        state.mine.push({ id: `m${Date.now()}${nPts}${Math.random().toString(36).slice(2, 5)}`, lat: +lat.toFixed(6), lon: +lon.toFixed(6), name: txt(w, 'name') || 'Точка из GPX', t: Date.parse(txt(w, 'time')) || Date.now(), tag: TAG_BY_TYPE[txt(w, 'type').toLowerCase()] || 'other', trackId: null, note: txt(w, 'desc') || txt(w, 'cmt') });
+        nPts += 1;
+      }
+      for (const el of [...doc.getElementsByTagName('trk'), ...doc.getElementsByTagName('rte')]) {
+        const lists = el.tagName === 'rte' ? [el.getElementsByTagName('rtept')] : [...el.getElementsByTagName('trkseg')].map((sg) => sg.getElementsByTagName('trkpt'));
+        const segs = [];
+        for (const pts of lists) {
+          const seg = [];
+          for (const p of pts) {
+            const lat = +p.getAttribute('lat'), lon = +p.getAttribute('lon');
+            if (!inArea(lat, lon)) continue;
+            seg.push([+lat.toFixed(6), +lon.toFixed(6), Date.parse(txt(p, 'time')) || 0, null, null]);
+          }
+          if (seg.length > 1) segs.push(seg);
+        }
+        if (!segs.length) continue;
+        let dist = 0;
+        for (const sg of segs) for (let i = 1; i < sg.length; i++) dist += distM({ lat: sg[i - 1][0], lon: sg[i - 1][1] }, { lat: sg[i][0], lon: sg[i][1] });
+        const times = segs.flat().map((p) => p[2]).filter(Boolean);
+        const start = times.length ? Math.min(...times) : Date.now(), end = times.length ? Math.max(...times) : start;
+        const t = { id: `t${Date.now()}${nTrk}`, name: txt(el, 'name') || file.name.replace(/\.gpx$/i, ''), state: 'done', start, end, dist, dur: end - start, moving: 0, vmax: 0, segs, color: TRACK_COLOR, imported: true };
+        trk.list.push(t); trackStore.put(t);
+        nTrk += 1;
+      }
+      trk.list.sort((a, b) => b.start - a.start);
+      saveMine(); drawMine();
+      if (nTrk && !state.overlays.tracks) { state.overlays.tracks = true; applyOverlays(); }
+      drawSavedTracks(); refreshPage('me');
+      toast(nPts || nTrk ? `Загружено: ${nPts} ${plural(nPts, 'точка', 'точки', 'точек')}, ${nTrk} ${plural(nTrk, 'трек', 'трека', 'треков')}${outside ? `; вне района пропущено ${outside}` : ''}` : 'В файле нет точек и треков этого района', 6000);
+    } catch { toast('Не удалось прочитать файл — нужен GPX', 5000); }
+  };
+  reader.readAsText(file);
+}
+// Everything of mine in one GPX: a backup, or to carry over to a sonar / another phone.
+function backupGpx() {
+  const done = trk.list.filter((t) => t !== trk.cur);
+  const wpts = state.mine.map((p) => `<wpt lat="${p.lat}" lon="${p.lon}">${p.t ? `<time>${new Date(p.t).toISOString()}</time>` : ''}<name>${xmlEsc(p.name)}</name>${p.note ? `<desc>${xmlEsc(p.note)}</desc>` : ''}<type>${xmlEsc((TAGS[p.tag] || TAGS.other).label)}</type></wpt>`).join('\n');
+  const trks = done.map((t) => `<trk><name>${xmlEsc(t.name || defaultTrackName(t))}</name>\n${t.segs.filter((sg) => sg.length).map((sg) => `<trkseg>\n${sg.map((p) => `<trkpt lat="${p[0]}" lon="${p[1]}">${p[2] ? `<time>${new Date(p[2]).toISOString()}</time>` : ''}</trkpt>`).join('\n')}\n</trkseg>`).join('\n')}\n</trk>`).join('\n');
+  shareFile(`ladoga_moe_${fileStamp()}.gpx`, `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="ladoga-fishing-map" xmlns="http://www.topografix.com/GPX/1/1">\n${wpts}\n${trks}\n</gpx>\n`);
 }
 
 /* ---------- start-up: load, migrate the old single track, offer to continue a broken recording ---------- */

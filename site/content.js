@@ -521,7 +521,8 @@ function mePointsHtml() {
     <div class="chips" style="margin:4px 0 8px">${chips.map(([k, t]) => `<button type="button" class="chip ${f === k ? 'on' : ''}" data-points-filter="${k}">${esc(t)}</button>`).join('')}</div>
     ${f === 'all' || f === 'fav' ? `${f === 'all' && favs.length ? '<h3>Избранные отчёты</h3>' : ''}${favs.map(({ m, idx }) => listRow({ icon: 'star-fill', title: esc(pointTitle(m)), sub: `${esc(state.R[m.r[0]].sector || '')}${me ? ` · ${fmtDist(distM(me, m))} от вас` : ''}`, attrs: `data-open-marker="${idx}"` })).join('')}${f === 'fav' && !favs.length ? '<p class="muted">Нажмите «Сохранить» в карточке точки — она появится здесь.</p>' : ''}` : ''}
     ${f !== 'fav' ? `${f === 'all' && mine.length ? '<h3>Мои точки и метки</h3>' : ''}${mine.slice().reverse().map(rowMine).join('')}${!mine.length ? '<p class="muted">Своих точек пока нет. Долгое нажатие на карту (или правый клик) — «Новая точка»; «Метка» при записи трека и в навигаторе сохраняет место сразу.</p>' : ''}` : ''}
-    ${state.mine.length ? `<div class="btns"><button type="button" class="btn small ghost" data-act="gpx-mine">${ic('download')}Мои точки в GPX</button></div>` : ''}`;
+    <div class="btns"><button type="button" class="btn small ghost" data-act="gpx-import">${ic('add')}Загрузить GPX</button>${state.mine.length ? `<button type="button" class="btn small ghost" data-act="gpx-mine">${ic('download')}Мои точки в GPX</button>` : ''}</div>
+    <p class="small muted">GPX с точками и треками из Garmin, Navionics, OsmAnd, Locus или другого телефона добавится сюда и на карту.</p>`;
 }
 function offlineHtml() {
   const { iOS, installed } = platformInfo();
@@ -623,6 +624,8 @@ function moreHtml() {
     </div>
     <h3>Экспорт</h3>
     <div class="btns">
+      <button type="button" class="btn small" data-act="gpx-backup">${ic('download')}Всё моё в GPX (точки и треки)</button>
+      <button type="button" class="btn small ghost" data-act="gpx-import">${ic('add')}Загрузить GPX</button>
       <button type="button" class="btn small ghost" data-act="gpx-filter">GPX: точки по фильтру</button>
       <a class="btn small ghost" href="downloads/ladoga_points.gpx" download>GPX: все точки</a>
       <a class="btn small ghost" href="downloads/ladoga_reports.csv" download>CSV (Excel)</a>
@@ -686,6 +689,11 @@ function layersTabHtml() {
   const extra = Object.entries(extraOverlays);
   const hasCharts = chartState.items.length || chartState.tiles.length;
   return `
+    <div class="chips" style="margin:2px 0 4px">
+      <button type="button" class="chip" data-act="preset" data-preset="depth">${ic('water')}Глубины</button>
+      <button type="button" class="chip" data-act="preset" data-preset="now">${ic('set-meal')}Рыбалка сейчас</button>
+      <button type="button" class="chip" data-act="preset" data-preset="clean">${ic('map')}Чистая карта</button>
+    </div>
     <h3 style="margin-top:4px">Подложка</h3>
     <div class="base-tiles">${Object.entries(BASES).map(([k, b]) => `<button type="button" class="base-tile ${state.base === k ? 'on' : ''}" data-act="base-set" data-base="${k}" style="${baseThumb(k) ? `background-image:url('${baseThumb(k)}')` : ''}" title="${esc(b.full || b.name)}">${esc(b.name)}</button>`).join('')}</div>
     <h3>Глубины</h3>
@@ -770,6 +778,28 @@ function filterTabHtml() {
       </div>
       <p class="small muted" style="margin-bottom:0">Нажмите на точку — отчёты, координаты и «Вести». Долгое нажатие на карту (правый клик) — поставить свою точку.</p>
     </details>`;
+}
+// Quick sets of layers: depths for reading the bottom, the fishing of this month, a clean map.
+function applyPreset(k) {
+  const o = state.overlays;
+  for (const x of ['heat', 'seasonZones', 'rules', 'charts', 'chartIso', 'isobaths', 'genshtab', 'radius']) o[x] = false;
+  if (k === 'depth') {
+    o.charts = true; o.chartIso = true; o.lines = true;
+    if (map.getZoom() < 12) map.setZoom(12);
+    toast('Глубины: навигационные карты и изобаты. Цифры глубин читаются с масштаба 13–14', 5000);
+  } else if (k === 'now') {
+    const mo = new Date().getMonth() + 1;
+    state.seasonMonth = mo;
+    o.seasonZones = true;
+    state.f.months = new Set([mo]); state.f.season = 'all';
+    toast(`Рыбалка сейчас: зоны рыбы и отчёты за ${MONTHS_FULL[mo - 1]}`, 4000);
+  } else {
+    state.f = defaultFilters();
+    o.cluster = true; o.lines = true;
+    toast('Чистая карта: только точки и фарватеры');
+  }
+  applyOverlays(); drawSeasonZones(); drawRules(); render();
+  refreshLayersSheet();
 }
 function refreshLayersSheet() {
   const t = topLayer();
@@ -1076,6 +1106,7 @@ function handleAction(act, el) {
     }
     case 'this-month': state.f.months = new Set([new Date().getMonth() + 1]); render(); refreshLayersSheet(); break;
     case 'filters-reset': resetFilters(); refreshLayersSheet(); break;
+    case 'preset': applyPreset(d.preset); break;
     case 'depth-help': openDepthHelp(); break;
     case 'install': install(); break;
     case 'keys': openKeysHelp(); break;
