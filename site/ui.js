@@ -354,10 +354,10 @@ function closeDownTo(kind) {
   const i = ui.stack.findIndex((l) => l.kind === kind);
   if (i >= 0) closeLayers(ui.stack.length - i);
 }
-function toggleFull() {
+function toggleFull(opts = {}) {
   if (ui.stack.some((l) => l.kind === 'full')) { closeDownTo('full'); return; }
   if (nav.on) return;
-  openLayer({ kind: 'full', onClose: () => { if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {}); } });
+  openLayer({ kind: 'full', onClose: () => { state.fullArea = null; if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {}); } }, { replace: !!opts.replace });
   const el = document.documentElement;
   if (el.requestFullscreen) el.requestFullscreen({ navigationUI: 'hide' }).catch(() => {});
   else if (platformInfo().iOS && !platformInfo().installed && !store.get('ladoga-full-hint', false)) {
@@ -371,7 +371,7 @@ document.addEventListener('fullscreenchange', () => {
 function goHome() {
   setFollowFree();
   if (map.getBearing() !== 0 && !nav.on) map.setBearing(0);
-  map.fitBounds(homeBounds(), fitPadding(14));
+  map.fitBounds(state.fullArea || homeBounds(), fitPadding(state.fullArea ? 15 : 14));
 }
 
 /* ---------- status chips, filter badge, hint and notices ---------- */
@@ -467,12 +467,12 @@ $('#cardBack').addEventListener('click', closeTop);
 $('#modalClose').addEventListener('click', closeTop);
 $('#modalScrim').addEventListener('click', closeTop);
 $('#navBar').addEventListener('click', (e) => { const b = e.target.closest('[data-page]'); if (b) onNavItem(b.dataset.page); });
-$('#railFull').addEventListener('click', toggleFull);
+$('#railFull').addEventListener('click', () => toggleFull());
 $('#railKeys').addEventListener('click', openKeysHelp);
 $('#searchBtn').addEventListener('click', openSearch);
 $('#filterBtn').addEventListener('click', () => openLayersSheet('filter'));
 $('#btnLayers').addEventListener('click', () => openLayersSheet('layers'));
-$('#btnFull').addEventListener('click', toggleFull);
+$('#btnFull').addEventListener('click', () => toggleFull());
 $('#btnFullExit').addEventListener('click', () => closeDownTo('full'));
 $('#btnSos').addEventListener('click', openSos);
 $('#zoomIn').addEventListener('click', () => userZoom(1));

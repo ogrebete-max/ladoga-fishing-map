@@ -118,6 +118,7 @@ function openZoneCard(z, opts = {}) {
     body: () => `${fromMeLine({ lat: la, lon: lo })}
       <div class="card-actions">
         <button type="button" class="btn main" data-act="zone-nav" data-lat="${la}" data-lon="${lo}" data-name="${esc(z.name || 'Район')}">${ic('navigation')}Вести сюда</button>
+        <button type="button" class="tile-btn" data-act="zone-full" data-zone-id="${esc(z.id || '')}">${ic('fullscreen')}<span>Весь экран</span></button>
         <button type="button" class="tile-btn ${isHome ? 'on' : ''}" data-act="set-home" data-zone-id="${esc(z.id || '')}">${ic('home')}<span>${isHome ? 'Мой район' : 'Сделать моим'}</span></button>
         <button type="button" class="tile-btn" data-act="share-here" data-lat="${la}" data-lon="${lo}" data-name="${esc(z.name || 'Район')}">${ic('share')}<span>Поделиться</span></button>
       </div>
@@ -1091,6 +1092,16 @@ function handleAction(act, el) {
       store.set('ladoga-home', state.home);
       el.classList.add('on'); el.innerHTML = `${ic('home')}<span>Мой район</span>`;
       toast(`Мой район: ${z.name} — кнопка «дом» на карте`);
+      break;
+    }
+    case 'zone-full': {
+      // The chosen area on the whole screen; ⌂ comes back to it, «Выйти» to the usual view.
+      const z = (state.ctx.season_zones || []).find((x) => x.id === d.zoneId);
+      const b = z && zoneBounds(z);
+      if (!b) break;
+      state.fullArea = b;
+      toggleFull({ replace: topLayer()?.kind === 'card' });
+      setTimeout(() => map.fitBounds(b, fitPadding(15)), 60);
       break;
     }
     case 'home-reset': state.home = HOME_DEFAULT; store.set('ladoga-home', null); refreshPage('me'); toast('Мой район — вся южная Ладога'); break;
