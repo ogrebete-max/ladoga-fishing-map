@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="ru" data-theme="day">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Ладога · рыболовная карта</title>
+  <meta name="description" content="Рыболовная карта южной Ладоги: точки рыбаков, глубины по навигационным картам, сезоны и снасти, правила, навигатор к точке и треки. Работает без интернета в скачанном районе.">
+  <meta name="theme-color" content="#0050b3">
+  <meta name="color-scheme" content="light dark">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Ладога">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/icon-180.png">
+  <link rel="stylesheet" href="vendor/leaflet.css">
+  <link rel="stylesheet" href="vendor/MarkerCluster.css">
+  <link rel="stylesheet" href="styles.css?v=__V__">
+</head>
+<body data-layout="compact" data-mode="browse">
+<!--SPRITE-->
+  <div id="map" aria-label="Карта южной Ладоги"></div>
+
+  <!-- Controls over the map (browse, months, full screen) -->
+  <div class="map-ui" id="mapUi">
+    <div class="mu-top">
+      <div class="searchbox" role="search">
+        <button type="button" class="search-btn" id="searchBtn" title="Поиск (/)"><svg class="i"><use href="#i-search"/></svg><span>Поиск: место, слип, банка…</span></button>
+        <button type="button" class="filter-btn" id="filterBtn" title="Слои и фильтр (M)" aria-label="Слои и фильтр"><svg class="i"><use href="#i-tune"/></svg><b class="count" id="filterCount" hidden></b></button>
+      </div>
+      <div class="month-banner" id="monthBanner" hidden>
+        <div class="mb-row">
+          <button type="button" id="mbPrev" aria-label="Предыдущий месяц"><svg class="i"><use href="#i-chevron-left"/></svg></button>
+          <b id="mbMonth" class="mb-month">—</b>
+          <button type="button" id="mbNext" aria-label="Следующий месяц"><svg class="i"><use href="#i-chevron-right"/></svg></button>
+          <button type="button" id="mbPlay" aria-label="Играть"><svg class="i"><use href="#i-play-arrow"/></svg></button>
+          <button type="button" id="mbClose" class="mb-exit" aria-label="Выйти из режима месяцев"><svg class="i"><use href="#i-close"/></svg><span>Выйти</span></button>
+        </div>
+        <div class="mb-fish" id="mbFish"></div>
+      </div>
+      <div class="chips-row" id="statusChips"></div>
+    </div>
+    <div class="mu-right">
+      <button type="button" class="fab" id="btnLayers" title="Слои и фильтр (M)" aria-label="Слои и фильтр"><svg class="i"><use href="#i-layers"/></svg></button>
+      <button type="button" class="fab" id="btnFull" title="Весь экран (F)" aria-label="Карта на весь экран"><svg class="i"><use href="#i-fullscreen"/></svg></button>
+      <button type="button" class="fab sos" id="btnSos" title="Экстренная помощь" aria-label="SOS — экстренная помощь">SOS</button>
+    </div>
+    <div class="mu-zoom" id="zoomGroup">
+      <button type="button" id="zoomIn" title="Приблизить (+)" aria-label="Приблизить"><svg class="i"><use href="#i-add"/></svg></button>
+      <button type="button" id="zoomOut" title="Отдалить (−)" aria-label="Отдалить"><svg class="i"><use href="#i-remove"/></svg></button>
+      <span class="zoom-auto" id="zoomAuto" hidden>авто</span>
+    </div>
+    <div class="mu-br">
+      <button type="button" class="fab" id="btnHome" title="Мой район (H)" aria-label="Мой район"><svg class="i"><use href="#i-home"/></svg></button>
+      <button type="button" class="fab locate" id="btnLocate" data-state="nofix" title="Где я (L)" aria-label="Где я"><svg class="i"><use href="#i-my-location"/></svg></button>
+    </div>
+    <div class="mu-bl">
+      <button type="button" class="pill track-pill" id="btnTrack" aria-label="Записать трек"><span class="rec-dot"></span><span id="trackPillText">Трек</span></button>
+    </div>
+    <button type="button" class="fab compass" id="btnCompass" hidden aria-label="Север вверх"><svg class="i"><use href="#i-navigation"/></svg><span id="compassLabel">Север</span></button>
+    <button type="button" class="fab fullexit" id="btnFullExit" hidden aria-label="Выйти из полноэкранного режима"><svg class="i"><use href="#i-fullscreen-exit"/></svg><span>Выйти</span></button>
+    <div class="hint-card" id="hint" hidden></div>
+    <div class="attr-line" id="attrLine"></div>
+  </div>
+
+  <!-- Sections: bottom bar on a phone, rail on the left elsewhere -->
+  <nav class="nav-bar" id="navBar" aria-label="Разделы">
+    <button type="button" data-page="map" aria-current="page" title="Карта (1)"><span class="ind"><svg class="i"><use href="#i-map"/></svg></span><span class="lbl">Карта</span></button>
+    <button type="button" data-page="today" title="Сегодня (2)"><span class="ind"><svg class="i"><use href="#i-sunny"/></svg></span><span class="lbl">Сегодня</span></button>
+    <button type="button" data-page="guide" title="Клёв (3)"><span class="ind"><svg class="i"><use href="#i-set-meal"/></svg></span><span class="lbl">Клёв</span></button>
+    <button type="button" data-page="rules" title="Правила (4)"><span class="ind"><svg class="i"><use href="#i-gavel"/></svg></span><span class="lbl">Правила</span></button>
+    <button type="button" data-page="me" title="Моё (5)"><span class="ind"><svg class="i"><use href="#i-bookmark"/></svg></span><span class="lbl">Моё</span></button>
+    <div class="rail-extra">
+      <button type="button" id="railFull" title="Весь экран (F)"><span class="ind"><svg class="i"><use href="#i-fullscreen"/></svg></span><span class="lbl">Весь экран</span></button>
+      <button type="button" id="railKeys" title="Клавиши (?)"><span class="ind"><svg class="i"><use href="#i-keyboard"/></svg></span><span class="lbl">Клавиши</span></button>
+    </div>
+  </nav>
+
+  <!-- A section page: full screen on a phone, a side panel elsewhere -->
+  <section class="panel" id="page" hidden>
+    <header class="panel-head">
+      <h1 id="pageTitle"></h1>
+      <button type="button" class="icon-btn" id="pageClose" aria-label="Закрыть — к карте" title="Закрыть (Esc)"><svg class="i"><use href="#i-close"/></svg></button>
+    </header>
+    <nav class="subtabs" id="pageTabs"></nav>
+    <div class="panel-body" id="pageBody"></div>
+  </section>
+
+  <!-- The one card that travels over the map: a point, an area, a track -->
+  <section class="fcard" id="card" hidden data-size="short">
+    <div class="card-head" id="cardHead">
+      <div class="grip" aria-hidden="true"></div>
+      <button type="button" class="icon-btn card-back" id="cardBack" hidden aria-label="Назад"><svg class="i"><use href="#i-arrow-back"/></svg></button>
+      <div class="card-titles"><h2 id="cardTitle"></h2><p id="cardSub"></p></div>
+      <button type="button" class="icon-btn" id="cardClose" aria-label="Закрыть" title="Закрыть (Esc)"><svg class="i"><use href="#i-close"/></svg></button>
+    </div>
+    <div class="card-body" id="cardBody"></div>
+  </section>
+
+  <!-- Sheets over everything: layers & filter, search, SOS, dialogs -->
+  <div class="modal" id="modal" hidden>
+    <div class="modal-scrim" id="modalScrim"></div>
+    <div class="modal-sheet" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+      <header class="modal-head"><h2 id="modalTitle"></h2><button type="button" class="icon-btn" id="modalClose" aria-label="Закрыть" title="Закрыть (Esc)"><svg class="i"><use href="#i-close"/></svg></button></header>
+      <div class="modal-body" id="modalBody"></div>
+      <footer class="modal-foot" id="modalFoot" hidden></footer>
+    </div>
+  </div>
+
+  <!-- Navigation to a point -->
+  <div class="nav-top" id="navTop" hidden>
+    <div class="nt-arrow" id="ntArrowBox"><svg class="i" id="ntArrow" viewBox="0 0 100 100"><path d="M50 6 82 90 50 71 18 90Z"/></svg></div>
+    <div class="nt-main">
+      <div class="nt-dist" id="ntDist">—</div>
+      <div class="nt-line2" id="ntLine2">Ищу спутники…</div>
+      <div class="nt-target" id="ntTarget"></div>
+    </div>
+    <div class="nt-gps" id="ntGps"><span class="gps-dot"></span><span id="ntGpsText">GPS</span></div>
+  </div>
+  <div class="nav-banner" id="navBanner" hidden></div>
+  <button type="button" class="recenter" id="recenter" hidden><svg class="i"><use href="#i-restart-alt"/></svg><span id="recenterText">Вернуться ко мне</span></button>
+  <div class="nav-bottom" id="navBottom" hidden>
+    <div class="nb-fields">
+      <div class="nb-field"><span class="nb-cap">Скорость</span><b id="nfSpeed">—</b><span class="nb-unit">км/ч</span></div>
+      <div class="nb-field"><span class="nb-cap">Курс</span><b id="nfCourse">—</b><span class="nb-unit" id="nfCourseSrc">по GPS</span></div>
+      <div class="nb-field" id="nfDepthBox"><span class="nb-cap">Глубина</span><b id="nfDepth">—</b><span class="nb-unit">м · по карте</span></div>
+    </div>
+    <div class="nb-buttons">
+      <button type="button" class="nbtn end" id="navEnd"><svg class="i"><use href="#i-close"/></svg><span>Завершить</span></button>
+      <button type="button" class="nbtn" id="navTrack"><svg class="i"><use href="#i-fiber-manual-record"/></svg><span id="navTrackText">Трек</span></button>
+      <button type="button" class="nbtn" id="navMark"><svg class="i"><use href="#i-flag"/></svg><span>Метка</span></button>
+      <button type="button" class="nbtn" id="navMore"><svg class="i"><use href="#i-more-horiz"/></svg><span>Ещё</span></button>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"><span id="toastText"></span><button type="button" id="toastAction" hidden></button></div>
+
+  <script src="vendor/leaflet.js"></script>
+  <script src="vendor/leaflet-rotate.js"></script>
+  <script src="vendor/leaflet.markercluster.js"></script>
+  <script src="vendor/leaflet-heat.js"></script>
+  <script src="app.js?v=__V__"></script>
+  <script src="content.js?v=__V__"></script>
+  <script src="tracks.js?v=__V__"></script>
+  <script src="geo.js?v=__V__"></script>
+  <script src="ui.js?v=__V__"></script>
+</body>
+</html>

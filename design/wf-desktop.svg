@@ -1,0 +1,195 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1820" height="940" viewBox="0 0 1820 940">
+<title>Десктоп (Windows): окно приложения</title>
+<rect width="100%" height="100%" fill="#fbfcfd"/>
+<text x="20" y="14" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="11" fill="#4a5963">wf-desktop · 1440×900 · установленное PWA-окно Chrome/Edge · мышь + клавиатура</text>
+<rect x="14" y="14" width="1452" height="912" rx="16" fill="#1f2d36"/>
+<clipPath id="c1"><rect x="0" y="0" width="1440" height="900" rx="10"/></clipPath>
+<g transform="translate(20,20)" clip-path="url(#c1)">
+<g transform="translate(480,32)">
+<rect x="0" y="0" width="960" height="868" rx="0" fill="#cfe3ee"/>
+<polygon points="0,640 80,625 160,627 240,651 320,650 400,618 480,601 560,633 640,678 720,682 800,642 880,613 960,626 960,868 0,868" fill="#e6ead7" stroke="#b9c3a4" stroke-width="1" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M0,600 L96,583 L192,578 L288,590 L384,609 L480,621 L576,618 L672,601 L768,583 L864,578 L960,590" fill="none" stroke="#6ea6c4" stroke-width="1" stroke-linejoin="round" stroke-linecap="round" opacity="0.8" stroke-dasharray="4 5"/>
+<path d="M0,550 L96,529 L192,542 L288,561 L384,572 L480,566 L576,548 L672,532 L768,529 L864,542 L960,561" fill="none" stroke="#6ea6c4" stroke-width="1" stroke-linejoin="round" stroke-linecap="round" opacity="0.8" stroke-dasharray="4 5"/>
+<path d="M0,490 L96,484 L192,503 L288,512 L384,505 L480,486 L576,471 L672,470 L768,484 L864,503 L960,512" fill="none" stroke="#6ea6c4" stroke-width="1" stroke-linejoin="round" stroke-linecap="round" opacity="0.8" stroke-dasharray="4 5"/>
+<circle cx="300" cy="260" r="8" fill="#2f9e44" stroke="#fff" stroke-width="2"/>
+<circle cx="360" cy="300" r="8" fill="#e0b000" stroke="#fff" stroke-width="2"/>
+<circle cx="460" cy="360" r="8" fill="#1c7ed6" stroke="#fff" stroke-width="2"/>
+<circle cx="560" cy="420" r="8" fill="#a0522d" stroke="#fff" stroke-width="2"/>
+<circle cx="640" cy="280" r="8" fill="#f08c00" stroke="#fff" stroke-width="2"/>
+<circle cx="420" cy="330" r="26" fill="#b00020" opacity="0.18"/>
+<circle cx="420" cy="330" r="17" fill="none" stroke="#b00020" stroke-width="3"/>
+<circle cx="420" cy="330" r="10" fill="#f08c00" stroke="#fff" stroke-width="2"/>
+<text x="420" y="334" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="10" font-weight="700" fill="#fff" text-anchor="middle">3</text>
+<circle cx="700" cy="480" r="20" fill="#0b2533" opacity="0.3"/>
+<circle cx="700" cy="480" r="15" fill="#0b2533"/>
+<text x="700" y="484" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="12" font-weight="700" fill="#fff" text-anchor="middle">23</text>
+</g>
+<rect x="0" y="0" width="1440" height="32" rx="0" fill="#0b2533"/>
+<text x="16" y="21" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="13" font-weight="600" fill="#fff" text-anchor="start">Ладога · рыболовная карта</text>
+<text x="1424" y="21" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="13" font-weight="400" fill="#fff" text-anchor="end">—   ▢   ✕</text>
+<rect x="0" y="32" width="80" height="868" rx="0" fill="#fff"/>
+<line x1="80" y1="32" x2="80" y2="900" stroke="#c9d3da" stroke-width="1" stroke-linecap="round"/>
+<rect x="20" y="48" width="40" height="40" rx="12" fill="#0b2533"/>
+<text x="40" y="75" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="20" font-weight="800" fill="#fff" text-anchor="middle">Л</text>
+<rect x="12" y="116" width="56" height="32" rx="16" fill="#d7e6fb"/>
+<polygon points="30,124 36,122 44,124 50,122 50,140 44,142 36,140 30,142" fill="none" stroke="#0050b3" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+<line x1="36" y1="122" x2="36" y2="140" stroke="#0050b3" stroke-width="2" stroke-linecap="round"/>
+<line x1="44" y1="124" x2="44" y2="142" stroke="#0050b3" stroke-width="2" stroke-linecap="round"/>
+<text x="40" y="166" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="12" font-weight="700" fill="#0050b3" text-anchor="middle">Карта</text>
+<circle cx="40" cy="208" r="5" fill="none" stroke="#33414a" stroke-width="2"/>
+<line x1="48.0" y1="208.0" x2="51.0" y2="208.0" stroke="#33414a" stroke-width="2" stroke-linecap="round"/>
+<line x1="45.7" y1="213.7" x2="47.8" y2="215.8" stroke="#33414a" stroke-width="2" stroke-linecap="round"/>
+<line x1="40.0" y1="216.0" x2="40.0" y2="219.0" stroke="#33414a" stroke-width="2" stroke-linecap="round"/>
+<line x1="34.3" y1="213.7" x2="32.2" y2="215.8" stroke="#33414a" stroke-width="2" stroke-linecap="round"/>
+<line x1="32.0" y1="208.0" x2="29.0" y2="208.0" stroke="#33414a" stroke-width="2" stroke-linecap="round"/>
+<line x1="34.3" y1="202.3" x2="32.2" y2="200.2" stroke="#33414a" stroke-width="2" stroke-linecap="round"/>
+<line x1="40.0" y1="200.0" x2="40.0" y2="197.0" stroke="#33414a" stroke-width="2" stroke-linecap="round"/>
+<line x1="45.7" y1="202.3" x2="47.8" y2="200.2" stroke="#33414a" stroke-width="2" stroke-linecap="round"/>
+<text x="40" y="242" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="12" font-weight="500" fill="#33414a" text-anchor="middle">Сегодня</text>
+<path d="M29,284 C35,276 45,276 48,284 C45,292 35,292 29,284 Z" fill="none" stroke="#33414a" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+<polygon points="47,284 52,279 52,289" fill="none" stroke="#33414a" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+<circle cx="35" cy="283" r="1.3" fill="#33414a"/>
+<text x="40" y="318" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="12" font-weight="500" fill="#33414a" text-anchor="middle">Клёв</text>
+<rect x="32" y="350" width="16" height="20" rx="2" fill="none" stroke="#33414a" stroke-width="2"/>
+<line x1="36" y1="356" x2="44" y2="356" stroke="#33414a" stroke-width="1.8" stroke-linecap="round"/>
+<line x1="36" y1="361" x2="44" y2="361" stroke="#33414a" stroke-width="1.8" stroke-linecap="round"/>
+<line x1="36" y1="366" x2="44" y2="366" stroke="#33414a" stroke-width="1.8" stroke-linecap="round"/>
+<text x="40" y="394" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="12" font-weight="500" fill="#33414a" text-anchor="middle">Правила</text>
+<path d="M33,426 L47,426 L47,446 L40,441 L33,446 Z" fill="none" stroke="#33414a" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+<text x="40" y="470" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="12" font-weight="500" fill="#33414a" text-anchor="middle">Моё</text>
+<rect x="28" y="780" width="24" height="0" rx="0" fill="none"/>
+<text x="40" y="816" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="22" font-weight="700" fill="#0a0f14" text-anchor="middle">⤢</text>
+<text x="40" y="836" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="11" font-weight="700" fill="#4a5963" text-anchor="middle">F</text>
+<text x="40" y="870" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="20" font-weight="800" fill="#0a0f14" text-anchor="middle">?</text>
+<rect x="80" y="32" width="400" height="868" rx="0" fill="#fff"/>
+<line x1="480" y1="32" x2="480" y2="900" stroke="#c9d3da" stroke-width="1" stroke-linecap="round"/>
+<text x="100" y="76" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="14" font-weight="600" fill="#0050b3" text-anchor="start">← Сегодня</text>
+<rect x="424" y="44" width="44" height="44" rx="22" fill="#f2f5f7"/>
+<text x="446" y="72" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="18" font-weight="600" fill="#0a0f14" text-anchor="middle">✕</text>
+<text x="100" y="118" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="24" font-weight="800" fill="#0a0f14" text-anchor="start">Судак, щука</text>
+<text x="100" y="142" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="14" font-weight="400" fill="#33414a" text-anchor="start">Отчёт рыбака · 3 записи · Варецкие банки</text>
+<text x="100" y="172" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="15" font-weight="600" fill="#0a0f14" text-anchor="start">2,4 км от вас · 245° ЮЗ · глубина 5–10 м</text>
+<rect x="100" y="188" width="150" height="48" rx="24" fill="#0050b3"/>
+<text x="175" y="218" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="16" font-weight="700" fill="#fff" text-anchor="middle">Вести сюда</text>
+<rect x="258" y="188" width="70" height="48" rx="24" fill="#f2f5f7"/>
+<text x="293" y="217" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="18" font-weight="700" fill="#0a0f14" text-anchor="middle">☆</text>
+<rect x="334" y="188" width="70" height="48" rx="24" fill="#f2f5f7"/>
+<text x="369" y="217" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="18" font-weight="700" fill="#0a0f14" text-anchor="middle">↗</text>
+<rect x="410" y="188" width="44" height="48" rx="24" fill="#f2f5f7"/>
+<text x="432" y="217" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="16" font-weight="700" fill="#0a0f14" text-anchor="middle">⋯</text>
+<rect x="100" y="252" width="360" height="70" rx="12" fill="#f2f5f7"/>
+<text x="116" y="280" font-family="ui-monospace, Consolas, Menlo, monospace" font-size="15" font-weight="600" fill="#0a0f14" text-anchor="start">60.29812, 32.10740</text>
+<text x="116" y="304" font-family="ui-monospace, Consolas, Menlo, monospace" font-size="14" font-weight="400" fill="#33414a" text-anchor="start">N 60°17.887′  E 32°06.444′</text>
+<text x="100" y="356" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="16" font-weight="800" fill="#0a0f14" text-anchor="start">3 записи в этом месте</text>
+<line x1="100" y1="372" x2="460" y2="372" stroke="#c9d3da" stroke-width="1" stroke-linecap="round"/>
+<text x="100" y="398" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="14" font-weight="700" fill="#0a0f14" text-anchor="start">Судак · 14 сен 2025 · вода</text>
+<text x="100" y="420" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="13" font-weight="400" fill="#33414a" text-anchor="start">джиг 12 г, свал 7 м, 3 шт.</text>
+<text x="100" y="440" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="12" font-weight="400" fill="#4a5963" text-anchor="start">fisher.spb.ru · точность ±30 м</text>
+<line x1="100" y1="456" x2="460" y2="456" stroke="#c9d3da" stroke-width="1" stroke-linecap="round"/>
+<text x="100" y="482" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="14" font-weight="700" fill="#0a0f14" text-anchor="start">Щука · 2 окт 2024 · вода</text>
+<text x="100" y="504" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="13" font-weight="400" fill="#33414a" text-anchor="start">джиг 12 г, свал 7 м, 3 шт.</text>
+<text x="100" y="524" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="12" font-weight="400" fill="#4a5963" text-anchor="start">fisher.spb.ru · точность ±30 м</text>
+<line x1="100" y1="540" x2="460" y2="540" stroke="#c9d3da" stroke-width="1" stroke-linecap="round"/>
+<text x="100" y="566" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="14" font-weight="700" fill="#0a0f14" text-anchor="start">Судак · 20 авг 2023 · вода</text>
+<text x="100" y="588" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="13" font-weight="400" fill="#33414a" text-anchor="start">джиг 12 г, свал 7 м, 3 шт.</text>
+<text x="100" y="608" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="12" font-weight="400" fill="#4a5963" text-anchor="start">fisher.spb.ru · точность ±30 м</text>
+<rect x="496" y="48" width="400" height="48" rx="24" fill="#fff" stroke="#8796a0" stroke-width="1"/>
+<circle cx="518" cy="70" r="6.5" fill="none" stroke="#33414a" stroke-width="2.2"/>
+<line x1="523" y1="75" x2="528" y2="80" stroke="#33414a" stroke-width="2.4" stroke-linecap="round"/>
+<text x="540" y="77" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="16" font-weight="400" fill="#4a5963" text-anchor="start">Поиск: место, слип, банка…</text>
+<line x1="844" y1="56" x2="844" y2="88" stroke="#c9d3da" stroke-width="1" stroke-linecap="round"/>
+<line x1="861.0" y1="66" x2="879.0" y2="66" stroke="#0a0f14" stroke-width="2.2" stroke-linecap="round"/>
+<line x1="864.0" y1="72" x2="876.0" y2="72" stroke="#0a0f14" stroke-width="2.2" stroke-linecap="round"/>
+<line x1="867.0" y1="78" x2="873.0" y2="78" stroke="#0a0f14" stroke-width="2.2" stroke-linecap="round"/>
+<rect x="496" y="104" width="124" height="36" rx="18" fill="#fff" stroke="#8796a0" stroke-width="1"/>
+<text x="558" y="127" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="14" font-weight="600" fill="#0a0f14" text-anchor="middle">↙ 7 м/с · 13°</text>
+<rect x="628" y="104" width="170" height="36" rx="18" fill="#fff" stroke="#0050b3" stroke-width="1"/>
+<text x="713" y="127" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="14" font-weight="600" fill="#0050b3" text-anchor="middle">Фильтр: судак · сен ✕</text>
+<circle cx="1400" cy="73.5" r="24" fill="#000" opacity="0.12"/>
+<circle cx="1400" cy="72" r="24" fill="#fff" stroke="#8796a0" stroke-width="1"/>
+<polygon points="1400,63 1410,69 1400,75 1390,69" fill="#0a0f14"/>
+<polyline points="1390,74 1400,80 1410,74" fill="none" stroke="#0a0f14" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+<circle cx="1400" cy="133.5" r="24" fill="#000" opacity="0.12"/>
+<circle cx="1400" cy="132" r="24" fill="#fff" stroke="#8796a0" stroke-width="1"/>
+<polyline points="1391,128 1391,123 1396,123" fill="none" stroke="#0a0f14" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/>
+<polyline points="1409,128 1409,123 1404,123" fill="none" stroke="#0a0f14" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/>
+<polyline points="1409,136 1409,141 1404,141" fill="none" stroke="#0a0f14" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/>
+<polyline points="1391,136 1391,141 1396,141" fill="none" stroke="#0a0f14" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/>
+<circle cx="1400" cy="193.5" r="24" fill="#000" opacity="0.12"/>
+<circle cx="1400" cy="192" r="24" fill="#b00020" stroke="#b00020" stroke-width="1"/>
+<text x="1400" y="196.68" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="13" font-weight="700" fill="#fff" text-anchor="middle">SOS</text>
+<rect x="1376" y="418.0" width="48" height="96" rx="14" fill="#fff" stroke="#8796a0" stroke-width="1"/>
+<text x="1400" y="451.0" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="28" font-weight="500" fill="#0a0f14" text-anchor="middle">+</text>
+<line x1="1384" y1="466.0" x2="1416" y2="466.0" stroke="#c9d3da" stroke-width="1" stroke-linecap="round"/>
+<text x="1400" y="499.0" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="28" font-weight="500" fill="#0a0f14" text-anchor="middle">−</text>
+<circle cx="1400" cy="785.5" r="24" fill="#000" opacity="0.12"/>
+<circle cx="1400" cy="784" r="24" fill="#fff" stroke="#8796a0" stroke-width="1"/>
+<polyline points="1391,784 1400,776 1409,784" fill="none" stroke="#0a0f14" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/>
+<polyline points="1394,782 1394,793 1406,793 1406,782" fill="none" stroke="#0a0f14" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/>
+<circle cx="1396" cy="857.5" r="28" fill="#000" opacity="0.12"/>
+<circle cx="1396" cy="856" r="28" fill="#fff" stroke="#8796a0" stroke-width="1"/>
+<circle cx="1396" cy="856" r="8" fill="none" stroke="#0050b3" stroke-width="2.4"/>
+<circle cx="1396" cy="856" r="4" fill="#0050b3"/>
+<line x1="1396" y1="847" x2="1396" y2="843" stroke="#0050b3" stroke-width="2.4" stroke-linecap="round"/>
+<line x1="1405" y1="856" x2="1409" y2="856" stroke="#0050b3" stroke-width="2.4" stroke-linecap="round"/>
+<line x1="1396" y1="865" x2="1396" y2="869" stroke="#0050b3" stroke-width="2.4" stroke-linecap="round"/>
+<line x1="1387" y1="856" x2="1383" y2="856" stroke="#0050b3" stroke-width="2.4" stroke-linecap="round"/>
+<rect x="496" y="832" width="124" height="48" rx="24" fill="#fff" stroke="#8796a0" stroke-width="1"/>
+<circle cx="522" cy="856" r="8" fill="#b00020"/>
+<text x="538" y="861" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="15" font-weight="700" fill="#0a0f14" text-anchor="start">Трек</text>
+<line x1="496" y1="812" x2="576" y2="812" stroke="#0a0f14" stroke-width="2" stroke-linecap="round"/>
+<text x="582" y="816" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="12" font-weight="600" fill="#0a0f14" text-anchor="start">2 км</text>
+<rect x="970" y="870" width="454" height="22" rx="4" fill="#fff" opacity="0.85"/>
+<text x="1416" y="885" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="10" font-weight="400" fill="#33414a" text-anchor="end">Leaflet | Снимки © Esri, Maxar | © участники OpenStreetMap | ГУНиО</text>
+<circle cx="12" cy="120" r="9" fill="#c2255c"/>
+<text x="12" y="124" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="11" font-weight="700" fill="#fff" text-anchor="middle">1</text>
+<circle cx="100" cy="64" r="9" fill="#c2255c"/>
+<text x="100" y="68" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="11" font-weight="700" fill="#fff" text-anchor="middle">2</text>
+<circle cx="424" cy="44" r="9" fill="#c2255c"/>
+<text x="424" y="48" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="11" font-weight="700" fill="#fff" text-anchor="middle">3</text>
+<circle cx="100" cy="188" r="9" fill="#c2255c"/>
+<text x="100" y="192" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="11" font-weight="700" fill="#fff" text-anchor="middle">4</text>
+<circle cx="496" cy="48" r="9" fill="#c2255c"/>
+<text x="496" y="52" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="11" font-weight="700" fill="#fff" text-anchor="middle">5</text>
+<circle cx="1376" cy="48" r="9" fill="#c2255c"/>
+<text x="1376" y="52" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="11" font-weight="700" fill="#fff" text-anchor="middle">6</text>
+<circle cx="28" cy="800" r="9" fill="#c2255c"/>
+<text x="28" y="804" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="11" font-weight="700" fill="#fff" text-anchor="middle">7</text>
+<circle cx="1376" cy="420" r="9" fill="#c2255c"/>
+<text x="1376" y="424" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="11" font-weight="700" fill="#fff" text-anchor="middle">8</text>
+</g>
+<text x="1490" y="40" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="16" font-weight="700" fill="#0a0f14" text-anchor="start">Десктоп (Windows, Chrome/Edge)</text>
+<text x="1490" y="62" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="12" font-weight="400" fill="#4a5963" text-anchor="start">Клавиши: Esc назад · + / − масштаб · стрелки</text>
+<text x="1490" y="78" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="12" font-weight="400" fill="#4a5963" text-anchor="start">сдвиг · F весь экран · L где я · H мой район ·</text>
+<text x="1490" y="94" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="12" font-weight="400" fill="#4a5963" text-anchor="start">N север вверх · / поиск · [ свернуть панель.</text>
+<circle cx="1499" cy="112" r="9" fill="#c2255c"/>
+<text x="1499" y="116" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="11" font-weight="700" fill="#fff" text-anchor="middle">1</text>
+<text x="1516" y="116" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="12" font-weight="600" fill="#0a0f14" text-anchor="start">Рейка 80 px с подписями; «Карта» =</text>
+<text x="1516" y="131" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="12" font-weight="400" fill="#33414a" text-anchor="start">закрыть панель, карта на всё окно</text>
+<circle cx="1499" cy="149" r="9" fill="#c2255c"/>
+<text x="1499" y="153" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="11" font-weight="700" fill="#fff" text-anchor="middle">2</text>
+<text x="1516" y="153" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="12" font-weight="600" fill="#0a0f14" text-anchor="start">← Назад к прошлому содержимому панели</text>
+<text x="1516" y="168" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="12" font-weight="400" fill="#33414a" text-anchor="start">(здесь: карточка открыта со «Сегодня»)</text>
+<circle cx="1499" cy="186" r="9" fill="#c2255c"/>
+<text x="1499" y="190" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="11" font-weight="700" fill="#fff" text-anchor="middle">3</text>
+<text x="1516" y="190" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="12" font-weight="600" fill="#0a0f14" text-anchor="start">✕ закрыть панель; Esc — то же</text>
+<circle cx="1499" cy="208" r="9" fill="#c2255c"/>
+<text x="1499" y="212" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="11" font-weight="700" fill="#fff" text-anchor="middle">4</text>
+<text x="1516" y="212" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="12" font-weight="600" fill="#0a0f14" text-anchor="start">Кнопки 48 px (сенсорные ноутбуки),</text>
+<text x="1516" y="227" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="12" font-weight="400" fill="#33414a" text-anchor="start">hover-подсказки с горячими клавишами</text>
+<circle cx="1499" cy="245" r="9" fill="#c2255c"/>
+<text x="1499" y="249" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="11" font-weight="700" fill="#fff" text-anchor="middle">5</text>
+<text x="1516" y="249" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="12" font-weight="600" fill="#0a0f14" text-anchor="start">Поиск над картой; «/» — фокус в поиск</text>
+<circle cx="1499" cy="267" r="9" fill="#c2255c"/>
+<text x="1499" y="271" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="11" font-weight="700" fill="#fff" text-anchor="middle">6</text>
+<text x="1516" y="271" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="12" font-weight="600" fill="#0a0f14" text-anchor="start">Слои · ⤢ Весь экран (F) · SOS</text>
+<circle cx="1499" cy="289" r="9" fill="#c2255c"/>
+<text x="1499" y="293" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="11" font-weight="700" fill="#fff" text-anchor="middle">7</text>
+<text x="1516" y="293" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="12" font-weight="600" fill="#0a0f14" text-anchor="start">⤢ карта без рейки и панели (F / F11),</text>
+<text x="1516" y="308" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="12" font-weight="400" fill="#33414a" text-anchor="start">? — список горячих клавиш</text>
+<circle cx="1499" cy="326" r="9" fill="#c2255c"/>
+<text x="1499" y="330" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="11" font-weight="700" fill="#fff" text-anchor="middle">8</text>
+<text x="1516" y="330" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="12" font-weight="600" fill="#0a0f14" text-anchor="start">Колесо — масштаб, перетаскивание —</text>
+<text x="1516" y="345" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="12" font-weight="400" fill="#33414a" text-anchor="start">сдвиг, правый клик — меню «Точка здесь</text>
+<text x="1516" y="360" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="12" font-weight="400" fill="#33414a" text-anchor="start">· Вести сюда · Координаты»</text>
+</svg>

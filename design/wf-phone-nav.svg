@@ -1,0 +1,159 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="790" height="820" viewBox="0 0 790 820">
+<title>Телефон, портрет: навигация к точке (дневная палитра)</title>
+<rect width="100%" height="100%" fill="#fbfcfd"/>
+<text x="20" y="14" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="11" fill="#4a5963">wf-phone-nav · режим «Навигация»: всё лишнее скрыто · Север вверх / По курсу</text>
+<rect x="14" y="14" width="372" height="792" rx="34" fill="#1f2d36"/>
+<clipPath id="c1"><rect x="0" y="0" width="360" height="780" rx="28"/></clipPath>
+<g transform="translate(20,20)" clip-path="url(#c1)">
+<rect x="0" y="0" width="360" height="780" rx="0" fill="#cfe3ee"/>
+<polygon points="0,640 30,649 60,613 90,620 120,647 150,647 180,620 210,614 240,649 270,685 300,673 330,626 360,602 360,780 0,780" fill="#e6ead7" stroke="#b9c3a4" stroke-width="1" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M0,600 L36,605 L72,587 L108,578 L144,586 L180,605 L216,620 L252,620 L288,605 L324,586 L360,578" fill="none" stroke="#6ea6c4" stroke-width="1" stroke-linejoin="round" stroke-linecap="round" opacity="0.8" stroke-dasharray="4 5"/>
+<path d="M0,550 L36,535 L72,528 L108,538 L144,557 L180,571 L216,569 L252,553 L288,535 L324,528 L360,538" fill="none" stroke="#6ea6c4" stroke-width="1" stroke-linejoin="round" stroke-linecap="round" opacity="0.8" stroke-dasharray="4 5"/>
+<path d="M0,490 L36,468 L72,480 L108,499 L144,511 L180,508 L216,491 L252,473 L288,468 L324,480 L360,499" fill="none" stroke="#6ea6c4" stroke-width="1" stroke-linejoin="round" stroke-linecap="round" opacity="0.8" stroke-dasharray="4 5"/>
+<polyline points="96,600 128,560 150,520 176,488" fill="none" stroke="#e8590c" stroke-width="4" stroke-linejoin="round" stroke-linecap="round" opacity="0.9"/>
+<line x1="176" y1="488" x2="252" y2="300" stroke="#b00020" stroke-width="3" stroke-linecap="round" stroke-dasharray="9 7"/>
+<circle cx="252" cy="300" r="28" fill="#b00020" opacity="0.15"/>
+<circle cx="252" cy="300" r="16" fill="none" stroke="#b00020" stroke-width="3.5"/>
+<circle cx="252" cy="300" r="4" fill="#b00020"/>
+<polygon points="212,372 224,392 200,392" fill="#e8590c" stroke="#fff" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>
+<text x="228" y="390" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="11" font-weight="700" fill="#3d2e00" text-anchor="start">1,2 м</text>
+<circle cx="176" cy="488" r="22" fill="#1a73e8" stroke="#1a73e8" stroke-width="1" opacity="0.14"/>
+<polygon points="182.0,473.2 181.7,503.2 173.8,493.6 161.3,495.0" fill="#1a73e8" stroke="#fff" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+<rect x="0" y="0" width="360" height="148" rx="0" fill="#fff"/>
+<line x1="0" y1="148" x2="360" y2="148" stroke="#0a0f14" stroke-width="2" stroke-linecap="round" opacity="0.2"/>
+<text x="18" y="17" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="13" font-weight="600" fill="#0a0f14" text-anchor="start">9:41</text>
+<text x="342" y="17" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="11" font-weight="600" fill="#0a0f14" text-anchor="end">▲ ▮▮▮ 78%</text>
+<rect x="12" y="36" width="88" height="88" rx="22" fill="#0a0f14"/>
+<polygon points="67.0,58.4 63.0,109.5 50.9,92.9 30.4,94.3" fill="#fff"/>
+<text x="112" y="84" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="44" font-weight="800" fill="#0a0f14" text-anchor="start">2,45 км</text>
+<text x="112" y="110" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="16" font-weight="600" fill="#0a0f14" text-anchor="start">на 245° ЮЗ · в 14:32 (12 мин)</text>
+<text x="112" y="133" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="14" font-weight="400" fill="#33414a" text-anchor="start">→ Судак, щука · Варецкие банки</text>
+<text x="348" y="44" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="10" font-weight="800" fill="#33414a" text-anchor="end">GPS</text>
+<circle cx="306" cy="56" r="5" fill="#1b6e2d"/>
+<text x="348" y="61" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="13" font-weight="800" fill="#0a0f14" text-anchor="end">±5 м</text>
+<rect x="12" y="158" width="336" height="44" rx="12" fill="#ffe08a" stroke="#8a4b00" stroke-width="1"/>
+<text x="24" y="186" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="14" font-weight="700" fill="#3d2e00" text-anchor="start">⚠ Мель «Железница» 1,2 м — 350 м впереди</text>
+<circle cx="36" cy="239.5" r="24" fill="#000" opacity="0.12"/>
+<circle cx="36" cy="238" r="24" fill="#fff" stroke="#8796a0" stroke-width="1"/>
+<polygon points="36,224 41,238 31,238" fill="#b00020"/>
+<polygon points="36,252 41,238 31,238" fill="#8796a0"/>
+<text x="36" y="276" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="10" font-weight="700" fill="#33414a" text-anchor="middle">Север</text>
+<circle cx="324" cy="239.5" r="24" fill="#000" opacity="0.12"/>
+<circle cx="324" cy="238" r="24" fill="#b00020" stroke="#b00020" stroke-width="1"/>
+<text x="324" y="242.68" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="13" font-weight="700" fill="#fff" text-anchor="middle">SOS</text>
+<rect x="300" y="330" width="48" height="96" rx="14" fill="#fff" stroke="#8796a0" stroke-width="1"/>
+<text x="324" y="363" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="28" font-weight="500" fill="#0a0f14" text-anchor="middle">+</text>
+<line x1="308" y1="378" x2="340" y2="378" stroke="#c9d3da" stroke-width="1" stroke-linecap="round"/>
+<text x="324" y="411" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="28" font-weight="500" fill="#0a0f14" text-anchor="middle">−</text>
+<text x="324" y="442" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="10" font-weight="700" fill="#0050b3" text-anchor="middle">авто</text>
+<rect x="92" y="532" width="176" height="52" rx="26" fill="#fff" stroke="#0050b3" stroke-width="2"/>
+<text x="180" y="564" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="16" font-weight="700" fill="#0050b3" text-anchor="middle">↺ Вернуться ко мне</text>
+<rect x="0" y="592" width="360" height="188" rx="0" fill="#fff"/>
+<line x1="0" y1="592" x2="360" y2="592" stroke="#0a0f14" stroke-width="2" stroke-linecap="round" opacity="0.2"/>
+<rect x="8" y="600" width="112" height="88" rx="14" fill="#f2f5f7"/>
+<text x="20" y="620" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="12" font-weight="800" fill="#33414a" text-anchor="start">СКОРОСТЬ</text>
+<text x="20" y="660" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="34" font-weight="800" fill="#0a0f14" text-anchor="start">18,4</text>
+<text x="20" y="680" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="12" font-weight="600" fill="#33414a" text-anchor="start">км/ч</text>
+<rect x="124" y="600" width="112" height="88" rx="14" fill="#f2f5f7"/>
+<text x="136" y="620" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="12" font-weight="800" fill="#33414a" text-anchor="start">КУРС</text>
+<text x="136" y="660" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="34" font-weight="800" fill="#0a0f14" text-anchor="start">238°</text>
+<text x="136" y="680" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="12" font-weight="600" fill="#33414a" text-anchor="start">ЮЗ · по GPS</text>
+<rect x="240" y="600" width="112" height="88" rx="14" fill="#f2f5f7"/>
+<text x="252" y="620" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="12" font-weight="800" fill="#33414a" text-anchor="start">ГЛУБИНА</text>
+<text x="252" y="660" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="34" font-weight="800" fill="#0a0f14" text-anchor="start">5–10</text>
+<text x="252" y="680" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="12" font-weight="600" fill="#33414a" text-anchor="start">м · по карте</text>
+<rect x="8" y="696" width="116" height="64" rx="16" fill="#fdecea" stroke="#b00020" stroke-width="1.5"/>
+<text x="66" y="733" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="15" font-weight="800" fill="#b00020" text-anchor="middle">✕ Завершить</text>
+<rect x="132" y="696" width="68" height="64" rx="16" fill="#f2f5f7"/>
+<text x="166" y="722" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="18" font-weight="700" fill="#b00020" text-anchor="middle">⏺</text>
+<text x="166" y="748" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="12" font-weight="700" fill="#33414a" text-anchor="middle">Трек</text>
+<rect x="208" y="696" width="68" height="64" rx="16" fill="#f2f5f7"/>
+<text x="242" y="722" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="18" font-weight="700" fill="#0a0f14" text-anchor="middle">⚑</text>
+<text x="242" y="748" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="12" font-weight="700" fill="#33414a" text-anchor="middle">Метка</text>
+<rect x="284" y="696" width="68" height="64" rx="16" fill="#f2f5f7"/>
+<text x="318" y="722" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="18" font-weight="700" fill="#0a0f14" text-anchor="middle">⋯</text>
+<text x="318" y="748" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="12" font-weight="700" fill="#33414a" text-anchor="middle">Ещё</text>
+<rect x="130.0" y="771" width="100" height="4" rx="2" fill="#0a0f14"/>
+<circle cx="12" cy="36" r="9" fill="#c2255c"/>
+<text x="12" y="40" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="11" font-weight="700" fill="#fff" text-anchor="middle">1</text>
+<circle cx="112" cy="40" r="9" fill="#c2255c"/>
+<text x="112" y="44" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="11" font-weight="700" fill="#fff" text-anchor="middle">2</text>
+<circle cx="112" cy="118" r="9" fill="#c2255c"/>
+<text x="112" y="122" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="11" font-weight="700" fill="#fff" text-anchor="middle">3</text>
+<circle cx="296" cy="40" r="9" fill="#c2255c"/>
+<text x="296" y="44" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="11" font-weight="700" fill="#fff" text-anchor="middle">4</text>
+<circle cx="12" cy="158" r="9" fill="#c2255c"/>
+<text x="12" y="162" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="11" font-weight="700" fill="#fff" text-anchor="middle">5</text>
+<circle cx="12" cy="214" r="9" fill="#c2255c"/>
+<text x="12" y="218" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="11" font-weight="700" fill="#fff" text-anchor="middle">6</text>
+<circle cx="300" cy="214" r="9" fill="#c2255c"/>
+<text x="300" y="218" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="11" font-weight="700" fill="#fff" text-anchor="middle">7</text>
+<circle cx="300" cy="330" r="9" fill="#c2255c"/>
+<text x="300" y="334" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="11" font-weight="700" fill="#fff" text-anchor="middle">8</text>
+<circle cx="92" cy="532" r="9" fill="#c2255c"/>
+<text x="92" y="536" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="11" font-weight="700" fill="#fff" text-anchor="middle">9</text>
+<circle cx="8" cy="600" r="9" fill="#c2255c"/>
+<text x="8" y="604" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="11" font-weight="700" fill="#fff" text-anchor="middle">10</text>
+<circle cx="8" cy="696" r="9" fill="#c2255c"/>
+<text x="8" y="700" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="11" font-weight="700" fill="#fff" text-anchor="middle">11</text>
+<circle cx="132" cy="696" r="9" fill="#c2255c"/>
+<text x="132" y="700" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="11" font-weight="700" fill="#fff" text-anchor="middle">12</text>
+<circle cx="176" cy="470" r="9" fill="#c2255c"/>
+<text x="176" y="474" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="11" font-weight="700" fill="#fff" text-anchor="middle">13</text>
+</g>
+<text x="420" y="40" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="16" font-weight="700" fill="#0a0f14" text-anchor="start">Навигация к точке</text>
+<text x="420" y="62" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="12" font-weight="400" fill="#4a5963" text-anchor="start">Скрыто: точки, кластеры, зоны, тепло, мои точки,</text>
+<text x="420" y="78" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="12" font-weight="400" fill="#4a5963" text-anchor="start">поиск, чипы, нижняя навигация.</text>
+<text x="420" y="94" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="12" font-weight="400" fill="#4a5963" text-anchor="start">Остаётся: цель, линия курса, трек, мели ≤1 км,</text>
+<text x="420" y="110" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="12" font-weight="400" fill="#4a5963" text-anchor="start">подложка, навигационные карты и изобаты (если вкл).</text>
+<circle cx="429" cy="128" r="9" fill="#c2255c"/>
+<text x="429" y="132" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="11" font-weight="700" fill="#fff" text-anchor="middle">1</text>
+<text x="446" y="132" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="12" font-weight="600" fill="#0a0f14" text-anchor="start">Стрелка на точку 88 dp (относительно курса;</text>
+<text x="446" y="147" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="12" font-weight="400" fill="#33414a" text-anchor="start">серая «от севера», если курса нет)</text>
+<circle cx="429" cy="165" r="9" fill="#c2255c"/>
+<text x="429" y="169" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="11" font-weight="700" fill="#fff" text-anchor="middle">2</text>
+<text x="446" y="169" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="12" font-weight="600" fill="#0a0f14" text-anchor="start">Расстояние 44 sp, жирный, tabular-nums</text>
+<circle cx="429" cy="187" r="9" fill="#c2255c"/>
+<text x="429" y="191" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="11" font-weight="700" fill="#fff" text-anchor="middle">3</text>
+<text x="446" y="191" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="12" font-weight="600" fill="#0a0f14" text-anchor="start">Пеленг ° + румб · ETA часы + минуты · цель</text>
+<circle cx="429" cy="209" r="9" fill="#c2255c"/>
+<text x="429" y="213" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="11" font-weight="700" fill="#fff" text-anchor="middle">4</text>
+<text x="446" y="213" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="12" font-weight="600" fill="#0a0f14" text-anchor="start">Точность GPS: ● зел ≤10 м, жёлт ≤30, красн</text>
+<text x="446" y="228" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="12" font-weight="400" fill="#33414a" text-anchor="start">&gt;30; «GPS 0:25 назад» при потере сигнала</text>
+<circle cx="429" cy="246" r="9" fill="#c2255c"/>
+<text x="429" y="250" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="11" font-weight="700" fill="#fff" text-anchor="middle">5</text>
+<text x="446" y="250" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="12" font-weight="600" fill="#0a0f14" text-anchor="start">Опасность впереди (±45° от курса, ≤400 м</text>
+<text x="446" y="265" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="12" font-weight="400" fill="#33414a" text-anchor="start">или ≤2 мин хода) — жёлтая плашка</text>
+<circle cx="429" cy="283" r="9" fill="#c2255c"/>
+<text x="429" y="287" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="11" font-weight="700" fill="#fff" text-anchor="middle">6</text>
+<text x="446" y="287" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="12" font-weight="600" fill="#0a0f14" text-anchor="start">Компас / ориентация 48 dp: Север вверх →</text>
+<text x="446" y="302" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="12" font-weight="400" fill="#33414a" text-anchor="start">По курсу → По компасу; подпись под кнопкой</text>
+<circle cx="429" cy="320" r="9" fill="#c2255c"/>
+<text x="429" y="324" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="11" font-weight="700" fill="#fff" text-anchor="middle">7</text>
+<text x="446" y="324" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="12" font-weight="600" fill="#0a0f14" text-anchor="start">SOS 48 dp — не прячется в навигации</text>
+<circle cx="429" cy="342" r="9" fill="#c2255c"/>
+<text x="429" y="346" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="11" font-weight="700" fill="#fff" text-anchor="middle">8</text>
+<text x="446" y="346" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="12" font-weight="600" fill="#0a0f14" text-anchor="start">+ / − 48 dp; ручной масштаб выключает</text>
+<text x="446" y="361" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="12" font-weight="400" fill="#33414a" text-anchor="start">«авто» до возврата ↺ (подпись «авто»)</text>
+<circle cx="429" cy="379" r="9" fill="#c2255c"/>
+<text x="429" y="383" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="11" font-weight="700" fill="#fff" text-anchor="middle">9</text>
+<text x="446" y="383" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="12" font-weight="600" fill="#0a0f14" text-anchor="start">↺ появляется, когда карту сдвинули; через</text>
+<text x="446" y="398" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="12" font-weight="400" fill="#33414a" text-anchor="start">15 с без касаний возврат сам</text>
+<circle cx="429" cy="416" r="9" fill="#c2255c"/>
+<text x="429" y="420" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="11" font-weight="700" fill="#fff" text-anchor="middle">10</text>
+<text x="446" y="420" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="12" font-weight="600" fill="#0a0f14" text-anchor="start">3 поля 112×88: значения 34 sp; поле 3</text>
+<text x="446" y="435" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="12" font-weight="400" fill="#33414a" text-anchor="start">настраивается (глубина/ветер/пройдено/XTE)</text>
+<circle cx="429" cy="453" r="9" fill="#c2255c"/>
+<text x="429" y="457" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="11" font-weight="700" fill="#fff" text-anchor="middle">11</text>
+<text x="446" y="457" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="12" font-weight="600" fill="#0a0f14" text-anchor="start">Завершить 116×64 — слева, отдельно,</text>
+<text x="446" y="472" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="12" font-weight="400" fill="#33414a" text-anchor="start">с подтверждением; «Назад» = то же</text>
+<circle cx="429" cy="490" r="9" fill="#c2255c"/>
+<text x="429" y="494" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="11" font-weight="700" fill="#fff" text-anchor="middle">12</text>
+<text x="446" y="494" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="12" font-weight="600" fill="#0a0f14" text-anchor="start">Трек · Метка · Ещё — плитки 68×64:</text>
+<text x="446" y="509" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="12" font-weight="400" fill="#33414a" text-anchor="start">метка с быстрыми тегами; в «Ещё» — весь</text>
+<text x="446" y="524" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="12" font-weight="400" fill="#33414a" text-anchor="start">путь, ориентация, точки рядом, экран, ночь</text>
+<circle cx="429" cy="542" r="9" fill="#c2255c"/>
+<text x="429" y="546" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="11" font-weight="700" fill="#fff" text-anchor="middle">13</text>
+<text x="446" y="546" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="12" font-weight="600" fill="#0a0f14" text-anchor="start">Лодка: стрелка по курсу, круг точности;</text>
+<text x="446" y="561" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="12" font-weight="400" fill="#33414a" text-anchor="start">в «По курсу» — в нижней трети карты</text>
+</svg>
