@@ -1,0 +1,46 @@
+# The part of data/live.json that our Moscow server cannot fetch itself: NASA (G-REALM lake level), NOAA (MUR water
+# temperature) and NSIDC (IMS ice) do not answer servers in Russia. Every 6 hours this runs the same collector on
+# GitHub's machine for just those blocks and force-pushes the result to the branch `live-data` (foreign.json); the
+# server's hourly collector takes them from there (--relay, scripts/live/ladoga-live.service).
+name: Live data from NASA and NOAA
+
+on:
+  schedule:
+    - cron: "23 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: live-foreign
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          sparse-checkout: scripts/live
+      - name: The previous copy (its ETags and last good blocks)
+        run: |
+          mkdir -p out
+          if git fetch --quiet --depth 1 origin live-data; then
+            git show FETCH_HEAD:foreign.json > out/live.json || true
+            git show FETCH_HEAD:state.json > out/state.json || true
+          fi
+      - name: Collect
+        run: python3 scripts/live/fetch_live.py --out out --only level.grealm,water_temp,ice_season --budget 300
+      - name: Publish to the branch live-data
+        run: |
+          cd out
+          cp live.json foreign.json
+          git init --quiet --initial-branch live-data
+          git add foreign.json state.json
+          git -c user.name="ladoga-live" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit --quiet -m "NASA / NOAA blocks of live.json, $(date -u +%Y-%m-%dT%H:%MZ)"
+          git push --quiet --force "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" live-data
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

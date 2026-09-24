@@ -12,7 +12,8 @@ After=network-online.target
 Type=oneshot
 User=ladoga-live
 Group=ladoga-live
-ExecStart=/usr/bin/python3 /var/www/ladoga/src/scripts/live/fetch_live.py --out /var/www/ladoga/live
+# NASA / NOAA / NSIDC refuse Russian servers: those blocks come from the GitHub Actions copy (--relay).
+ExecStart=/usr/bin/python3 /var/www/ladoga/src/scripts/live/fetch_live.py --out /var/www/ladoga/live --relay https://raw.githubusercontent.com/ogrebete-max/ladoga-fishing-map/live-data/foreign.json
 Environment=PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 Nice=10
 IOSchedulingClass=idle

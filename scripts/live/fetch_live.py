@@ -14,7 +14,7 @@ normalised and long texts are trimmed), never paraphrased.
 
 Python 3.8+ standard library only.
 
-    fetch_live.py --out DIR [--force] [--only mchs,level,water_temp,ice_season] [--budget SECONDS]
+    fetch_live.py --out DIR [--force] [--only mchs,level,water_temp,ice_season] [--budget SECONDS] [--relay URL]
 
 Writes DIR/live.json atomically (and DIR/live.prev.json, the previous version), keeps HTTP validators,
 item ids and timings in DIR/state.json, logs one line per block to stdout. Exit code 0 whenever live.json
@@ -1668,6 +1668,21 @@ def dumps(obj):
     return json.dumps(obj, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
 
 
+def get_path(root, path):
+    cur = root
+    for k in path:
+        if not isinstance(cur, dict):
+            return None
+        cur = cur.get(k)
+    return cur
+
+
+# NASA, NOAA and NSIDC do not answer servers in Russia (checked from the Moscow VPS on 24.09.2026: connections
+# time out). With --relay these blocks come from the copy of this script that GitHub Actions runs every 6 h
+# (.github/workflows/live-foreign.yml, branch live-data, foreign.json) instead of from the sources.
+RELAY_BLOCKS = ("level.grealm", "water_temp", "ice_season")
+
+
 def set_path(root, path, value):
     cur = root
     for k in path[:-1]:
@@ -1707,7 +1722,7 @@ def due(ctx, name, has_prev):
     return t - b.get("ok", 0) >= INTERVAL[name]
 
 
-def run(out_dir, now=None, http=None, force=False, only=None, budget=110.0, log=print):
+def run(out_dir, now=None, http=None, force=False, only=None, budget=110.0, log=print, relay=None):
     """Collect all blocks and write out_dir/live.json. Returns the live dict."""
     os.makedirs(out_dir, exist_ok=True)
     live_path = os.path.join(out_dir, "live.json")
@@ -1723,6 +1738,16 @@ def run(out_dir, now=None, http=None, force=False, only=None, budget=110.0, log=
     live = {"schema": SCHEMA, "generated": iso(now), "level": {}, "mchs": None, "water_temp": None, "ice_season": None}
     meta_blocks, errors = {}, {}
     t_run = time.monotonic()
+    relay_live = None
+    if relay:
+        try:
+            r = http.get(relay, timeout=20, retries=1)
+            relay_live = json.loads(r.text("utf-8"))
+            if not isinstance(relay_live, dict):
+                raise ValueError("not a live.json")
+        except (FetchError, ValueError) as e:
+            errors["relay"] = {"at": iso(now), "error": trim(str(e), 300)}
+            log(f"{'relay':<16} FAILED   {trim(str(e), 200)}")
 
     for name, fn, paths in COLLECTORS:
         t0 = time.monotonic()
@@ -1749,6 +1774,25 @@ def run(out_dir, now=None, http=None, force=False, only=None, budget=110.0, log=
         if only and name not in only and name.split(".")[0] not in only:
             carry("cached")
             log(f"{name:<16} cached   not requested (--only)")
+            continue
+        if relay and name in RELAY_BLOCKS:
+            rb = ((relay_live or {}).get("meta") or {}).get("blocks", {}).get(name) or {}
+            vals = [get_path(relay_live, q) for q in paths] if relay_live else []
+            if any(v is not None for v in vals):
+                for q, v in zip(paths, vals):
+                    set_path(live, q, v)
+                meta_blocks[name] = {"status": "relay", "fetched_at": rb.get("fetched_at"),
+                                     "source_date": rb.get("source_date"), "url": rb.get("url")}
+                log(f"{name:<16} relay    {rb.get('source_date')} (collected {rb.get('fetched_at')})")
+            elif relay_live and rb.get("status") == "off_season":
+                set_path(live, paths[0], None)
+                meta_blocks[name] = {"status": "off_season", "fetched_at": None, "source_date": None, "url": None}
+                log(f"{name:<16} relay    off season")
+            else:
+                carry("stale" if has_prev else "error")
+                if relay_live:
+                    errors[name] = {"at": iso(now), "error": "not in the relay copy"}
+                log(f"{name:<16} relay    nothing new" + (" (previous value kept)" if has_prev else ""))
             continue
         if name == "ice_season" and now.month in IMS_OFF_MONTHS and not force:
             set_path(live, paths[0], None)
@@ -1833,6 +1877,8 @@ def main(argv=None):
     ap.add_argument("--only", default="", help="comma-separated blocks: mchs, level (or level.grealm, "
                                                "level.meteonw), water_temp, ice_season")
     ap.add_argument("--budget", type=float, default=110.0, help="total time budget in seconds (default 110)")
+    ap.add_argument("--relay", default="", help="URL of a live.json made elsewhere: the blocks from NASA / NOAA / "
+                                                "NSIDC (" + ", ".join(RELAY_BLOCKS) + ") are taken from it")
     args = ap.parse_args(argv)
     try:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace", line_buffering=True)
@@ -1849,7 +1895,7 @@ def main(argv=None):
         print(f"error: cannot use {args.out}: {e}", file=sys.stderr)
         return 2
     try:
-        run(args.out, force=args.force, only=only, budget=args.budget)
+        run(args.out, force=args.force, only=only, budget=args.budget, relay=args.relay or None)
     except OSError as e:
         print(f"error: live.json not written: {e}", file=sys.stderr)
         return 1

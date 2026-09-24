@@ -408,6 +408,16 @@ cd scripts/live && python3 -m unittest -v test_fetch_live      # офлайн, �
 прогноз 14.03.2026 (обзор льда, таблица постов, шторм‑прогноз), обзор льда 15.03.2013 (другая грамматика), ряд G‑REALM,
 MUR летом и подо льдом, страница УГМС, консультация Волго‑Балта, строки сетки IMS за 20.01 и 23.09.2026.
 
+## NASA, NOAA и NSIDC — через GitHub Actions
+
+С московского сервера (проверено 24.09.2026) сайты earth.gsfc.nasa.gov (G‑REALM), coastwatch.pfeg.noaa.gov (MUR) и
+noaadata.apps.nsidc.org (IMS) не отвечают: соединение висит до таймаута. МЧС, Волго‑Балт и meteo.nw.ru отвечают.
+Поэтому эти три блока собирает тот же скрипт на машине GitHub — `.github/workflows/live-foreign.yml`, раз в 6 часов
+(`--only level.grealm,water_temp,ice_season`), и кладёт результат в ветку `live-data` (`foreign.json`, всегда один
+коммит). Серверный сборщик берёт их оттуда: `--relay https://raw.githubusercontent.com/ogrebete-max/ladoga-fishing-map/live-data/foreign.json`
+(строка `ExecStart` в `ladoga-live.service`), статус блока — `relay`. Если репозиторий станет закрытым, raw-ссылке нужен
+токен: тогда проще положить `foreign.json` в выпуск или на Pages.
+
 ## Установка на сервер
 
 Код приезжает тем же частичным клоном, что и сайт. Данные лежат вне `releases/`, выкладка сайта их не трогает.
