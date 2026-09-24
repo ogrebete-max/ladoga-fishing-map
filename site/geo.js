@@ -426,10 +426,12 @@ function placeBoat(z) {
   }
   if (z != null && z !== map.getZoom()) {
     geo.progZoom = true;
+    // Leaflet starts a zoom animation only on the next frame: until then getZoom() still says the old zoom.
+    geo.zoomTarget = z; geo.zoomTargetT = Date.now();
     map.setZoomAround([me.lat, me.lon], z, { animate: true });
   }
 }
-map.on('zoomend', () => { geo.progZoom = false; updateZoomAuto(); });
+map.on('zoomend', () => { geo.progZoom = false; geo.zoomTarget = null; updateZoomAuto(); });
 map.on('dragstart', () => {
   if (nav.on) {
     if (geo.follow !== 'free') { nav.followBefore = geo.follow; setFollow('free'); }
@@ -450,7 +452,8 @@ map.on('zoomstart', () => {
 geo.zoomWant = null;
 function userZoom(dir) {
   if (nav.on) { nav.autoZoomPaused = true; nav.lastTouch = Date.now(); updateRecenter(); }
-  const from = geo.zoomWant ?? (map._animatingZoom ? map._animateToZoom : map.getZoom());
+  const pending = geo.zoomTarget != null && Date.now() - geo.zoomTargetT < 1000 ? geo.zoomTarget : null;
+  const from = geo.zoomWant ?? pending ?? (map._animatingZoom ? map._animateToZoom : map.getZoom());
   const z = Math.max(map.getMinZoom(), Math.min(map.getMaxZoom(), from + dir));
   if (z === from) return;
   geo.zoomWant = z;
@@ -460,7 +463,8 @@ function userZoom(dir) {
 function applyUserZoom() {
   const z = geo.zoomWant;
   if (z == null) return;
-  if (map._animatingZoom) { map.once('zoomend', () => setTimeout(applyUserZoom, 0)); return; }
+  const pending = geo.zoomTarget != null && Date.now() - geo.zoomTargetT < 1000;
+  if (map._animatingZoom || pending) { map.once('zoomend', () => setTimeout(applyUserZoom, 0)); return; }
   geo.zoomWant = null;
   if (z === map.getZoom()) return;
   if (geo.follow !== 'free' && geo.me) { geo.progZoom = true; map.setZoomAround([geo.me.lat, geo.me.lon], z); }
