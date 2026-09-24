@@ -65,7 +65,7 @@ const state = {
   fav: new Set(store.get('ladoga-fav', [])),
   mine: store.get('ladoga-mine', []),
   base: store.get('ladoga-base', 'sat'),
-  overlays: Object.assign({ seamarks: false, heat: false, cluster: true, radius: false, seasonZones: false, rules: false, lines: true, mine: true, tracks: false, genshtab: false, isobaths: false, charts: false, chartIso: false, shade: false, gridIso: false, community: false, myDepth: true, satDay: false, vvp: false }, store.get('ladoga-overlays', {})),
+  overlays: Object.assign({ seamarks: false, heat: false, cluster: true, radius: false, seasonZones: false, rules: false, lines: true, mine: true, tracks: false, genshtab: false, isobaths: false, charts: false, chartIso: false, shade: true, gridIso: true, community: false, myDepth: true, satDay: false, vvp: false }, store.get('ladoga-overlays', {})),
   chartOpacity: store.get('ladoga-chart-opacity', 1),
   genshtabOpacity: store.get('ladoga-genshtab-opacity', 0.8),
   overlayOpacity: store.get('ladoga-overlay-opacity', 0.7),
@@ -77,6 +77,13 @@ const state = {
 };
 function saveSettings() { store.set('ladoga-settings', state.settings); }
 state.overlays.isobaths = false;
+// 24.09.2026: the map opens the way anglers need it — satellite with the depths on it (the owner's wish, «как в
+// Навиониксе»). Turned on once for those who had them off; any later choice in «Слои» is kept.
+if (!store.get('ladoga-depth-default-v1', false)) {
+  store.set('ladoga-depth-default-v1', true);
+  Object.assign(state.overlays, { shade: true, gridIso: true, lines: true });
+  if (!store.get('ladoga-base', null)) state.base = 'sat';
+}
 
 function defaultFilters() {
   return { fish: new Set(), months: new Set(), season: 'all', cls: new Set(['A', 'B', 'C']), kinds: new Set(Object.keys(KINDS).filter((k) => k !== 'service' && k !== 'ice_incident')), sources: new Set(), core: false, yearMin: 0, fav: false, depthOnly: false };
@@ -326,8 +333,8 @@ function applyOverlays() {
   toggle(chartState.isoLayer, o.chartIso);
   if (o.chartIso) loadChartIsobaths();
   if (depthModel.shade) toggle(depthModel.shade, !!o.shade);
-  if (o.gridIso && !depthModel.iso) loadGridIsolines();
-  if (depthModel.iso) toggle(depthModel.iso, !!o.gridIso);
+  if (o.gridIso && !depthModel.iso && map.getZoom() >= 11) loadGridIsolines(); // 800 KB: only when zoomed in
+  if (depthModel.iso) toggle(depthModel.iso, !!o.gridIso && map.getZoom() >= 11); // a 1 m web over the whole south says nothing
   if (o.community && !depthModel.community) loadCommunityDepth();
   if (depthModel.community) toggle(depthModel.community, !!o.community);
   if (depthModel.communityDup) toggle(depthModel.communityDup, !!o.community && !o.chartIso);
@@ -780,6 +787,15 @@ function drawIsoLabels(force = true) {
   if (com && z >= 14) for (const p of depthModel.communityLabels) add(p, 'community sounding', num(p.m));
 }
 map.on('moveend zoomend', () => { if (state.overlays.gridIso || state.overlays.community || state.overlays.myDepth || state.overlays.vvp) drawIsoLabels(false); });
+map.on('zoomend', () => {
+  if (!state.overlays.gridIso) return;
+  if (!depthModel.iso && !depthModel.isoLoading && map.getZoom() >= 11) loadGridIsolines();
+  if (depthModel.iso) {
+    const on = map.getZoom() >= 11;
+    if (on && !map.hasLayer(depthModel.iso)) depthModel.iso.addTo(map);
+    if (!on && map.hasLayer(depthModel.iso)) map.removeLayer(depthModel.iso);
+  }
+});
 // Fresh soundings of the Volkhov mouth and bar (ENC 2023 read off a Волго-Балт scheme): shown at the charts' zero
 // (the mean long-term level) like every other depth on the map; research/fresh_depth.md.
 function loadVvpDepths() {

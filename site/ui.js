@@ -395,7 +395,8 @@ function renderChips() {
   if (geo.me && geo.me.acc > 50 && Date.now() - geo.me.t < 15000) chips.push(`<button type="button" class="schip gps" data-chip="gps">GPS ±${Math.round(geo.me.acc / 10) * 10} м</button>`);
   // With a depth layer on but the map too far out for the digits: one tap brings them.
   const o = state.overlays;
-  if ((o.charts || o.gridIso || o.community) && map.getZoom() < 14 && !nav.on) chips.push(`<button type="button" class="schip" data-chip="zoom-depth">${ic('add')}Приблизить: цифры глубин</button>`);
+  // Only for the paper charts, whose figures need z14: the shading and isolines on by default speak at any zoom.
+  if (o.charts && map.getZoom() < 14 && !nav.on) chips.push(`<button type="button" class="schip" data-chip="zoom-depth">${ic('add')}Приблизить: цифры глубин</button>`);
   const af = activeFilters();
   if (af.length && !ui.stack.some((l) => l.kind === 'months')) chips.push(`<button type="button" class="schip" data-chip="filter">${ic('tune')}${esc(af.map((x) => x[1]).join(' · ').slice(0, 42))}<span class="x" data-chip="filter-clear" role="button" aria-label="Сбросить фильтр">✕</span></button>`);
   const html = chips.join('');
