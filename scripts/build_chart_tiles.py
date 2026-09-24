@@ -64,26 +64,28 @@ KRAS_E = math.sqrt(2 / 298.3 - (1 / 298.3) ** 2)
 # ---------------------------------------------------------------- sources
 # tier: scale class (0 = 1:125 000 ... 4 = 1:10 000). cutouts: scan-pixel rectangles (x0, y0, x1, y1) inside the neat
 # line that are painted with the land tint around them (legends, emblems, an inset drawn over land at the wrong place).
+# datum "proj": WGS84 -> SK-42 by PROJ (about 8.1" in longitude here) instead of the 7.5-7.6" printed on the sheet —
+# the printed value put these sheets 8-9 m east of the satellite, canals and lights (research/alignment_report.md).
 CHART_SOURCES = [
     # cutouts = title blocks, notes, 'схема использованных материалов', emblems drawn inside the neat line (on land)
     {"id": "23030", "key": "15", "tier": 0, "year": 1999, "cutouts": [(6090, 4180, 7600, 5550)]},
     {"id": "23031", "key": "22", "tier": 1, "year": 1999},
     {"id": "23034", "key": "08", "tier": 1, "year": 2000},
-    {"id": "25069", "key": "16", "tier": 2, "year": 1997,
+    {"id": "25069", "datum": "proj", "key": "16", "tier": 2, "year": 1997,
      "cutouts": [(3230, 4915, 4085, 5370), (3150, 5395, 4040, 5625), (3985, 4720, 4165, 4885),
                  (270, 5250, 530, 5570), (550, 5495, 905, 5605)]},
-    {"id": "25068", "key": "18", "tier": 2, "year": 1998,
+    {"id": "25068", "datum": "proj", "key": "18", "tier": 2, "year": 1998,
      "cutouts": [(2825, 3500, 3870, 4165), (2675, 3545, 2865, 3805), (4195, 3885, 4865, 4150)]},
-    {"id": "25070", "key": "13", "tier": 2, "year": 1998,
+    {"id": "25070", "datum": "proj", "key": "13", "tier": 2, "year": 1998,
      "cutouts": [(3190, 770, 4095, 1225), (3130, 1290, 4080, 1540), (3525, 1605, 4135, 1955)]},
-    {"id": "25067", "key": "19", "tier": 2, "year": 1996,
+    {"id": "25067", "datum": "proj", "key": "19", "tier": 2, "year": 1996,
      "cutouts": [(1240, 4895, 2200, 5520), (955, 4990, 1235, 5280), (2535, 5285, 3195, 5615)]},
-    {"id": "25064", "key": "21", "tier": 2, "year": 1998, "cutouts": [(290, 4400, 1440, 5680)]},
+    {"id": "25064", "datum": "proj", "key": "21", "tier": 2, "year": 1998, "cutouts": [(290, 4400, 1440, 5680)]},
     # 28079: the 1:10 000 inset 'Проход южнее острова Торпаков' (+ its title/scale bar) sits over the land south of
     # Сторожно - cut out here, it is placed at its true position as a separate 1:10 000 source (28079A).
-    {"id": "28079", "key": "14", "tier": 3, "year": 1995,
+    {"id": "28079", "datum": "proj", "key": "14", "tier": 3, "year": 1995,
      "cutouts": [(1495, 3336, 3270, 4162), (2005, 3148, 2765, 3322), (4690, 3085, 5620, 3612), (3262, 3500, 3940, 3700)]},
-    {"id": "28071", "key": "30", "tier": 3, "year": 1993, "cutouts": [(3085, 5830, 4105, 6560)]},
+    {"id": "28071", "datum": "proj", "key": "30", "tier": 3, "year": 1993, "cutouts": [(3085, 5830, 4105, 6560)]},
     {"id": "28081", "key": "17", "tier": 4, "year": 1984, "cutouts": [(2805, 4515, 3760, 5295)]},
     # 300-dpi scan of the 1989 edition (sos-homepage.narod.ru), posterised to 6 flat colours: recoloured to the tints
     # of the neighbouring 28071 / 25067 scans so the sheet does not stand out
@@ -92,11 +94,14 @@ CHART_SOURCES = [
      "recolor": {(255, 255, 255): (251, 251, 249), (153, 255, 255): (214, 233, 240), (255, 255, 153): (250, 246, 198),
                  (0, 0, 0): (28, 26, 28), (255, 51, 51): (214, 64, 64), (51, 255, 51): (70, 160, 90),
                  (255, 204, 51): (240, 175, 70)}},
-    {"id": "28079A", "key": "14A", "tier": 4, "year": 1995, "optional": True, "same_image_as": "28079"},
+    {"id": "28079A", "datum": "proj", "key": "14A", "tier": 4, "year": 1995, "optional": True, "same_image_as": "28079"},
 ]
 SCALE_OF_TIER = {0: 125000, 1: 100000, 2: 50000, 3: 25000, 4: 10000}
 DIGIT_MM = 2.0        # height of a sounding figure on the paper chart
 MIN_DIGIT_PX = 8.0    # a tier is 'legible' at a zoom when its soundings are at least this tall on screen
+# ... except the 1:25 000 sheets, on top from z13 (5 px figures): one sheet change fewer on the way in, and the
+# 1:50 000 sheets they replace are the ones that sit 20-40 m off the shore (Осиновец, Свирская губа)
+MIN_DIGIT_PX_TIER = {3: 5.0}
 GENSHTAB_SOURCES = [
     {"id": "P-36-135,136", "key": "genshtab_P-36-135_136"},
     {"id": "P-36-137,138", "key": "genshtab_P-36-137_138"},
@@ -148,7 +153,7 @@ class Source:
             meta = json.load(open(os.path.join(CH2, "charts.json"), encoding="utf-8")).get(cfg["key"], {})
             self.meta = meta
             shift = g.get("wgs84_to_chart_lon_shift_sec", meta.get("wgs84_to_chart_lon_shift_sec"))
-            self.shift_sec = shift
+            self.shift_sec = None if cfg.get("datum") == "proj" else shift
             b = g["bounds_sk42"]
             self.frame = (b["W"], b["E"], b["S"], b["N"])
             self.mpp = g["m_per_px"]
@@ -497,7 +502,7 @@ class Renderer:
             return sorted(tiers)
 
         def key(t):
-            legible = DIGIT_MM / 1000 * SCALE_OF_TIER[t] / ground >= MIN_DIGIT_PX
+            legible = DIGIT_MM / 1000 * SCALE_OF_TIER[t] / ground >= MIN_DIGIT_PX_TIER.get(t, MIN_DIGIT_PX)
             return (1, t) if legible else (0, -t)
         return sorted(tiers, key=key)
 

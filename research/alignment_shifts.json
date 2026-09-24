@@ -1,0 +1,1068 @@
+{
+ "generated": "2026-09-24",
+ "reference": "Esri World Imagery (checked against EOX Sentinel-2 cloudless 2024: Esri - S2 = -2.4/+2.7 m); OSM canal lines = Esri -1.1/+5.3 m",
+ "convention": "dE_m/dN_m = where the layer content lies relative to the reference (layer minus Esri), metres east/north; correction.content_moves_* = the move applied to the content by the proposed fix. Estimates: Huber least squares over light symbols (2-D) and canal-tile cross-sections (1-D, normal to the canal); n = observation units (lights + canal tiles); ci90 = bootstrap over units; resid_* = RMS over all constraint rows before/after the proposed correction.",
+ "sheets": {
+  "charts/23030": {
+   "scale": "1:125 000",
+   "printed_wgs84_lon_shift_sec": 8.1,
+   "dE_m": -1.2,
+   "dN_m": -1.7,
+   "ci90_E": [
+    -8.6,
+    5.0
+   ],
+   "ci90_N": [
+    -9.9,
+    5.1
+   ],
+   "n": 36,
+   "n_lights": 5,
+   "n_canal_tiles": 31,
+   "resid_before_m": 23.5,
+   "resid_after_m": 23.5,
+   "affine_better_than_shift": true,
+   "affine_p": 0.0022,
+   "apply": false,
+   "correction": null,
+   "after_fix": null,
+   "why": "no constant shift: canals (31 tiles) give -1/-2 m, but the light symbols are off by up to 50-90 m (Osinovets -74/-53, Svirsky +27/+50); an affine fit is much better than a shift (p=0.002) - local distortion of the 1:125 000 chart and its coarse scan (15.7 m/px). Shown only at z9-12 (1 px = 19-150 m)."
+  },
+  "charts/23031": {
+   "scale": "1:100 000",
+   "printed_wgs84_lon_shift_sec": 8.3,
+   "dE_m": null,
+   "dN_m": null,
+   "ci90_E": null,
+   "ci90_N": null,
+   "n": 0,
+   "n_lights": 0,
+   "n_canal_tiles": 0,
+   "resid_before_m": null,
+   "resid_after_m": null,
+   "affine_better_than_shift": null,
+   "affine_p": null,
+   "apply": false,
+   "correction": null,
+   "after_fix": null,
+   "why": "not measured (no hard feature measured inside the sheet in this pass)."
+  },
+  "charts/23034": {
+   "scale": "1:100 000",
+   "printed_wgs84_lon_shift_sec": 8.3,
+   "dE_m": 19.5,
+   "dN_m": -3.6,
+   "ci90_E": [
+    18.5,
+    20.5
+   ],
+   "ci90_N": [
+    -16.8,
+    9.6
+   ],
+   "n": 2,
+   "n_lights": 2,
+   "n_canal_tiles": 0,
+   "resid_before_m": 16.9,
+   "resid_after_m": 16.9,
+   "affine_better_than_shift": null,
+   "affine_p": null,
+   "apply": false,
+   "correction": null,
+   "after_fix": null,
+   "why": "only 2 lights (Storozhno +19/+10, Svirsky +21/-17): E +20 m suspected, n < 5 - do not apply; check with >= 5 points."
+  },
+  "charts/25064": {
+   "scale": "1:50 000",
+   "printed_wgs84_lon_shift_sec": 7.6,
+   "dE_m": null,
+   "dN_m": null,
+   "ci90_E": null,
+   "ci90_N": null,
+   "n": 0,
+   "n_lights": 0,
+   "n_canal_tiles": 0,
+   "resid_before_m": null,
+   "resid_after_m": null,
+   "affine_better_than_shift": null,
+   "affine_p": null,
+   "apply": true,
+   "correction": {
+    "type": "datum",
+    "what": "Source: replace the printed longitude-only shift by the PROJ SK-42->WGS84 transformation (shift_sec = None, as for 28070/28081)",
+    "content_moves_E_m": -7.6,
+    "content_moves_N_m": 0.0
+   },
+   "after_fix": null,
+   "why": "not measured (no hard feature measured in the sheet). Printed shift 7.6 sec -> datum fix recommended like the other 1:50 000 sheets.",
+   "verify_builder_path": {
+    "canal_tiles": 0,
+    "canal_rms_before_m": null,
+    "canal_rms_after_m": null,
+    "lights_before": {},
+    "lights_after": {}
+   }
+  },
+  "charts/25067": {
+   "scale": "1:50 000",
+   "printed_wgs84_lon_shift_sec": 7.53,
+   "dE_m": 6.0,
+   "dN_m": -3.3,
+   "ci90_E": [
+    1.1,
+    10.2
+   ],
+   "ci90_N": [
+    -9.7,
+    3.4
+   ],
+   "n": 19,
+   "n_lights": 2,
+   "n_canal_tiles": 17,
+   "resid_before_m": 12.5,
+   "resid_after_m": 12.4,
+   "affine_better_than_shift": false,
+   "affine_p": 0.2891,
+   "apply": true,
+   "correction": {
+    "type": "datum",
+    "what": "Source: replace the printed longitude-only shift by the PROJ SK-42->WGS84 transformation (shift_sec = None, as for 28070/28081)",
+    "content_moves_E_m": -8.4,
+    "content_moves_N_m": 0.0
+   },
+   "after_fix": {
+    "dE_m": -2.4,
+    "dN_m": -3.3,
+    "ci90_E": [
+     -7.5,
+     1.6
+    ],
+    "ci90_N": [
+     -9.7,
+     3.2
+    ]
+   },
+   "why": "datum fix only. After it the sheet is -2/-3 m on the canals (17 tiles), but the NW part (Osinovets, Bugry) is 20-38 m west of the truth and of 28071 (soundings: 25067-28071 = -30/+17 m, 5-km cells -6...-50 m E) - local distortion, needs tie points, not a constant shift.",
+   "verify_builder_path": {
+    "canal_tiles": 17,
+    "canal_rms_before_m": 11.6,
+    "canal_rms_after_m": 8.1,
+    "lights_before": {
+     "C14": [
+      -3.4,
+      -11.2,
+      0.92
+     ],
+     "C20": [
+      -28.7,
+      0.6,
+      0.92
+     ]
+    },
+    "lights_after": {
+     "C14": [
+      -11.7,
+      -12.2,
+      0.92
+     ],
+     "C20": [
+      -37.9,
+      -0.6,
+      0.92
+     ]
+    }
+   }
+  },
+  "charts/25068": {
+   "scale": "1:50 000",
+   "printed_wgs84_lon_shift_sec": 7.6,
+   "dE_m": 8.0,
+   "dN_m": -13.3,
+   "ci90_E": [
+    5.2,
+    12.5
+   ],
+   "ci90_N": [
+    -17.1,
+    -5.0
+   ],
+   "n": 11,
+   "n_lights": 1,
+   "n_canal_tiles": 10,
+   "resid_before_m": 13.0,
+   "resid_after_m": 11.5,
+   "affine_better_than_shift": false,
+   "affine_p": 0.1362,
+   "apply": true,
+   "correction": {
+    "type": "datum",
+    "what": "Source: replace the printed longitude-only shift by the PROJ SK-42->WGS84 transformation (shift_sec = None, as for 28070/28081)",
+    "content_moves_E_m": -7.9,
+    "content_moves_N_m": 0.0
+   },
+   "after_fix": {
+    "dE_m": 0.1,
+    "dN_m": -13.2,
+    "ci90_E": [
+     -2.7,
+     4.6
+    ],
+    "ci90_N": [
+     -17.1,
+     -5.2
+    ]
+   },
+   "why": "datum fix only. The canal strip in the south (Kobona-Ligovo-Ptinov, 10 tiles) is N -13 m (CI -17...-5) after it, but the only northern point (Sukho light) is N +13 m and the soundings show 25068 = 25069 within 2 m in the east overlap: a south-only offset, not a sheet constant. Trial (-8.0, +13.3): canal RMS 13.5 -> 6.3 m, but Sukho 11.8 -> 25.1 m N. Fix with tie points along the canal if needed.",
+   "verify_builder_path": {
+    "canal_tiles": 10,
+    "canal_rms_before_m": 13.5,
+    "canal_rms_after_m": 11.6,
+    "lights_before": {
+     "C36": [
+      8.4,
+      11.8,
+      0.96
+     ]
+    },
+    "lights_after": {
+     "C36": [
+      0.0,
+      13.3,
+      0.96
+     ]
+    }
+   },
+   "trial_constant_shifts": {
+    "25068 -8.0 +13.3": {
+     "shift": [
+      -8.0,
+      13.3
+     ],
+     "canal_tiles": 10,
+     "canal_rms_before": 13.454670218328587,
+     "canal_rms_after": 6.347560873337175,
+     "lights": [
+      {
+       "cp": "C36",
+       "before": [
+        8.4,
+        11.8
+       ],
+       "after": [
+        0.4,
+        25.1
+       ]
+      }
+     ]
+    }
+   }
+  },
+  "charts/25069": {
+   "scale": "1:50 000",
+   "printed_wgs84_lon_shift_sec": 7.54,
+   "dE_m": 2.9,
+   "dN_m": -0.9,
+   "ci90_E": [
+    -1.7,
+    7.8
+   ],
+   "ci90_N": [
+    -8.0,
+    7.7
+   ],
+   "n": 15,
+   "n_lights": 2,
+   "n_canal_tiles": 13,
+   "resid_before_m": 11.0,
+   "resid_after_m": 11.7,
+   "affine_better_than_shift": false,
+   "affine_p": 0.6372,
+   "apply": true,
+   "correction": {
+    "type": "datum",
+    "what": "Source: replace the printed longitude-only shift by the PROJ SK-42->WGS84 transformation (shift_sec = None, as for 28070/28081)",
+    "content_moves_E_m": -8.4,
+    "content_moves_N_m": 0.0
+   },
+   "after_fix": {
+    "dE_m": -5.7,
+    "dN_m": -1.0,
+    "ci90_E": [
+     -10.8,
+     -0.3
+    ],
+    "ci90_N": [
+     -8.4,
+     7.6
+    ]
+   },
+   "why": "datum fix only (after it -6/-1 m; canal RMS 11.3 -> 9.1 m).",
+   "verify_builder_path": {
+    "canal_tiles": 11,
+    "canal_rms_before_m": 11.3,
+    "canal_rms_after_m": 9.1,
+    "lights_before": {
+     "C36": [
+      -15.5,
+      8.8,
+      0.83
+     ],
+     "C47": [
+      -2.8,
+      3.9,
+      0.83
+     ]
+    },
+    "lights_after": {
+     "C36": [
+      -25.2,
+      10.6,
+      0.83
+     ],
+     "C47": [
+      -12.2,
+      6.8,
+      0.83
+     ]
+    }
+   }
+  },
+  "charts/25070": {
+   "scale": "1:50 000",
+   "printed_wgs84_lon_shift_sec": 7.6,
+   "dE_m": 14.6,
+   "dN_m": -11.5,
+   "ci90_E": [
+    11.4,
+    18.5
+   ],
+   "ci90_N": [
+    -18.0,
+    -5.9
+   ],
+   "n": 3,
+   "n_lights": 2,
+   "n_canal_tiles": 1,
+   "resid_before_m": 15.7,
+   "resid_after_m": 12.3,
+   "affine_better_than_shift": null,
+   "affine_p": null,
+   "apply": true,
+   "correction": {
+    "type": "datum",
+    "what": "Source: replace the printed longitude-only shift by the PROJ SK-42->WGS84 transformation (shift_sec = None, as for 28070/28081)",
+    "content_moves_E_m": -8.3,
+    "content_moves_N_m": 0.0
+   },
+   "after_fix": {
+    "dE_m": 6.2,
+    "dN_m": -11.5,
+    "ci90_E": [
+     2.9,
+     10.1
+    ],
+    "ci90_N": [
+     -18.0,
+     -6.0
+    ]
+   },
+   "why": "datum fix only; after it +6/-12 m from 3 units (2 lights + 1 canal tile) - n < 5, do not add a shift. The sheet disagrees with its neighbours by 30-40 m (soundings: 25070-25069 = +33/-27 m, 25070-28079 = +11/-2 m): a local distortion of 25070.",
+   "verify_builder_path": {
+    "canal_tiles": 1,
+    "canal_rms_before_m": 10.6,
+    "canal_rms_after_m": 3.4,
+    "lights_before": {
+     "C47": [
+      11.4,
+      -5.9,
+      0.92
+     ],
+     "C50": [
+      21.0,
+      -22.5,
+      0.87
+     ]
+    },
+    "lights_after": {
+     "C47": [
+      2.9,
+      -3.1,
+      0.92
+     ],
+     "C50": [
+      12.7,
+      -19.5,
+      0.87
+     ]
+    }
+   }
+  },
+  "charts/28070": {
+   "scale": "1:10 000",
+   "printed_wgs84_lon_shift_sec": null,
+   "dE_m": -3.4,
+   "dN_m": 5.3,
+   "ci90_E": [
+    -3.4,
+    0.2
+   ],
+   "ci90_N": [
+    5.3,
+    7.0
+   ],
+   "n": 2,
+   "n_lights": 1,
+   "n_canal_tiles": 1,
+   "resid_before_m": 4.9,
+   "resid_after_m": 4.9,
+   "affine_better_than_shift": null,
+   "affine_p": null,
+   "apply": false,
+   "correction": null,
+   "after_fix": null,
+   "why": "PROJ datum already; C01 mole-head light +0/+7 m; 2 units - OK within 10 m."
+  },
+  "charts/28071": {
+   "scale": "1:25 000",
+   "printed_wgs84_lon_shift_sec": 7.5,
+   "dE_m": 8.6,
+   "dN_m": -9.6,
+   "ci90_E": [
+    3.7,
+    14.5
+   ],
+   "ci90_N": [
+    -15.9,
+    -2.4
+   ],
+   "n": 8,
+   "n_lights": 2,
+   "n_canal_tiles": 6,
+   "resid_before_m": 11.0,
+   "resid_after_m": 10.1,
+   "affine_better_than_shift": false,
+   "affine_p": 0.53,
+   "apply": true,
+   "correction": {
+    "type": "datum",
+    "what": "Source: replace the printed longitude-only shift by the PROJ SK-42->WGS84 transformation (shift_sec = None, as for 28070/28081)",
+    "content_moves_E_m": -8.9,
+    "content_moves_N_m": 0.0
+   },
+   "after_fix": {
+    "dE_m": -0.4,
+    "dN_m": -9.6,
+    "ci90_E": [
+     -5.4,
+     5.9
+    ],
+    "ci90_N": [
+     -16.3,
+     -2.5
+    ]
+   },
+   "why": "datum fix (-8.9 m E). Now +9/-10 m (8 units, CI E +4...+14, N -16...-2); after the fix -0/-10 m; the N part is south-only (canal -11, Bugry -16, Osinovets 0) and below 10 m -> no extra shift.",
+   "verify_builder_path": {
+    "canal_tiles": 6,
+    "canal_rms_before_m": 11.8,
+    "canal_rms_after_m": 11.2,
+    "lights_before": {
+     "C14": [
+      10.2,
+      -15.8,
+      0.63
+     ],
+     "C20": [
+      5.0,
+      0.2,
+      0.84
+     ]
+    },
+    "lights_after": {
+     "C14": [
+      1.1,
+      -16.9,
+      0.62
+     ],
+     "C20": [
+      -4.7,
+      -0.9,
+      0.84
+     ]
+    }
+   },
+   "trial_constant_shifts": {
+    "28071 -9.7 +7.4": {
+     "shift": [
+      -9.7,
+      7.4
+     ],
+     "canal_tiles": 6,
+     "canal_rms_before": 11.7910820932062,
+     "canal_rms_after": 8.611124389962963,
+     "lights": [
+      {
+       "cp": "C14",
+       "before": [
+        10.1,
+        -15.9
+       ],
+       "after": [
+        0.5,
+        -8.4
+       ]
+      },
+      {
+       "cp": "C20",
+       "before": [
+        5.0,
+        0.2
+       ],
+       "after": [
+        -4.7,
+        7.6
+       ]
+      }
+     ]
+    }
+   }
+  },
+  "charts/28079": {
+   "scale": "1:25 000",
+   "printed_wgs84_lon_shift_sec": 7.6,
+   "dE_m": 6.2,
+   "dN_m": -5.0,
+   "ci90_E": [
+    0.4,
+    12.1
+   ],
+   "ci90_N": [
+    -5.4,
+    -4.7
+   ],
+   "n": 2,
+   "n_lights": 2,
+   "n_canal_tiles": 0,
+   "resid_before_m": 7.0,
+   "resid_after_m": 5.7,
+   "affine_better_than_shift": null,
+   "affine_p": null,
+   "apply": true,
+   "correction": {
+    "type": "datum",
+    "what": "Source: replace the printed longitude-only shift by the PROJ SK-42->WGS84 transformation (shift_sec = None, as for 28070/28081)",
+    "content_moves_E_m": -8.4,
+    "content_moves_N_m": 0.0
+   },
+   "after_fix": {
+    "dE_m": -2.2,
+    "dN_m": -5.0,
+    "ci90_E": [
+     -8.1,
+     3.8
+    ],
+    "ci90_N": [
+     -5.4,
+     -4.7
+    ]
+   },
+   "why": "datum fix; 2 lights only (+6/-5 now, -2/-5 after).",
+   "verify_builder_path": {
+    "canal_tiles": 0,
+    "canal_rms_before_m": null,
+    "canal_rms_after_m": null,
+    "lights_before": {
+     "C47": [
+      0.4,
+      -4.7,
+      0.94
+     ],
+     "C50": [
+      12.1,
+      -5.4,
+      0.77
+     ]
+    },
+    "lights_after": {
+     "C47": [
+      -8.1,
+      -1.9,
+      0.94
+     ],
+     "C50": [
+      3.7,
+      -2.3,
+      0.77
+     ]
+    }
+   }
+  },
+  "charts/28079A": {
+   "scale": "1:10 000",
+   "printed_wgs84_lon_shift_sec": 7.6,
+   "dE_m": null,
+   "dN_m": null,
+   "ci90_E": null,
+   "ci90_N": null,
+   "n": 0,
+   "n_lights": 0,
+   "n_canal_tiles": 0,
+   "resid_before_m": null,
+   "resid_after_m": null,
+   "affine_better_than_shift": null,
+   "affine_p": null,
+   "apply": true,
+   "correction": {
+    "type": "datum",
+    "what": "Source: replace the printed longitude-only shift by the PROJ SK-42->WGS84 transformation (shift_sec = None, as for 28070/28081)",
+    "content_moves_E_m": -7.6,
+    "content_moves_N_m": 0.0
+   },
+   "after_fix": null,
+   "why": "inset of 28079 (same printed shift 7.6 sec) - datum fix together with 28079; not measured itself."
+  },
+  "charts/28081": {
+   "scale": "1:10 000",
+   "printed_wgs84_lon_shift_sec": null,
+   "dE_m": null,
+   "dN_m": null,
+   "ci90_E": null,
+   "ci90_N": null,
+   "n": 0,
+   "n_lights": 0,
+   "n_canal_tiles": 0,
+   "resid_before_m": null,
+   "resid_after_m": null,
+   "affine_better_than_shift": null,
+   "affine_p": null,
+   "apply": false,
+   "correction": null,
+   "after_fix": null,
+   "why": "PROJ datum already; no hard feature measured directly (soundings: 25069-28081 = +0/+15 m from 10 pairs; Garmin-28081 = +6/-7 m) - not assessed."
+  },
+  "genshtab/O-36-3": {
+   "scale": "1:100 000",
+   "printed_wgs84_lon_shift_sec": null,
+   "dE_m": -0.6,
+   "dN_m": -5.0,
+   "ci90_E": [
+    -22.2,
+    10.6
+   ],
+   "ci90_N": [
+    -14.6,
+    5.5
+   ],
+   "n": 8,
+   "n_lights": 1,
+   "n_canal_tiles": 7,
+   "resid_before_m": 13.3,
+   "resid_after_m": 13.3,
+   "affine_better_than_shift": null,
+   "affine_p": null,
+   "apply": false,
+   "correction": null,
+   "after_fix": null,
+   "why": "no shift: -1/-5 m (8 units, CI wide), within the georef accuracy (CV 8.8 m)."
+  },
+  "genshtab/P-36-126": {
+   "scale": "1:100 000",
+   "printed_wgs84_lon_shift_sec": null,
+   "dE_m": -15.9,
+   "dN_m": -16.3,
+   "ci90_E": [
+    -25.0,
+    -6.8
+   ],
+   "ci90_N": [
+    -40.6,
+    8.0
+   ],
+   "n": 2,
+   "n_lights": 2,
+   "n_canal_tiles": 0,
+   "resid_before_m": 24.4,
+   "resid_after_m": 24.4,
+   "affine_better_than_shift": null,
+   "affine_p": null,
+   "apply": false,
+   "correction": null,
+   "after_fix": null,
+   "why": "2 lights only (Storozhno -25/+8, Svirsky -7/-41): up to 25-40 m locally suspected, n < 5 - do not apply; georef CV 7 m, so it is map content or the light symbol offset on the topo map."
+  },
+  "genshtab/P-36-135,136": {
+   "scale": "1:100 000",
+   "printed_wgs84_lon_shift_sec": null,
+   "dE_m": -7.4,
+   "dN_m": 7.4,
+   "ci90_E": [
+    -18.0,
+    -0.7
+   ],
+   "ci90_N": [
+    -9.0,
+    13.3
+   ],
+   "n": 9,
+   "n_lights": 0,
+   "n_canal_tiles": 9,
+   "resid_before_m": 12.8,
+   "resid_after_m": 12.8,
+   "affine_better_than_shift": null,
+   "affine_p": null,
+   "apply": false,
+   "correction": null,
+   "after_fix": null,
+   "why": "no shift: -7/+7 m from 9 canal tiles (N CI includes 0)."
+  },
+  "genshtab/P-36-137,138": {
+   "scale": "1:100 000",
+   "printed_wgs84_lon_shift_sec": null,
+   "dE_m": -3.0,
+   "dN_m": -4.1,
+   "ci90_E": [
+    -8.8,
+    2.9
+   ],
+   "ci90_N": [
+    -9.5,
+    1.1
+   ],
+   "n": 13,
+   "n_lights": 0,
+   "n_canal_tiles": 13,
+   "resid_before_m": 8.5,
+   "resid_after_m": 8.5,
+   "affine_better_than_shift": false,
+   "affine_p": 0.2204,
+   "apply": false,
+   "correction": null,
+   "after_fix": null,
+   "why": "no shift: -3/-4 m from 13 canal tiles."
+  }
+ },
+ "other": {
+  "reference": {
+   "esri_minus_s2_m": [
+    -2.4,
+    2.7
+   ],
+   "esri_minus_s2_note": "EOX Sentinel-2 cloudless 2024 vs Esri World Imagery, 15 regions, image correlation; 90 % CI E -2.8...-2.1, N +2.5...+3.3 m",
+   "osm_minus_esri_m": [
+    -1.1,
+    5.3
+   ],
+   "osm_minus_esri_ci90_E": [
+    -3.0,
+    0.8
+   ],
+   "osm_minus_esri_ci90_N": [
+    3.2,
+    7.3
+   ],
+   "osm_note": "OSM canal centre lines vs the canal water on Sentinel-2, 42 canal tiles; the OpenStreetMap and OpenTopoMap base maps draw these OSM geometries"
+  },
+  "depth_model_coastline_vs_esri": {
+   "25067": {
+    "n": 14,
+    "dE": -17.5,
+    "dN": 13.9,
+    "ci90_E": [
+     -20.5,
+     -14.9
+    ],
+    "ci90_N": [
+     12.5,
+     15.5
+    ],
+    "resid_mad_m": 3.8
+   },
+   "25068": {
+    "n": 6,
+    "dE": -13.3,
+    "dN": 7.1,
+    "ci90_E": [
+     -16.1,
+     -10.6
+    ],
+    "ci90_N": [
+     5.0,
+     10.7
+    ],
+    "resid_mad_m": 4.2
+   },
+   "25069": {
+    "n": 2,
+    "note": "too few windows passed the gate"
+   },
+   "25070": {
+    "n": 3,
+    "dE": -10.9,
+    "dN": 20.9,
+    "ci90_E": [
+     -18.2,
+     -6.5
+    ],
+    "ci90_N": [
+     12.0,
+     27.9
+    ],
+    "resid_mad_m": 8.7
+   },
+   "28070": {
+    "n": 9,
+    "dE": -18.0,
+    "dN": 15.2,
+    "ci90_E": [
+     -19.9,
+     -16.1
+    ],
+    "ci90_N": [
+     10.7,
+     17.0
+    ],
+    "resid_mad_m": 3.7
+   },
+   "28081": {
+    "n": 0,
+    "note": "too few windows passed the gate"
+   },
+   "all": {
+    "n": 34,
+    "dE": -16.5,
+    "dN": 12.9,
+    "ci90_E": [
+     -18.0,
+     -14.9
+    ],
+    "ci90_N": [
+     11.2,
+     14.6
+    ],
+    "resid_mad_m": 6.1
+   }
+  },
+  "depth_model_note": "the land/water edge of the grid (= OSM shoreline rasterised by the depth builder) is ~15 m W and ~8 m N of the OSM line itself (all windows: -16.5/+12.9 vs Esri = -15.4/+7.6 vs OSM), less than one grid cell; growing the water by one cell does not remove it (test: -51/+6), so it is not simple erosion - check the mask->grid registration in build_mask.py/build_grid.py. The depth VALUES are positioned by the chart georeferencing with the printed longitude shift -> the same ~+8 m E as the 1:25 000-1:50 000 sheets; rebuild with the datum fix.",
+  "depth_isolines": "derived from the grid - same positions as the grid (not measured separately)",
+  "depth_shade_tiles": "derived from the grid - same positions as the grid",
+  "chart_isobaths": "depth_chart_isobaths.geojson (25068/25069/25070) exported with the printed longitude shift (iso_export.py) -> same offsets as those sheets; re-export with the datum fix",
+  "gldb_isobaths": "depth_isobaths.geojson = GLDB v2 30 sec model (~0.5-1 km cells): not comparable at the 10 m level; these lines are expected to be off by hundreds of metres",
+  "garmin_community_vs_chart_soundings": {
+   "25067": {
+    "pairs": 1148,
+    "dE": 32.3,
+    "dN": -16.6,
+    "n": 235,
+    "false_exp": 5.1,
+    "peak_ratio": 34.0,
+    "mad_E": 7.0,
+    "mad_N": 6.9
+   },
+   "25068": {
+    "pairs": 2408,
+    "dE": 10.1,
+    "dN": -26.0,
+    "n": 383,
+    "false_exp": 11.4,
+    "peak_ratio": 26.4,
+    "mad_E": 7.1,
+    "mad_N": 6.4
+   },
+   "25069": {
+    "pairs": 3225,
+    "dE": -0.9,
+    "dN": -7.2,
+    "n": 504,
+    "false_exp": 15.3,
+    "peak_ratio": 26.5,
+    "mad_E": 6.6,
+    "mad_N": 7.1
+   },
+   "25070": {
+    "pairs": 84,
+    "note": "no clear mode"
+   },
+   "28070": {
+    "pairs": 1909,
+    "dE": 3.8,
+    "dN": -9.4,
+    "n": 730,
+    "false_exp": 6.6,
+    "peak_ratio": 87.0,
+    "mad_E": 5.0,
+    "mad_N": 6.1
+   },
+   "28071": {
+    "pairs": 3314,
+    "dE": -11.1,
+    "dN": -2.7,
+    "n": 1146,
+    "false_exp": 12.2,
+    "peak_ratio": 57.8,
+    "mad_E": 6.8,
+    "mad_N": 6.8
+   },
+   "28079": {
+    "pairs": 3235,
+    "dE": -10.4,
+    "dN": -3.1,
+    "n": 1463,
+    "false_exp": 10.0,
+    "peak_ratio": 78.8,
+    "mad_E": 6.4,
+    "mad_N": 6.8
+   },
+   "28081": {
+    "pairs": 2791,
+    "dE": 6.4,
+    "dN": -6.6,
+    "n": 1156,
+    "false_exp": 9.2,
+    "peak_ratio": 103.1,
+    "mad_E": 4.2,
+    "mad_N": 5.9
+   },
+   "all": {
+    "pairs": 18114,
+    "dE": 3.2,
+    "dN": -7.8,
+    "n": 4150,
+    "false_exp": 78.5,
+    "peak_ratio": 41.8,
+    "mad_E": 6.3,
+    "mad_N": 6.3
+   },
+   "src:fgm": {
+    "pairs": 17785,
+    "dE": 3.0,
+    "dN": -8.0,
+    "n": 4062,
+    "false_exp": 77.2,
+    "peak_ratio": 42.0,
+    "mad_E": 6.4,
+    "mad_N": 6.1
+   },
+   "src:nov": {
+    "pairs": 329,
+    "dE": 6.8,
+    "dN": -1.0,
+    "n": 100,
+    "false_exp": 1.3,
+    "peak_ratio": 75.8,
+    "mad_E": 4.1,
+    "mad_N": 5.0
+   }
+  },
+  "garmin_note": "community minus chart soundings (same value within 160 m, vote mode). Against 28071/28079 (printed shift) -11/-3 and -10/-3 m, against 28070/28081 (PROJ) +4/-9 and +6/-7 m: supports the datum fix. Absolute (via 28071/28079): about -3/-10 m vs Esri - no correction proposed (< 10 m, third-party data).",
+  "sheet_vs_sheet_soundings": {
+   "25067 − 28071": {
+    "dE": -29.6,
+    "dN": 17.3,
+    "pairs": 145,
+    "cells_5km": 18
+   },
+   "28071 − 28070 (изд. 1983)": {
+    "dE": 2.4,
+    "dN": -2.7,
+    "pairs": 133,
+    "cells_5km": 3
+   },
+   "25067 − 28070 (изд. 1983)": {
+    "dE": -26.6,
+    "dN": 29.2,
+    "pairs": 18,
+    "cells_5km": 1
+   },
+   "25067 − 25068": {
+    "dE": 19.1,
+    "dN": 13.4,
+    "pairs": 65,
+    "cells_5km": 12
+   },
+   "25068 − 25069": {
+    "dE": 1.5,
+    "dN": 0.4,
+    "pairs": 93,
+    "cells_5km": 5
+   },
+   "25069 − 28081": {
+    "dE": 0.5,
+    "dN": 15.3,
+    "pairs": 10,
+    "cells_5km": 1
+   },
+   "25070 − 28079": {
+    "dE": 11.0,
+    "dN": -1.8,
+    "pairs": 36,
+    "cells_5km": 4
+   },
+   "25070 − 25069": {
+    "dE": 33.1,
+    "dN": -26.5,
+    "pairs": 71,
+    "cells_5km": 7
+   },
+   "25069 − 28079": {
+    "dE": 2.8,
+    "dN": -7.7,
+    "pairs": 7,
+    "cells_5km": 1
+   }
+  },
+  "old_image_overlays": "site/overlays/genshtab_*.webp and nav*.webp: in the committed app (7fd9e64f) only a fallback when tiles/index.json cannot be loaded; the uncommitted working copy removes them. Not measured.",
+  "gosgiscentr_topomapper": "GosGisCentr 1:25k/50k/200k and the Genshtab mosaic (nakarte.me) not measured (no cached tiles; not fetched within the budget)",
+  "tiles_as_displayed_coast_windows": {
+   "tiles_charts/12": {
+    "n_ok": 2
+   },
+   "tiles_charts/13": {
+    "n_ok": 6,
+    "dE": 35.0,
+    "dN": -4.7,
+    "ci90_E": [
+     25.8,
+     44.3
+    ],
+    "ci90_N": [
+     -42.3,
+     35.4
+    ],
+    "resid_mad_m": 29.2
+   },
+   "tiles_charts/14": {
+    "n_ok": 13,
+    "dE": -24.9,
+    "dN": 21.6,
+    "ci90_E": [
+     -39.7,
+     -13.0
+    ],
+    "ci90_N": [
+     4.6,
+     37.3
+    ],
+    "resid_mad_m": 29.0
+   },
+   "tiles_charts/15": {
+    "n_ok": 17,
+    "dE": -20.2,
+    "dN": 4.2,
+    "ci90_E": [
+     -29.3,
+     -10.0
+    ],
+    "ci90_N": [
+     -7.0,
+     9.8
+    ],
+    "resid_mad_m": 14.9
+   },
+   "tiles_genshtab/14": {
+    "n_ok": 1
+   }
+  },
+  "coast_windows_note": "coastline chamfer vs OSM: informative only for the depth grid; for the chart/Genshtab sheets and the displayed tiles the window results scatter by 15-30 m (straight coasts, generalisation, reeds) - not used for the sheet numbers"
+ },
+ "raw": "research/raw/alignment/ (final.json, analysis.json, coast_cps_part*.json, verify_proj_*.json, verify_shift.json, garmin_match.json, depth_erosion_test.json; fig/sheet_offsets.png, coast/*.jpg)"
+}
