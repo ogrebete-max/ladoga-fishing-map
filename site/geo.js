@@ -938,12 +938,21 @@ async function wakeUpdate() {
   }
 }
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'hidden') { geo.hiddenAt = Date.now(); if (typeof saveCurTrack === 'function') saveCurTrack(true); return; }
+  const busy = nav.on || trk.cur?.state === 'rec';
+  if (document.visibilityState === 'hidden') {
+    geo.hiddenAt = Date.now();
+    if (typeof saveCurTrack === 'function') saveCurTrack(true);
+    // Not navigating, not recording: GPS off while the app is away (battery; and an iPhone asks again for every
+    // new watch). ◎ turns it back on.
+    if (!busy && geo.watchId != null && geo.watchId !== 'demo') { navigator.geolocation.clearWatch(geo.watchId); geo.watchId = null; geo.searching = false; updateLocateBtn(); }
+    return;
+  }
   const gap = geo.hiddenAt ? Date.now() - geo.hiddenAt : 0;
   geo.hiddenAt = 0;
   wakeUpdate();
-  // Fixes sometimes freeze after the page comes back: start the watch again.
-  if (geo.watchId != null) restartWatch();
+  // Fixes sometimes freeze after the page comes back: start the watch again — only for navigation or a recording.
+  if (busy && geo.watchId != null) restartWatch();
+  if (!busy && geo.follow !== 'free') setFollow('free');
   if (gap > 30000 && (nav.on || trk.cur?.state === 'rec')) {
     toast(`Пока приложение было свёрнуто, навигация и трек не работали (${fmtDur(gap)}).`, 6000);
     if (typeof trackOnResume === 'function') trackOnResume(gap);

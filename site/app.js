@@ -1370,7 +1370,8 @@ function wxWarnings(wx) {
       const span = ks.slice(k0 - i0, k1 - i0 + 1);
       const sp = max(span, h.wind_speed_10m), gust = max(span, h.wind_gusts_10m);
       const strong = sp >= 12 || gust >= 17;
-      out.push({ level: strong ? 'danger' : 'warn', short: `Ветер ${sp} м/с, пор. ${gust} · ${wxWhen(fc, i0, k0, k1).replace(/^сейчас и /, '')}`, text: `${wxWhen(fc, i0, k0, k1).replace(/^./, (c) => c.toUpperCase())}: ветер ${rumb(h.wind_direction_10m[k0])} до ${sp} м/с, порывы до ${gust}. В мелких губах волна короткая и крутая${strong ? ' — на лодке не выходить' : ' — на надувной лодке далеко не уходите'}.${windy.length > 1 ? ` Ещё раз ${wxWhen(fc, i0, ...windy[1])}.` : ''}` });
+      const w0 = wxWhen(fc, i0, k0, k1).replace(/^сейчас и /, '').replace(/^сегодня /, '').replace(/^с (\d+) ч сегодня до (\d+) ч.*$/, '$1–$2 ч');
+      out.push({ level: strong ? 'danger' : 'warn', short: `Ветер ${sp}–${gust} м/с · ${w0}`, text: `${wxWhen(fc, i0, k0, k1).replace(/^./, (c) => c.toUpperCase())}: ветер ${rumb(h.wind_direction_10m[k0])} до ${sp} м/с, порывы до ${gust}. В мелких губах волна короткая и крутая${strong ? ' — на лодке не выходить' : ' — на надувной лодке далеко не уходите'}.${windy.length > 1 ? ` Ещё раз ${wxWhen(fc, i0, ...windy[1])}.` : ''}` });
     }
     const north = wxRuns(ks, (k) => (h.wind_direction_10m[k] >= 300 || h.wind_direction_10m[k] <= 60) && h.wind_speed_10m[k] >= 10);
     if (north.length) out.push({ level: 'warn', short: 'Сильный северный ветер', text: `Сильный северный ветер ${wxWhen(fc, i0, ...north[0])}: нагон воды и высокая волна у южного берега, выход из устьев и каналов опасен.` });
@@ -1382,7 +1383,7 @@ function wxWarnings(wx) {
   if (fog.length) {
     const [k0, k1] = fog[0];
     const vis = Math.min(...ks.slice(k0 - i0, k1 - i0 + 1).map((k) => h.visibility[k]));
-    out.push({ level: 'warn', short: `Туман ${wxWhen(fc, i0, k0, k1).replace(/^сейчас и /, '')}`, text: `Туман ${wxWhen(fc, i0, k0, k1)}, видимость до ${vis < 1000 ? `${Math.max(50, Math.round(vis / 50) * 50)} м` : '1 км'}. ${ice ? 'На льду легко потерять направление: отметьте машину, пишите трек, держите компас.' : 'На судовой ход не выходите; держитесь берега, включите трек — по нему легко вернуться.'}` });
+    out.push({ level: 'warn', short: `Туман · ${wxWhen(fc, i0, k0, k1).replace(/^сейчас и /, '').replace(/^сегодня /, '')}`, text: `Туман ${wxWhen(fc, i0, k0, k1)}, видимость до ${vis < 1000 ? `${Math.max(50, Math.round(vis / 50) * 50)} м` : '1 км'}. ${ice ? 'На льду легко потерять направление: отметьте машину, пишите трек, держите компас.' : 'На судовой ход не выходите; держитесь берега, включите трек — по нему легко вернуться.'}` });
   }
   return out;
 }

@@ -415,7 +415,12 @@ function updateHint() {
   if (!el) return;
   const free = !ui.stack.length;
   const n = ui.notices[0];
-  if (!free || (!n && store.get('ladoga-hint-v2', false))) { el.hidden = true; return; }
+  if (!n && free && !store.get('ladoga-hint-v2', false)) {
+    // Once, and without a card to dismiss: the owner found the big card in the way (24.09.2026).
+    store.set('ladoga-hint-v2', true);
+    setTimeout(() => toast('Нажмите на точку — подробности и «Вести». ◎ — где я, ⌂ — ваш район', 6000), 1500);
+  }
+  if (!free || !n) { el.hidden = true; return; }
   const key = n ? `n${ui.notices.length}:${n.text}` : 'hint';
   if (el.dataset.key !== key) {
     el.dataset.key = key;
