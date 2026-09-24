@@ -10,6 +10,8 @@
 # so a visitor never sees a half-built site. The last three releases stay for a rollback:
 #   ssh root@IP 'ls -1dt /var/www/ladoga/releases/*'  and  ln -sfn releases/<one> /var/www/ladoga/current
 # Caddy serves /var/www/ladoga/current under /ladoga/ (server/Caddyfile in the spb-fuel-intelligence repo).
+# data/live.json of every release is a link to /var/www/ladoga/live/live.json, written every hour by the collector
+# scripts/live/fetch_live.py (systemd ladoga-live.timer, installed and kept up to date by this script).
 # If the repository becomes private, give the server a read-only deploy key and set LADOGA_REPO to the
 # git@github.com:… address. LADOGA_SSH_KEY overrides the key (~/.ssh/spbfi_club_ed25519, the club server's own).
 set -euo pipefail
@@ -37,18 +39,35 @@ BASE=/var/www/ladoga SRC=/var/www/ladoga/src
 install -d -m 755 "$BASE" "$BASE/releases"
 if [[ ! -d "$SRC/.git" ]]; then
   git clone --quiet --depth 1 --filter=blob:none --sparse --branch "$BRANCH" "$REPO" "$SRC"
-  git -C "$SRC" sparse-checkout set site
 else
   git -C "$SRC" fetch --quiet --depth 1 origin "$BRANCH"
   git -C "$SRC" reset --quiet --hard FETCH_HEAD
 fi
+# site/ is the site; scripts/live/ the hourly collector of data/live.json (lake level, water temperature, МЧС).
+git -C "$SRC" sparse-checkout set site scripts/live
 echo "server has $(git -C "$SRC" rev-parse --short HEAD)"
 link=()
 [[ -e "$BASE/current" ]] && link=(--link-dest="$(readlink -f "$BASE/current")")
 rsync -a --delete "${link[@]}" --exclude index.template.html --exclude styles.old.css --chmod=D755,F644 "$SRC/site/" "$BASE/releases/$STAMP/"
+# The live data lives outside the releases (the collector rewrites it every hour): each release points at it.
+install -d -m 755 "$BASE/live"
+ln -sfn "$BASE/live/live.json" "$BASE/releases/$STAMP/data/live.json"
 ln -sfn "releases/$STAMP" "$BASE/current.new"
 mv -T "$BASE/current.new" "$BASE/current"
 ls -1dt "$BASE"/releases/* | tail -n +4 | xargs -r rm -rf
+# The collector: an unprivileged user, the systemd unit and timer from scripts/live (refreshed when they change).
+if [[ -f "$SRC/scripts/live/fetch_live.py" ]]; then
+  id ladoga-live >/dev/null 2>&1 || useradd --system --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin ladoga-live
+  chown ladoga-live:ladoga-live "$BASE/live"
+  changed=0
+  for unit in ladoga-live.service ladoga-live.timer; do
+    if ! cmp -s "$SRC/scripts/live/$unit" "/etc/systemd/system/$unit"; then install -m 644 "$SRC/scripts/live/$unit" /etc/systemd/system/; changed=1; fi
+  done
+  if [[ $changed == 1 ]]; then systemctl daemon-reload; fi
+  systemctl enable --now --quiet ladoga-live.timer
+  if [[ ! -s "$BASE/live/live.json" ]]; then systemctl start --no-block ladoga-live.service; echo "collector: first run started"; fi
+  echo "collector: $(systemctl is-active ladoga-live.timer) timer, next $(systemctl show ladoga-live.timer -p NextElapseUSecRealtime --value)"
+fi
 echo "now serving $(readlink "$BASE/current"): $(find "$BASE/current/" -type f | wc -l) files, $(du -sh "$BASE/current/" | cut -f1)"
 REMOTE
 

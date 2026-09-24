@@ -100,6 +100,9 @@ function startRec() {
   geoStart({});
   wakeUpdate();
   toast('Пишу трек. Держите приложение открытым — в фоне браузер трек не пишет', 5000);
+  if (!state.car || now - state.car.t > 12 * 3600000) {
+    showNotice({ text: 'Отметить здесь машину? Потом кнопка «К машине» приведёт обратно — и в туман, и в пургу.', actions: [['Отметить машину', () => markCarHere(), true], ['Не надо', () => {}]] });
+  }
   try { navigator.storage?.persist?.(); } catch { /* not supported */ }
   if (geo.me) trackOnFix(geo.me);
   drawCurTrack(); updateTrackUi(); refreshPage('me');
@@ -110,6 +113,7 @@ function newSegment() {
 }
 // Every fix while recording: a point when accuracy ≤ 50 m, ≥ 5 s and ≥ 5 m from the last one (as OsmAnd does).
 function trackOnFix(me) {
+  if (geo.carPending && me.acc <= 60) { geo.carPending = false; setCar(me); toast('Машина отмечена — «К машине» над картой', 4000); }
   const t = trk.cur;
   if (!t || t.state !== 'rec' || (typeof DEMO !== 'undefined' && DEMO.on)) return;
   const now = me.t;
@@ -274,9 +278,11 @@ function openRecSheet(opts = {}) {
       <div class="tag-grid" style="grid-template-columns:repeat(3,1fr)">
         ${t.state === 'rec' ? `<button type="button" data-act="rec-pause">${ic('pause')}Пауза</button>` : `<button type="button" data-act="rec-resume">${ic('play-arrow')}Продолжить</button>`}
         <button type="button" data-act="rec-mark">${ic('flag')}Метка</button>
-        <button type="button" data-act="rec-stop" style="color:var(--danger)">${ic('stop')}Стоп</button>
+        <button type="button" data-act="rec-stop" style="color:var(--danger)">${ic('stop')}Закончить</button>
       </div>
       <button type="button" class="btn ghost" data-act="saver" style="width:100%">${ic('restart-alt')}Погасить экран — запись продолжится</button>
+      <div class="btns">${state.car ? `<button type="button" class="btn ghost" data-act="car-go">🚗 К машине${geo.me ? ` · ${fmtDist(distM(geo.me, state.car))}` : ''}</button>` : '<button type="button" class="btn ghost" data-act="car-here">🚗 Отметить машину здесь</button>'}
+        ${t.segs.flat().length > 1 ? '<button type="button" class="btn ghost" data-act="retrace">Назад по треку</button>' : ''}</div>
       <p class="small muted">Сайт пишет трек, только пока открыт: не блокируйте телефон кнопкой и не сворачивайте приложение. Чтобы беречь заряд — «Погасить экран»: чёрный экран почти не тратит батарею, двойное касание возвращает карту. Все треки — в «Моё › Треки».</p>`,
   }, opts);
 }
@@ -364,7 +370,7 @@ function tracksPageHtml() {
       <div class="btns" style="margin-bottom:0">
         ${t.state === 'rec' ? `<button type="button" class="btn ghost" data-act="rec-pause">${ic('pause')}Пауза</button>` : `<button type="button" class="btn ghost" data-act="rec-resume">${ic('play-arrow')}Продолжить</button>`}
         <button type="button" class="btn ghost" data-act="rec-mark">${ic('flag')}Метка</button>
-        <button type="button" class="btn danger" data-act="rec-stop">${ic('stop')}Стоп</button>
+        <button type="button" class="btn danger" data-act="rec-stop">${ic('stop')}Закончить</button>
       </div>
     </div>` : `<button type="button" class="btn" data-act="rec-start" style="width:100%;min-height:56px">${ic('fiber-manual-record')}Начать запись трека</button>`}
     ${done.length ? done.map((x) => `<div class="track-row">
@@ -403,6 +409,7 @@ function onTagPick(tag, el) {
   if (layer.markId) {
     const p = state.mine.find((x) => x.id === layer.markId);
     if (p) { p.tag = tag; p.name = `${TAGS[tag].label} ${fmtTime(p.t)}`; saveMine(); drawMine(); trk.marksDrawn = -1; drawCurTrack(); }
+    if (tag === 'ice' && p) { openIceSheet(p, { replace: true }); return; }
     closeTop();
     toast(`Метка: ${TAGS[tag].label}`);
     return;
@@ -411,6 +418,19 @@ function onTagPick(tag, el) {
     layer.tag = tag;
     $$('#modalBody [data-tag]').forEach((b) => b.classList.toggle('on', b === el));
   }
+}
+// «Замер льда»: thickness, what ice, water on it — kept with the date, shown with its age.
+function openIceSheet(p, opts = {}) {
+  const ice = p.ice || {};
+  openModal({
+    key: 'ice', title: 'Замер льда', markId: p.id, iceKind: ice.kind || '',
+    body: () => `<input type="text" id="iceCm" inputmode="numeric" placeholder="Толщина, см" value="${ice.cm ?? ''}" autocomplete="off">
+      <div class="small muted" style="margin-top:10px">Лёд</div>
+      <div class="seg" style="margin-top:4px">${['прозрачный', 'белый', 'слоёный'].map((k) => `<button type="button" data-ice-kind="${k}" class="${ice.kind === k ? 'on' : ''}">${k}</button>`).join('')}</div>
+      <label class="check switch" style="margin-top:6px"><span>Вода на льду</span><input type="checkbox" id="iceWater" ${ice.water ? 'checked' : ''}></label>
+      <p class="small muted">Сохраняется только в телефоне и попадает в GPX. Прозрачный лёд прочнее белого примерно вдвое.</p>`,
+    foot: () => '<button type="button" class="btn ghost" data-act="close-top">Пропустить</button><button type="button" class="btn" data-act="ice-save">Сохранить</button>',
+  }, opts);
 }
 // «Новая точка здесь»: long press on the map, right click, or «Ещё» of a point.
 function openNewPoint(lat, lon, opts = {}) {
@@ -424,8 +444,9 @@ function openNewPoint(lat, lon, opts = {}) {
     foot: () => `<button type="button" class="btn ghost" data-act="close-top">Отмена</button><button type="button" class="btn" data-act="np-save">Сохранить</button>`,
     onConfirm: (layer) => {
       const p = addMine({ lat, lon, name: layer.value || `${TAGS[layer.tag]?.label || 'Точка'} ${fmtDay(Date.now())}`, tag: layer.tag, depth: layer.depth });
-      toast('Точка сохранена — Моё › Точки', { action: 'Показать', onAction: () => openMineCard(p) });
       refreshPage('me');
+      if (layer.tag === 'ice') { setTimeout(() => openIceSheet(p), 0); return; }
+      toast('Точка сохранена — Моё › Точки', { action: 'Показать', onAction: () => openMineCard(p) });
     },
   }, opts);
 }
@@ -457,6 +478,22 @@ function handleTrackAction(act, el) {
       break;
     }
     case 'saver': showSaver(); break;
+    case 'ice-save': {
+      const l = topLayer(), pm = l && state.mine.find((x) => x.id === l.markId);
+      if (pm) {
+        const cm = parseInt(String($('#iceCm')?.value || '').replace(/[^0-9]/g, ''), 10);
+        pm.ice = { cm: Number.isFinite(cm) && cm > 0 && cm < 300 ? cm : null, kind: l.iceKind || '', water: !!$('#iceWater')?.checked };
+        pm.name = `Лёд${pm.ice.cm != null ? ` ${pm.ice.cm} см` : ''}, ${fmtDay(pm.t)}`;
+        saveMine(); drawMine(); refreshPage('me');
+      }
+      closeTop();
+      toast('Замер льда сохранён');
+      break;
+    }
+    case 'car-here': markCarHere(); if (topLayer()?.key === 'rec') renderModalBody(topLayer()); else refreshCard(); break;
+    case 'car-go': goToCar(); break;
+    case 'car-del': setCar(null); closeAll(); toast('Отметка машины убрана'); break;
+    case 'retrace': { const tr = trk.cur || trk.list.find((x) => x.id === d.id); if (tr) startRetrace(tr); break; }
     case 'track-continue': closeTop(); resumeRec(); break;
     case 'track-discard': { const id = trk.cur?.id; closeTop(); if (id) deleteTrack(id); break; }
     case 'track-open': if (t) openTrackCard(t.id); break;
@@ -498,6 +535,41 @@ function handleTrackAction(act, el) {
     default: return false;
   }
   return true;
+}
+
+/* ---------- the car: one mark, and «К машине» from anywhere — in fog or a blizzard on the ice ---------- */
+function setCar(p) {
+  state.car = p ? { lat: +(+p.lat).toFixed(6), lon: +(+p.lon).toFixed(6), t: Date.now() } : null;
+  store.set('ladoga-car', state.car);
+  drawMine(); renderChips(); refreshPage('me');
+}
+function markCarHere() {
+  if (typeof DEMO !== 'undefined' && DEMO.on) { toast('В демо машина не отмечается'); return; }
+  if (geo.me && Date.now() - geo.me.t < 30000 && geo.me.acc <= 60) { setCar(geo.me); toast('Машина отмечена — «К машине» над картой', 4000); return; }
+  geo.carPending = true;
+  geoStart({});
+  toast('Отмечу машину, как только GPS найдёт место', 4000);
+}
+function goToCar() {
+  if (state.car) startNav({ lat: state.car.lat, lon: state.car.lon, title: 'Машина' });
+}
+function openCarCard(opts = {}) {
+  const c = state.car;
+  if (!c) return;
+  openCard({
+    key: 'car', title: 'Машина', sub: `отмечена ${fmtDay(c.t)} в ${fmtTime(c.t)}`,
+    focus: { lat: c.lat, lon: c.lon },
+    body: () => `${fromMeLine(c)}
+      <div class="card-actions">
+        <button type="button" class="btn main" data-act="car-go">${ic('navigation')}К машине</button>
+        <button type="button" class="tile-btn" data-act="car-here">${ic('my-location')}<span>Сюда</span></button>
+        <button type="button" class="tile-btn" data-act="car-del">${ic('delete')}<span>Убрать</span></button>
+      </div>
+      <div class="card"><div class="coord">${fmtDec(c.lat, c.lon)}</div><div class="coord">${fmtDM(c.lat, c.lon)}</div></div>
+      <p class="small muted">«Сюда» — переставить отметку туда, где вы сейчас. Отметка хранится только в этом телефоне.</p>`,
+    onShow: () => selectRing(c.lat, c.lon),
+    onClose: () => layers.select.clearLayers(),
+  }, opts);
 }
 
 /* ---------- my depths: echo-sounder readings in marks, and imported soundings (CSV / GPX) ---------- */
@@ -661,7 +733,8 @@ function importGpxText(text, fileName) {
 // Everything of mine in one GPX: a backup, or to carry over to a sonar / another phone.
 function backupGpx() {
   const done = trk.list.filter((t) => t !== trk.cur);
-  const wpts = state.mine.map((p) => `<wpt lat="${p.lat}" lon="${p.lon}">${p.t ? `<time>${new Date(p.t).toISOString()}</time>` : ''}<name>${xmlEsc(p.name)}</name>${p.note ? `<desc>${xmlEsc(p.note)}</desc>` : ''}<type>${xmlEsc((TAGS[p.tag] || TAGS.other).label)}</type></wpt>`).join('\n');
+  const desc = (p) => [p.note, p.ice ? `лёд ${p.ice.cm ?? '?'} см${p.ice.kind ? `, ${p.ice.kind}` : ''}${p.ice.water ? ', вода на льду' : ''}` : '', p.depth != null ? `глубина ${p.depth} м` : ''].filter(Boolean).join('; ');
+  const wpts = state.mine.map((p) => `<wpt lat="${p.lat}" lon="${p.lon}">${p.t ? `<time>${new Date(p.t).toISOString()}</time>` : ''}<name>${xmlEsc(p.name)}</name>${desc(p) ? `<desc>${xmlEsc(desc(p))}</desc>` : ''}<type>${xmlEsc((TAGS[p.tag] || TAGS.other).label)}</type></wpt>`).join('\n');
   const trks = done.map((t) => `<trk><name>${xmlEsc(t.name || defaultTrackName(t))}</name>\n${t.segs.filter((sg) => sg.length).map((sg) => `<trkseg>\n${sg.map((p) => `<trkpt lat="${p[0]}" lon="${p[1]}">${p[2] ? `<time>${new Date(p[2]).toISOString()}</time>` : ''}</trkpt>`).join('\n')}\n</trkseg>`).join('\n')}\n</trk>`).join('\n');
   shareFile(`ladoga_moe_${fileStamp()}.gpx`, `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="ladoga-fishing-map" xmlns="http://www.topografix.com/GPX/1/1">\n${wpts}\n${trks}\n</gpx>\n`);
 }

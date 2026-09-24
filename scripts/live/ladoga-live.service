@@ -1,0 +1,34 @@
+# Collects live.json for «Ладога · рыболовная карта» (scripts/live/README.md). Started by ladoga-live.timer.
+# Install: see README.md («Установка на сервер»). The unprivileged user must exist before the first start:
+#   useradd --system --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin ladoga-live
+#   install -d -o ladoga-live -g ladoga-live -m 755 /var/www/ladoga/live
+[Unit]
+Description=Ladoga fishing map: collect live.json (MChS LO, G-REALM, Volgo-Balt, SZ UGMS, MUR SST, NOAA IMS)
+Documentation=https://github.com/ogrebete-max/ladoga-fishing-map/tree/main/scripts/live
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=ladoga-live
+Group=ladoga-live
+ExecStart=/usr/bin/python3 /var/www/ladoga/src/scripts/live/fetch_live.py --out /var/www/ladoga/live
+Environment=PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+Nice=10
+IOSchedulingClass=idle
+TimeoutStartSec=180
+MemoryMax=150M
+UMask=0022
+# The script writes only to /var/www/ladoga/live (live.json, live.prev.json, state.json, a lock file).
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/var/www/ladoga/live
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+RestrictSUIDSGID=yes
+LockPersonality=yes

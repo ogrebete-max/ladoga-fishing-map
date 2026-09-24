@@ -5,13 +5,7 @@
    Android «Назад», the iPhone swipe, Esc and the mouse back button close exactly one thing; sections, the card,
    sheets, map buttons, keyboard, day and night palettes, start-up. */
 
-/* ---------- layout ---------- */
-function layoutClass() {
-  const w = innerWidth, h = innerHeight;
-  const cls = h < 480 && w < 1100 ? 'land' : w < 600 ? 'compact' : w < 1024 ? 'medium' : 'expanded';
-  if (document.body.dataset.layout !== cls) document.body.dataset.layout = cls;
-  return cls;
-}
+/* ---------- layout (the class itself: layoutClass() in app.js) ---------- */
 const isCompact = () => document.body.dataset.layout === 'compact';
 // The part of the map not covered by the card, a page panel, the navigation bars or the map buttons.
 function mapFreeRect() {
@@ -111,7 +105,10 @@ function dropTop() { popLayer(); syncChrome(); }
 function reattach(layer) { layer.attached = true; history.pushState({ l: attachedCount() }, '', baseUrl()); syncChrome(); }
 window.addEventListener('popstate', (e) => {
   ui.backPending = 0;
-  if (typeof saver !== 'undefined' && saver.on) hideSaver(); // Back wakes the screen first
+  // Back wakes the screen first — unless this Back closed the sheet where «Погасить экран» was tapped.
+  const darkAfter = typeof saverAfterBack === 'function' && saverAfterBack();
+  if (!darkAfter && typeof saver !== 'undefined' && saver.on) hideSaver();
+  if (darkAfter) setTimeout(showSaver, 0);
   const want = e.state?.l ?? 0;
   while (attachedCount() > want) {
     const top = topLayer();
@@ -383,14 +380,22 @@ function renderChips() {
     const danger = warns.find((w) => w.level === 'danger'), warn = warns.find((w) => w.level === 'warn');
     const c = wx.fc.current;
     const old = !navigator.onLine || Date.now() - wx.at > 3 * 3600000;
-    if (danger) chips.push(`<button type="button" class="schip danger" data-chip="wx">${ic('warning')}${esc(danger.short)}</button>`);
-    else chips.push(`<button type="button" class="schip ${warn ? 'warn' : ''}" data-chip="wx" aria-label="Погода">${windArrow(c.wind_direction_10m, 14)} ${Math.round(c.wind_speed_10m)} м/с · ${Math.round(c.temperature_2m)}°${old ? ` · ${fmtTime(wx.at)}` : ''}</button>`);
+    // A warning (to 14:00 tomorrow) says itself on the chip; otherwise the wind now — and the forecast's age once
+    // it is older than 6 h (no signal on the water for hours).
+    const aged = Date.now() - wx.at > 6 * 3600000 ? ` · прогноз ${fmtDur(Date.now() - wx.at).replace(/ \d+ мин$/, '')} назад` : '';
+    if (danger || warn) chips.push(`<button type="button" class="schip ${danger ? 'danger' : 'warn'}" data-chip="wx">${ic('warning')}${esc((danger || warn).short)}${aged}</button>`);
+    else chips.push(`<button type="button" class="schip" data-chip="wx" aria-label="Погода">${windArrow(c.wind_direction_10m, 14)} ${Math.round(c.wind_speed_10m)} м/с · ${Math.round(c.temperature_2m)}°${aged || (old ? ` · ${fmtTime(wx.at)}` : '')}</button>`);
+  }
+  // The car: «К машине» one tap away, with the distance, while away from it.
+  if (state.car && !nav.on) {
+    const dc = geo.me && Date.now() - geo.me.t < 60000 ? distM(geo.me, state.car) : null;
+    if (dc == null || dc > 150) chips.push(`<button type="button" class="schip" data-chip="car">🚗 К машине${dc != null ? ` · ${fmtDist(dc)}` : ''}</button>`);
   }
   if (!navigator.onLine) chips.push(`<button type="button" class="schip offline ${regionSaved() ? '' : 'warn'}" data-chip="offline">${ic('cloud-off')}${regionSaved() ? 'Без сети' : 'Без сети · район не скачан'}</button>`);
   if (geo.me && geo.me.acc > 50 && Date.now() - geo.me.t < 15000) chips.push(`<button type="button" class="schip gps" data-chip="gps">GPS ±${Math.round(geo.me.acc / 10) * 10} м</button>`);
   // With a depth layer on but the map too far out for the digits: one tap brings them.
   const o = state.overlays;
-  if ((o.charts || o.gridIso || o.community) && map.getZoom() < 14 && !nav.on) chips.push(`<button type="button" class="schip" data-chip="zoom-depth">${ic('add')}Приблизить — видны цифры глубин</button>`);
+  if ((o.charts || o.gridIso || o.community) && map.getZoom() < 14 && !nav.on) chips.push(`<button type="button" class="schip" data-chip="zoom-depth">${ic('add')}Приблизить: цифры глубин</button>`);
   const af = activeFilters();
   if (af.length && !ui.stack.some((l) => l.kind === 'months')) chips.push(`<button type="button" class="schip" data-chip="filter">${ic('tune')}${esc(af.map((x) => x[1]).join(' · ').slice(0, 42))}<span class="x" data-chip="filter-clear" role="button" aria-label="Сбросить фильтр">✕</span></button>`);
   const html = chips.join('');
@@ -501,6 +506,7 @@ $('#statusChips').addEventListener('click', (e) => {
   else if (k === 'filter-clear') { resetFilters(); toast('Фильтр сброшен'); }
   else if (k === 'filter') openLayersSheet('filter');
   else if (k === 'zoom-depth') { setFollowFree(); map.setZoom(14); }
+  else if (k === 'car') { if (geo.me) goToCar(); else openCarCard(); }
 });
 map.on('zoomend', () => renderChips());
 // A tap on the empty map closes the card; a long press (right click) puts a point there.
@@ -529,7 +535,8 @@ if (matchMedia('(pointer: fine)').matches) {
   });
   map.on('mouseout', () => { $('#cursorInfo').hidden = true; });
 }
-window.addEventListener('online', () => { renderChips(); refreshPage(); loadWeather(); });
+window.addEventListener('online', () => { renderChips(); refreshPage(); loadWeather(); loadLive(); applyOverlays(); });
+window.addEventListener('offline', () => applyOverlays()); // the satellite of the day: the saved picture instead
 window.addEventListener('offline', () => { renderChips(); refreshPage(); });
 let resizeTimer;
 function onResize() {
@@ -584,6 +591,7 @@ document.addEventListener('keydown', (e) => {
 /* ---------- start ---------- */
 async function boot() {
   layoutClass();
+  map.invalidateSize({ pan: false }); // the box of the map is final only now (styles, safe areas)
   applyTheme();
   const hash = location.hash;
   history.replaceState({ l: 0 }, '', baseUrl());
@@ -600,7 +608,6 @@ async function boot() {
   state.R = points.reports; state.M = points.markers; state.meta = points; state.ctx = ctx || {};
   addExtraTileLayers();
   setBase(state.base);
-  buildDepthLayers();
   buildCharts();
   buildDepthModel();
   loadChartTiles();
@@ -609,6 +616,7 @@ async function boot() {
   render();
   loadChartIsobaths(); // the depth of each point and under the boat
   loadDepthGrid();
+  loadFetchTable(); // the wave near the shore
   await loadTracks();
   // A shared link (#pt=lat,lon) opens its point; no history entry was made by a tap, so ✕ closes it directly.
   const m = hash.match(/pt=(-?\d+\.\d+),(-?\d+\.\d+)/);
@@ -632,7 +640,8 @@ async function boot() {
   syncChrome();
   refreshLayersSheet(); refreshPage(); // opened while the data was still loading
   loadWeather();
-  setInterval(() => loadWeather(), 30 * 60000);
+  loadLive();
+  setInterval(() => { loadWeather(); loadLive(); }, 30 * 60000);
 }
 boot();
 

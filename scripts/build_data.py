@@ -194,7 +194,11 @@ SOURCE_NAMES = [
     (re.compile(r"fishingspb1", re.I), "Telegram: Отчёты Рыбалка СПб"),
     (re.compile(r"damfishspb", re.I), "Telegram: @damfishspb"),
     (re.compile(r"gumchslo|МЧС", re.I), "МЧС Ленинградской области"),
-    (re.compile(r"fisher\.spb|ПКР", re.I), "fisher.spb.ru (Питерский клуб рыбаков)"),
+    # points_2026: the club's Telegram mirror and new channels (source names are cut to 60 chars before this runs)
+    (re.compile(r"novosti_s_vodoemov|^Telegram: Питерский", re.I), "Telegram: Новости с водоемов (ПКР)"),
+    (re.compile(r"gid_rybalka_na_ladoge|Гид по рыболовным местам", re.I), "Telegram: Гид по рыболовным местам Ладоги"),
+    (re.compile(r"Волго-Балт", re.I), "ФБУ «Администрация «Волго-Балт»"),
+    (re.compile(r"fisher\.spb|ПКР|Питерский\s+клуб\s+рыбаков", re.I), "fisher.spb.ru (Питерский клуб рыбаков)"),
     (re.compile(r"iv70\.narod|Схема сетей", re.I), "iv70.narod.ru"),
     (re.compile(r"fishing-club\.ru|rapala\.ru", re.I), "fishing-club.ru (точки 2001 г.)"),
     (re.compile(r"flickr", re.I), "Flickr"),
@@ -363,8 +367,45 @@ def depth_shade():
         return {}
     ext = next((f.suffix for f in (base / str(zooms[-1])).rglob("*") if f.is_file()), ".png")
     listing = ROOT / "site" / "tiles" / "depth_tiles.txt"
-    return {"url": f"tiles/depth/{{z}}/{{x}}/{{y}}{ext}", "minZoom": zooms[0], "maxNativeZoom": zooms[-1],
-            "list": "tiles/depth_tiles.txt" if listing.exists() else ""}
+    out = {"url": f"tiles/depth/{{z}}/{{x}}/{{y}}{ext}", "minZoom": zooms[0], "maxNativeZoom": zooms[-1],
+           "list": "tiles/depth_tiles.txt" if listing.exists() else ""}
+    if listing.exists():
+        # Tiles exist only over water: the app asks for no tile outside these runs (no 404s over land).
+        # {z: {x: [y0, y1, y2, y3, ...]}} — inclusive runs of y in each column.
+        cols = defaultdict(set)
+        for line in listing.read_text(encoding="utf-8").split():
+            m = re.search(r"/(\d+)/(\d+)/(\d+)\.\w+$", line)
+            if m:
+                cols[(int(m[1]), int(m[2]))].add(int(m[3]))
+        cover = defaultdict(dict)
+        for (z, x), ys in sorted(cols.items()):
+            runs, ys = [], sorted(ys)
+            for y in ys:
+                if runs and y == runs[-1] + 1:
+                    runs[-1] = y
+                else:
+                    runs += [y, y]
+            cover[str(z)][str(x)] = runs
+        (ROOT / "site" / "tiles" / "depth_cover.json").write_text(json.dumps(cover, separators=(",", ":")), encoding="utf-8")
+        out["cover"] = "tiles/depth_cover.json"
+    return out
+
+
+def tile_index():
+    """What the app needs of site/tiles/index.json (written by scripts/build_chart_tiles.py), inside context.json:
+    it then works offline and on a weak signal without one more request."""
+    path = ROOT / "site" / "tiles" / "index.json"
+    if not path.exists():
+        return {}
+    idx = json.loads(path.read_text(encoding="utf-8"))
+    keep = ("id", "url", "minZoom", "maxZoom", "maxNativeZoom", "bounds", "list", "total_bytes")
+    layers = []
+    for layer in idx.get("layers") or []:
+        out = {k: layer[k] for k in keep if k in layer}
+        if layer.get("detail"):
+            out["detail"] = {"regions": [{"bounds": r["bounds"]} for r in layer["detail"].get("regions") or [] if r.get("bounds")]}
+        layers.append(out)
+    return {"generated": idx.get("generated"), "layers": layers}
 
 
 def load_json(name):
@@ -417,7 +458,8 @@ def main():
     # The club catalogue's area pins (fisher.spb.ru) reached us three times: from the catalogue itself,
     # from the forum crawl and from the first research. One pin per area, the richest copy first.
     order = {"report_sites": 0, "forums_old": 1, "baseline": 2}
-    pins = [r for r in reports if r["cls"] == "C" and re.search(r"ПКР|fisher\.spb", f"{r.get('title', '')} {r['src']}")]
+    # Only the catalogue pages are area pins; the club's dated reports (research/points_2026.json) stay separate.
+    pins = [r for r in reports if r["cls"] == "C" and "message-bycatalog.php" in (r.get("url") or "")]
     pins.sort(key=lambda r: order.get(r["agent"], 3))
     drop = set()
     for i, a in enumerate(pins):
@@ -527,7 +569,12 @@ def main():
             "grid": "data/depth_grid.json" if (SITE_DATA / "depth_grid.json").exists() and "depth_model" not in SKIP else "",
             "isolines": "data/depth_isolines.geojson" if (SITE_DATA / "depth_isolines.geojson").exists() and "depth_model" not in SKIP else "",
             "community": "data/depth_community.geojson" if (SITE_DATA / "depth_community.geojson").exists() else "",
+            # Fresh soundings of the Volkhov mouth and bar (ENC 2023 via a Волго-Балт scheme, research/fresh_depth.md).
+            "vvp": "data/depth_vvp.geojson" if (SITE_DATA / "depth_vvp.geojson").exists() else "",
+            # Fetch table for the wave near the shore (scripts/build_fetch.py, research/wave_report.md).
+            "fetch": "data/fetch.json" if (SITE_DATA / "fetch.json").exists() else "",
             "shade": depth_shade() if "depth_model" not in SKIP else {},
+            "tiles": tile_index(),
             "phone_workflows": depth.get("phone_workflows") or [],
         },
         "lines": nav.get("lines") or [],

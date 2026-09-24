@@ -10,6 +10,7 @@ const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
 
 const MONTHS = ['янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
 const MONTHS_FULL = ['январь', 'февраль', 'март', 'апрель', 'май', 'июнь', 'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь'];
+const MONTHS_GEN = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
 const MONTHS_IN = ['январе', 'феврале', 'марте', 'апреле', 'мае', 'июне', 'июле', 'августе', 'сентябре', 'октябре', 'ноябре', 'декабре'];
 const FISH_COLORS = {
   'Судак': '#f08c00', 'Щука': '#2f9e44', 'Окунь': '#e0b000', 'Лещ': '#a0522d', 'Плотва': '#748ffc',
@@ -64,12 +65,13 @@ const state = {
   fav: new Set(store.get('ladoga-fav', [])),
   mine: store.get('ladoga-mine', []),
   base: store.get('ladoga-base', 'sat'),
-  overlays: Object.assign({ seamarks: false, heat: false, cluster: true, radius: false, seasonZones: false, rules: false, lines: true, mine: true, tracks: false, genshtab: false, isobaths: false, charts: false, chartIso: false, shade: false, gridIso: false, community: false, myDepth: true }, store.get('ladoga-overlays', {})),
+  overlays: Object.assign({ seamarks: false, heat: false, cluster: true, radius: false, seasonZones: false, rules: false, lines: true, mine: true, tracks: false, genshtab: false, isobaths: false, charts: false, chartIso: false, shade: false, gridIso: false, community: false, myDepth: true, satDay: false, vvp: false }, store.get('ladoga-overlays', {})),
   chartOpacity: store.get('ladoga-chart-opacity', 1),
   genshtabOpacity: store.get('ladoga-genshtab-opacity', 0.8),
   overlayOpacity: store.get('ladoga-overlay-opacity', 0.7),
   settings: Object.assign({ theme: 'system', units: 'kmh', autoZoom: true, navShowPoints: false, keepAwake: false, sound: true, arrivalR: 30, orient: 'course', autoReturn: 15, shallow: 2 }, store.get('ladoga-settings', {})),
   home: store.get('ladoga-home', null) || HOME_DEFAULT,
+  car: store.get('ladoga-car', null), // {lat, lon, t}: «К машине»
   navHide: false,
   shown: { markers: 0, reports: 0 },
 };
@@ -194,7 +196,18 @@ function platformInfo() {
 }
 
 /* ---------- map ---------- */
-const MAX_BOUNDS = L.latLngBounds([59.45, 30.2], [61.2, 34.1]);
+// Phone, phone on its side, tablet, computer. Set before the map is made, so Leaflet starts with the real size
+// of its box (ui.js keeps the class up to date on every resize).
+function layoutClass() {
+  const w = innerWidth, h = innerHeight;
+  const cls = h < 480 && w < 1100 ? 'land' : w < 600 ? 'compact' : w < 1024 ? 'medium' : 'expanded';
+  if (document.body.dataset.layout !== cls) document.body.dataset.layout = cls;
+  return cls;
+}
+layoutClass();
+// Wide enough for Saint Petersburg, Kirishi and the whole road to the lake: someone following themselves on
+// the way (or trying the app at home) must be able to have the map centred on them.
+const MAX_BOUNDS = L.latLngBounds([59.2, 29.3], [61.7, 35.0]);
 const homeBounds = () => L.latLngBounds([state.home.s, state.home.w], [state.home.n, state.home.e]);
 const map = L.map('map', {
   zoomControl: false, attributionControl: false, maxZoom: 18, minZoom: 8, worldCopyJump: false,
@@ -229,11 +242,11 @@ const BASES = {
     ]),
   },
   osm: {
-    name: 'Схема', attr: OSM_ATTR, thumb: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+    name: 'Схема', attr: OSM_ATTR, thumb: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', water: '#aad3df',
     make: () => L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18, crossOrigin: 'anonymous', errorTileUrl: NO_TILE }),
   },
   topo: {
-    name: 'Топо', attr: `${OSM_ATTR}, OpenTopoMap (CC-BY-SA)`, thumb: 'https://a.tile.opentopomap.org/{z}/{x}/{y}.png',
+    name: 'Топо', attr: `${OSM_ATTR}, OpenTopoMap (CC-BY-SA)`, thumb: 'https://a.tile.opentopomap.org/{z}/{x}/{y}.png', water: '#97d2e3',
     make: () => L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', { maxZoom: 18, maxNativeZoom: 17, subdomains: 'abc', errorTileUrl: NO_TILE }),
   },
 };
@@ -247,15 +260,18 @@ function setBase(key) {
   if (baseLayer.bringToBack) baseLayer.bringToBack();
   state.base = key;
   store.set('ladoga-base', key);
+  // Water between the tiles: the ГосГисЦентр maps leave open water transparent — under a light map it must be
+  // light water, not the dark sea of the satellite view (it showed as dark squares on the lake).
+  map.getContainer().style.setProperty('--map-bg', BASES[key].water || (key === 'sat' ? '#1d3a47' : '#a6dcf5'));
   const a = $('#attrLine');
   if (a) a.textContent = `${BASES[key].attr || ''}${state.overlays.charts ? ' · ГУНиО' : ''}`;
 }
 // A z10 tile over the Volkhov bay: the preview of each base map in the layers sheet.
 function baseThumb(key) {
-  const t = BASES[key]?.thumb;
+  const b = BASES[key], t = b?.thumb;
   if (!t) return '';
   const z = 10, x = lon2x(32.2, z), y = lat2y(60.2, z);
-  return L.Util.template(t.replace('{s}', 'a'), { z, x, y });
+  return L.Util.template(t.replace('{s}', 'a'), { z, x, y: b.tms ? 2 ** z - 1 - y : y });
 }
 
 // Chart panes sit inside the rotating pane, above the base map and below points and zones.
@@ -301,6 +317,11 @@ function applyOverlays() {
   toggle(layers.mine, o.mine && !hide);
   toggle(layers.tracks, o.tracks && !state.navHide);
   toggle(layers.genshtab, o.genshtab);
+  // The satellite of the day: live tiles online, the saved picture of the area offline.
+  const satOnline = o.satDay && navigator.onLine;
+  if (satOnline) toggle(satDayLayer(), true); else if (SAT_DAY.layer) toggle(SAT_DAY.layer, false);
+  showSatSnapshot(o.satDay && !navigator.onLine);
+  if (o.vvp && !depthModel.vvp) loadVvpDepths();
   toggle(layers.isobaths, o.isobaths);
   toggle(chartState.isoLayer, o.chartIso);
   if (o.chartIso) loadChartIsobaths();
@@ -332,8 +353,29 @@ function updatePoiVisibility() {
   if (show && !map.hasLayer(layers.pois)) layers.pois.addTo(map);
   if (!show && map.hasLayer(layers.pois)) map.removeLayer(layers.pois);
   map.getContainer().classList.toggle('labels-on', map.getZoom() >= 13);
+  declutterPoiLabels();
 }
 map.on('zoomend', () => updatePoiVisibility());
+// Names of banks, capes and islands never sit on top of each other: hazards and banks keep their place first,
+// then landmarks; a name that would overlap one already placed waits for a closer zoom.
+function declutterPoiLabels() {
+  cancelAnimationFrame(state.declutterFrame);
+  state.declutterFrame = requestAnimationFrame(() => {
+    if (map.getZoom() < 13) return;
+    const rank = (el) => { const c = el.previousElementSibling?.classList; return c?.contains('hazard') ? 0 : c?.contains('structure') ? 1 : 2; };
+    const labels = [...map.getContainer().querySelectorAll('.poi .poi-label')];
+    labels.forEach((el) => el.classList.remove('crowded'));
+    const boxes = labels.map((el) => ({ el, r: el.getBoundingClientRect(), k: rank(el) })).filter((x) => x.r.width)
+      .sort((a, b) => a.k - b.k || a.r.top - b.r.top);
+    const placed = [];
+    for (const x of boxes) {
+      const r = x.r;
+      if (placed.some((p) => r.left < p.right + 2 && r.right > p.left - 2 && r.top < p.bottom + 1 && r.bottom > p.top - 1)) x.el.classList.add('crowded');
+      else placed.push(r);
+    }
+  });
+}
+map.on('zoomend moveend', declutterPoiLabels);
 // "Банка Железница (Железницкие банки)" + "1,2 м (наименьшая…)" → "Железница 1,2 м".
 function poiLabel(r) {
   const name = String(r.title || '').replace(/^(Банка|Банки)\s+/i, '').replace(/\s*\(.*\)\s*/g, ' ').replace(/^Створный знак:\s*/, '').trim();
@@ -428,18 +470,23 @@ function activeFilters() {
 function resetFilters() { state.f = defaultFilters(); render(); drawSeasonZones(); }
 
 /* ---------- navigation charts (ГУНиО 1:10 000–1:125 000) and depth ---------- */
+// chartState.items: the chart sheets (numbers, titles, scales, bounds) for the lists and «show this chart»;
+// what is drawn are the tiles only.
 const chartState = { items: [], tiles: [], iso: null, isoLines: null, isoLayer: L.layerGroup(), grid: null };
 function buildCharts() {
-  chartState.items = (state.ctx.depth?.charts || []).map((c) => ({ ...c, layer: null, b: L.latLngBounds(c.bounds) }))
+  chartState.items = (state.ctx.depth?.charts || []).map((c) => ({ ...c, b: L.latLngBounds(c.bounds) }))
     .sort((a, b) => b.scale - a.scale); // overview first, the most detailed on top
 }
-// Sharp chart tiles cut straight from the original scans (tiles/index.json, scripts/build_chart_tiles.py):
+// Sharp chart tiles cut straight from the original scans (scripts/build_chart_tiles.py):
 // «charts» to z15 everywhere plus z16 inside the 1:10 000 / 1:25 000 sheets, «genshtab» to z14.
+// Their description comes inside context.json (so it is there offline and without one more request);
+// tiles/index.json is only the fallback, tried again later if the network fails.
 const CLEAR_TILE = 'data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==';
-async function loadChartTiles() {
+async function loadChartTiles(attempt = 0) {
   try {
-    const idx = await fetch('tiles/index.json', { cache: 'no-cache' }).then((r) => (r.ok ? r.json() : null));
-    if (!idx || !Array.isArray(idx.layers)) return;
+    const idx = state.ctx.depth?.tiles?.layers ? state.ctx.depth.tiles
+      : await fetch('tiles/index.json', { cache: 'no-cache' }).then((r) => (r.ok ? r.json() : null));
+    if (!idx || !Array.isArray(idx.layers)) throw new Error('no tile index');
     chartState.index = idx;
     const mk = (l, extra = {}) => L.tileLayer(l.url, {
       pane: 'charts', minZoom: 8, maxZoom: 18, minNativeZoom: +l.minZoom || 9, maxNativeZoom: +l.maxNativeZoom || 15,
@@ -458,32 +505,20 @@ async function loadChartTiles() {
       mk(gs, { zIndex: 1, opacity: state.genshtabOpacity }).addTo(layers.genshtab);
     }
     applyOverlays();
-  } catch { chartState.tiles = []; }
+  } catch {
+    // No whole-sheet pictures instead (10 megapixels each: a phone chokes on them) — just try again a bit later.
+    chartState.tiles = [];
+    if (attempt < 6) setTimeout(() => loadChartTiles(attempt + 1), Math.min(60000, 3000 * 2 ** attempt));
+  }
 }
-// Only the charts that suit the zoom and touch the view are on the map, so a phone loads a few files, not 32.
 function updateCharts() {
   const on = state.overlays.charts;
-  if (chartState.tiles.length) {
-    for (const t of chartState.tiles) {
-      if (on && !map.hasLayer(t.layer)) t.layer.addTo(map);
-      if (!on && map.hasLayer(t.layer)) map.removeLayer(t.layer);
-      t.layer.setOpacity(state.chartOpacity);
-    }
-    for (const c of chartState.items) if (c.layer && map.hasLayer(c.layer)) map.removeLayer(c.layer);
-    return;
+  for (const t of chartState.tiles) {
+    if (on && !map.hasLayer(t.layer)) t.layer.addTo(map);
+    if (!on && map.hasLayer(t.layer)) map.removeLayer(t.layer);
+    t.layer.setOpacity(state.chartOpacity);
   }
-  const z = map.getZoom();
-  const view = map.getBounds().pad(0.3);
-  for (const c of chartState.items) {
-    const want = on && z >= c.zmin && z <= c.zmax && view.intersects(c.b);
-    if (want && !c.layer) c.layer = L.imageOverlay(c.url, c.bounds, { pane: 'charts', opacity: state.chartOpacity, interactive: false });
-    if (want && !map.hasLayer(c.layer)) c.layer.addTo(map);
-    if (!want && c.layer && map.hasLayer(c.layer)) map.removeLayer(c.layer);
-    if (c.layer) c.layer.setOpacity(state.chartOpacity);
-  }
-  chartState.items.filter((c) => c.layer && map.hasLayer(c.layer)).forEach((c) => c.layer.bringToFront());
 }
-map.on('moveend zoomend', () => { if (!chartState.tiles.length) updateCharts(); });
 
 async function loadChartIsobaths() {
   const url = state.ctx.depth?.chart_isobaths;
@@ -563,7 +598,28 @@ function gridDepth(p) {
   return null;
 }
 // The lake stands about 0,9 m below its long-term mean in 2026: chart depths are that much deeper than the water now.
-const levelNow = () => +(chartState.gridIndex?.level_2026_correction_m ?? -0.9);
+// The lake level against the charts' zero (their mean long-term level, +5,1 m БС): negative — the water is lower now
+// and every charted depth is that much shallower. The server brings a fresh value (data/live.json, the Волго-Балт
+// level at Сясьские Рядки); without it, the depth model's own figure for the year.
+function levelNow() {
+  const c = state.live?.level?.depth_correction?.m;
+  if (Number.isFinite(+c) && Math.abs(c) < 3) return +c;
+  return +(chartState.gridIndex?.level_2026_correction_m ?? -0.9);
+}
+// Where that figure comes from, for the small print: «Волго-Балт, Сясьские Рядки, 22.09» or «оценка на 2026 год».
+function levelSourceText() {
+  const c = state.live?.level?.depth_correction;
+  if (c && Number.isFinite(+c.m)) return `${c.from || 'сводка'}${c.date ? `, ${fmtDate(String(c.date).slice(0, 10))}` : ''}`;
+  return 'оценка на 2026 год';
+}
+const fmtM = (v, digits = 1) => String(Math.round(v * 10 ** digits) / 10 ** digits).replace('.', ',');
+// Chart depth → the water there is now: «≈ 1,9 м сейчас (по карте 2,6)».
+function depthNowText(dep) {
+  if (!dep) return '';
+  const lv = levelNow();
+  if (dep.value != null) return `≈ ${fmtM(Math.max(0, dep.value + lv))} м сейчас (по карте ${fmtM(dep.value)})`;
+  return `${fmtM(Math.max(0, dep.min + lv), 0)}–${fmtM(Math.max(0, dep.max + lv), 0)} м сейчас (по карте ${dep.min}–${dep.max})`;
+}
 // Depth at a place: the digitised grid if the place is on it, else the chart isobaths: on a line → "≈ 5 м";
 // between two → "5–10 м". null off the charts.
 function depthAt(p) {
@@ -600,15 +656,6 @@ function distToSegmentM(p, a, b) {
   return Math.hypot(ax + t * dx, ay + t * dy);
 }
 
-const GENSHTAB_ATTR = 'Топокарта Генштаба СССР 1:100 000 (скан maps.vlasenko.net)';
-function buildDepthLayers() {
-  const d = state.ctx.depth || {};
-  layers.genshtab.clearLayers();
-  for (const o of d.overlays || []) {
-    if (!Array.isArray(o.bounds)) continue;
-    L.imageOverlay(o.url, o.bounds, { opacity: state.genshtabOpacity, interactive: false, className: 'genshtab' }).addTo(layers.genshtab);
-  }
-}
 async function ensureIsobaths() {
   const url = state.ctx.depth?.isobaths;
   if (!url || state.isobathsLoaded) return;
@@ -628,13 +675,35 @@ async function ensureIsobaths() {
 const ISO_COLORS = { 1: '#e8590c', 2: '#f08c00', 3: '#74c0fc', 4: '#4dabf7', 5: '#339af0', 6: '#228be6', 7: '#1c7ed6', 8: '#1971c2', 10: '#1864ab', 12: '#364fc7', 15: '#3b5bdb', 20: '#5f3dc4', 25: '#6741d9', 30: '#212529' };
 const isoColor = (m) => ISO_COLORS[m] || (m < 3 ? '#e8590c' : m < 10 ? '#1c7ed6' : '#5f3dc4');
 const depthModel = { shade: null, iso: null, isoLoading: null, labels: [], labelLayer: L.layerGroup(), community: null, communityDup: null, communityLoading: null, communityLabels: [], communityIsoLabels: [], communityMarks: [] };
+// The shading exists only over water: with its coverage (tiles/depth_cover.json, runs of y per column) no tile
+// is asked for over land — no 404s, no wasted requests on a weak signal.
+const CoveredTiles = L.TileLayer.extend({
+  _isValidTile(coords) {
+    const cover = this.options.cover;
+    if (cover) {
+      const runs = cover[coords.z]?.[coords.x];
+      if (!runs) return false;
+      let hit = false;
+      for (let i = 0; i < runs.length && !hit; i += 2) hit = coords.y >= runs[i] && coords.y <= runs[i + 1];
+      if (!hit) return false;
+    }
+    return L.TileLayer.prototype._isValidTile.call(this, coords);
+  },
+});
 function buildDepthModel() {
   const sh = state.ctx.depth?.shade;
   if (sh?.url && !depthModel.shade) {
-    depthModel.shade = L.tileLayer(sh.url, {
+    depthModel.shade = new CoveredTiles(sh.url, {
       pane: 'charts', zIndex: 0, minZoom: 8, maxZoom: 18, minNativeZoom: +sh.minZoom || 9, maxNativeZoom: +sh.maxNativeZoom || 15,
       opacity: 0.85, errorTileUrl: CLEAR_TILE, bounds: regionBounds().pad(0.05),
     });
+    if (sh.cover) {
+      fetch(sh.cover).then((r) => (r.ok ? r.json() : null)).then((cover) => {
+        if (!cover) return;
+        depthModel.shade.options.cover = cover;
+        if (map.hasLayer(depthModel.shade)) depthModel.shade.redraw();
+      }).catch(() => {});
+    }
   }
 }
 // Isolines every metre near the shore (1–8, 10, 12, 15, 20, 25, 30 m), drawn on canvas; depth labels from z13.
@@ -672,37 +741,55 @@ function isoLabelPoints(gj, stepM) {
   return out;
 }
 // Depth labels on screen, decluttered: one per cell of ~30 px, rocks and banks first, then line labels, then soundings.
-function drawIsoLabels() {
+// They are laid out for a margin around the view, so panning (a boat followed every second) redraws them only when
+// the view leaves that margin or the zoom changes — not hundreds of labels rebuilt on every fix.
+function drawIsoLabels(force = true) {
   const layer = depthModel.labelLayer;
-  layer.clearLayers();
   const z = map.getZoom();
+  if (!force && depthModel.labelsZ === z && depthModel.labelsBox?.contains(map.getBounds())) return;
+  layer.clearLayers();
+  depthModel.labelsZ = null; depthModel.labelsBox = null;
   const iso = state.overlays.gridIso && depthModel.labels.length;
   const com = state.overlays.community && depthModel.community;
+  const vvp = state.overlays.vvp && depthModel.vvp?.length;
   const mine = state.overlays.myDepth && typeof myDepthPoints === 'function' ? myDepthPoints() : [];
-  if ((!iso && !com && !mine.length) || z < 13) { if (map.hasLayer(layer)) map.removeLayer(layer); return; }
+  if ((!iso && !com && !vvp && !mine.length) || z < 13) { if (map.hasLayer(layer)) map.removeLayer(layer); return; }
   if (!map.hasLayer(layer)) layer.addTo(map);
   const size = map.getSize();
-  const view = map.getBounds().pad(0.1);
+  const view = map.getBounds().pad(0.35);
+  depthModel.labelsZ = z; depthModel.labelsBox = view;
+  const mx = size.x * 0.4, my = size.y * 0.4;
   const cell = z >= 16 ? 24 : z >= 15 ? 28 : 34;
   const taken = new Set();
   let n = 0;
   const num = (m) => String(Math.round(m * 10) / 10).replace('.', ',');
   const add = (p, cls, text) => {
-    if (n > 600 || !view.contains([p.lat, p.lon])) return;
+    if (n > 1100 || !view.contains([p.lat, p.lon])) return;
     const pt = map.latLngToContainerPoint([p.lat, p.lon]);
-    if (pt.x < -10 || pt.y < -10 || pt.x > size.x + 10 || pt.y > size.y + 10) return;
+    if (pt.x < -mx || pt.y < -my || pt.x > size.x + mx || pt.y > size.y + my) return;
     const key = `${Math.floor(pt.x / cell)}:${Math.floor(pt.y / (cell * 0.66))}`;
     if (taken.has(key)) return;
     taken.add(key); n += 1;
     L.marker([p.lat, p.lon], { interactive: false, keyboard: false, icon: L.divIcon({ className: '', html: `<span class="iso-label ${cls}">${text}</span>`, iconSize: null }) }).addTo(layer);
   };
   for (const p of mine) add(p, 'my', num(p.m));
+  if (vvp) for (const p of depthModel.vvp) add(p, `vvp${p.k === 'fairway' ? ' fairway' : ''}`, num(p.m));
   if (com) for (const p of depthModel.communityMarks) add(p, 'community rock', `${p.rock ? '✚' : 'б'} ${num(p.m)}`);
   if (iso) for (const p of depthModel.labels) add(p, p.m <= 2 ? 'shallow' : '', String(p.m));
   if (com) for (const p of depthModel.communityIsoLabels) add(p, 'community', num(p.m));
   if (com && z >= 14) for (const p of depthModel.communityLabels) add(p, 'community sounding', num(p.m));
 }
-map.on('moveend zoomend', () => { if (state.overlays.gridIso || state.overlays.community || state.overlays.myDepth) drawIsoLabels(); });
+map.on('moveend zoomend', () => { if (state.overlays.gridIso || state.overlays.community || state.overlays.myDepth || state.overlays.vvp) drawIsoLabels(false); });
+// Fresh soundings of the Volkhov mouth and bar (ENC 2023 read off a Волго-Балт scheme): shown at the charts' zero
+// (the mean long-term level) like every other depth on the map; research/fresh_depth.md.
+function loadVvpDepths() {
+  const url = state.ctx.depth?.vvp;
+  if (!url || depthModel.vvpLoading) return;
+  depthModel.vvpLoading = fetch(url).then((r) => r.json()).then((gj) => {
+    depthModel.vvp = (gj.features || []).map((f) => ({ lat: f.geometry.coordinates[1], lon: f.geometry.coordinates[0], m: +f.properties.m, d: +f.properties.d, k: f.properties.k }));
+    drawIsoLabels();
+  }).catch(() => { depthModel.vvpLoading = null; });
+}
 // Community depth files (openly published Garmin / GPX / KML contours and soundings), when there are any.
 // Community depth files: freegpsmap 2007 and S. Novikov 2005 Garmin maps — amateur digitising of the same ГУНиО
 // charts, filling places the chart isolines miss (Petrokrepost bay, the Neva source, the deep lake). Lines that
@@ -750,7 +837,7 @@ function addExtraTileLayers() {
   for (const t of state.ctx.tile_layers || []) {
     if (!t.url || BASES[t.key]) continue;
     BASES[t.key] = {
-      name: t.name.replace(/^Генштаб\s*/i, 'Генштаб ').replace(/\s*\(.*\)$/, ''), full: t.name, attr: t.attribution || 'nakarte.me', thumb: t.tms ? null : t.url,
+      name: t.name.replace(/^Генштаб\s*/i, 'Генштаб ').replace(/\s*\(.*\)$/, ''), full: t.name, attr: t.attribution || 'nakarte.me', thumb: t.url, tms: !!t.tms,
       make: () => L.tileLayer(t.url, { maxZoom: 18, maxNativeZoom: +t.max_zoom || 14, tms: !!t.tms, subdomains: t.subdomains || 'abc', errorTileUrl: NO_TILE }),
     };
   }
@@ -1037,14 +1124,26 @@ const TAGS = {
   snag: { label: 'Зацеп', color: '#5c4033', glyph: '#' },
   shoal: { label: 'Мель', color: '#e8590c', glyph: '!' },
   hole: { label: 'Лунка', color: '#5f3dc4', glyph: 'o' },
+  ice: { label: 'Замер льда', color: '#1c7ed6', glyph: '❄' },
   other: { label: 'Другое', color: '#495057', glyph: '★' },
 };
 function saveMine() { store.set('ladoga-mine', state.mine); }
+// «32 см · 3 дн. назад»: an ice measurement is only as good as its age.
+function iceMarkText(p) {
+  if (!p.ice) return '';
+  const days = Math.floor((Date.now() - p.t) / 86400000);
+  return `${p.ice.cm != null ? `${p.ice.cm} см` : 'лёд'}${p.ice.water ? ', вода на льду' : ''} · ${days < 1 ? 'сегодня' : days === 1 ? 'вчера' : `${days} дн. назад`}`;
+}
 function drawMine() {
   layers.mine.clearLayers();
+  if (state.car) {
+    L.marker([state.car.lat, state.car.lon], { icon: L.divIcon({ className: 'hit', html: '<div class="car-dot" aria-label="Машина">🚗</div>', iconSize: [44, 44], iconAnchor: [22, 22] }), keyboard: false, zIndexOffset: 500 })
+      .on('click', () => { if (typeof openCarCard === 'function') openCarCard(); })
+      .addTo(layers.mine);
+  }
   for (const p of state.mine) {
     const t = TAGS[p.tag] || TAGS.other;
-    const dep = p.depth != null ? `<span class="poi-label">${String(p.depth).replace('.', ',')} м</span>` : '';
+    const dep = p.ice ? `<span class="poi-label">${esc(iceMarkText(p))}</span>` : p.depth != null ? `<span class="poi-label">${String(p.depth).replace('.', ',')} м</span>` : '';
     L.marker([p.lat, p.lon], { icon: L.divIcon({ className: 'hit', html: `<div class="mark-dot" style="background:${t.color}">${esc(t.glyph)}</div>${dep}`, iconSize: [44, 44], iconAnchor: [22, 22] }), keyboard: false })
       .on('click', () => openMineCard(p))
       .addTo(layers.mine);
@@ -1081,45 +1180,119 @@ function filteredWaypoints() {
 }
 const fileStamp = (t = Date.now()) => { const d = new Date(t); const p = (n) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}_${p(d.getHours())}-${p(d.getMinutes())}`; };
 
-/* ---------- weather: wind, waves, pressure, sun and moon (Open-Meteo, no key) ----------
+/* ---------- weather: wind, waves, fog, storms, pressure (Open-Meteo, no key) ----------
    The wind matters most on Ladoga: an offshore wind (south-east to west) pushes the ice off the south
-   shore with anglers on it, and any strong wind raises a steep wave in the shallow bays. */
+   shore with anglers on it, and any strong wind raises a steep wave in the shallow bays. The warnings look
+   as far as 14:00 tomorrow: in the evening an angler decides about tomorrow morning. */
 const WX_PLACES = [
+  { id: 'here', name: 'Здесь', here: true },
   { id: 'volkhov', name: 'Волховская губа', lat: 60.2, lon: 32.25 },
   { id: 'kobona', name: 'Кобона, Леднево', lat: 60.07, lon: 31.5 },
   { id: 'shlis', name: 'Шлиссельбург', lat: 59.97, lon: 31.1 },
   { id: 'svir', name: 'Свирская губа', lat: 60.5, lon: 32.85 },
 ];
-const WX_KEY = 'ladoga-wx-v1';
+const WX_KEY = 'ladoga-wx-v2';
 const hPaToMm = (h) => Math.round(h * 0.750062);
 function windArrow(dir, size = 16) {
   // Meteorological direction is where the wind comes FROM; the arrow shows where it blows.
   return `<span class="wx-arrow" style="width:${size}px;height:${size}px;transform:rotate(${Math.round(dir + 180)}deg)">↑</span>`;
 }
-function moonInfo(date = new Date()) {
-  const synodic = 29.530588853;
-  const known = Date.UTC(2000, 0, 6, 18, 14);
-  const age = (((date - known) / 86400000) % synodic + synodic) % synodic;
-  const phase = age / synodic;
-  const illum = Math.round(((1 - Math.cos(2 * Math.PI * phase)) / 2) * 100);
-  const names = [[0.03, 'новолуние'], [0.22, 'растущий серп'], [0.28, 'первая четверть'], [0.47, 'растущая луна'],
-    [0.53, 'полнолуние'], [0.72, 'убывающая луна'], [0.78, 'последняя четверть'], [0.97, 'убывающий серп'], [1.01, 'новолуние']];
-  const [, name] = names.find(([edge]) => phase < edge);
-  return { name, illum, age: Math.round(age) };
+
+/* ---------- sun and moon: the formulas of SunCalc (V. Agafonkin, BSD-2) after aa.quae.nl — minutes of accuracy,
+   all on the phone, offline. Times are epoch milliseconds. ---------- */
+const ASTRO = (() => {
+  const rad = Math.PI / 180, dayMs = 86400000, J1970 = 2440588, J2000 = 2451545, e = rad * 23.4397, J0 = 0.0009;
+  const toDays = (t) => t / dayMs - 0.5 + J1970 - J2000;
+  const fromJulian = (j) => (j + 0.5 - J1970) * dayMs;
+  const ra = (l, b) => Math.atan2(Math.sin(l) * Math.cos(e) - Math.tan(b) * Math.sin(e), Math.cos(l));
+  const dec = (l, b) => Math.asin(Math.sin(b) * Math.cos(e) + Math.cos(b) * Math.sin(e) * Math.sin(l));
+  const altitude = (H, phi, de) => Math.asin(Math.sin(phi) * Math.sin(de) + Math.cos(phi) * Math.cos(de) * Math.cos(H));
+  const anomaly = (d) => rad * (357.5291 + 0.98560028 * d);
+  const eclLon = (M) => M + rad * (1.9148 * Math.sin(M) + 0.02 * Math.sin(2 * M) + 0.0003 * Math.sin(3 * M)) + rad * 102.9372 + Math.PI;
+  const sunCoords = (d) => { const L = eclLon(anomaly(d)); return { dec: dec(L, 0), ra: ra(L, 0) }; };
+  const moonCoords = (d) => {
+    const L = rad * (218.316 + 13.176396 * d), M = rad * (134.963 + 13.064993 * d), F = rad * (93.272 + 13.22935 * d);
+    const l = L + rad * 6.289 * Math.sin(M), b = rad * 5.128 * Math.sin(F);
+    return { ra: ra(l, b), dec: dec(l, b), dist: 385001 - 20905 * Math.cos(M) };
+  };
+  // Rise and set (−0.833°), civil dawn and dusk (−6°), noon — of the day whose solar noon is nearest to t.
+  function sun(t, lat, lon) {
+    const lw = rad * -lon, phi = rad * lat, d = toDays(t);
+    const n = Math.round(d - J0 - lw / (2 * Math.PI));
+    const ds = J0 + lw / (2 * Math.PI) + n;
+    const M = anomaly(ds), L = eclLon(M), de = dec(L, 0);
+    const Jnoon = J2000 + ds + 0.0053 * Math.sin(M) - 0.0069 * Math.sin(2 * L);
+    const at = (h) => {
+      const c = (Math.sin(h * rad) - Math.sin(phi) * Math.sin(de)) / (Math.cos(phi) * Math.cos(de));
+      if (c < -1 || c > 1) return null;
+      const Jset = J2000 + J0 + (Math.acos(c) + lw) / (2 * Math.PI) + n + 0.0053 * Math.sin(M) - 0.0069 * Math.sin(2 * L);
+      return [fromJulian(Jnoon - (Jset - Jnoon)), fromJulian(Jset)];
+    };
+    const rs = at(-0.833), cv = at(-6);
+    const up = altitude(0, phi, de) > 0;
+    return { noon: fromJulian(Jnoon), rise: rs?.[0], set: rs?.[1], dawn: cv?.[0], dusk: cv?.[1], polarDay: !rs && up, polarNight: !rs && !up };
+  }
+  const moonAlt = (t, lat, lon) => {
+    const d = toDays(t), c = moonCoords(d);
+    return altitude(rad * (280.16 + 360.9856235 * d) + rad * lon - c.ra, rad * lat, c.dec);
+  };
+  // Phase 0 new … 0.5 full … 1 new; fraction lit 0–1.
+  function moonLight(t) {
+    const d = toDays(t), s = sunCoords(d), m = moonCoords(d), sdist = 149598000;
+    const phi = Math.acos(Math.sin(s.dec) * Math.sin(m.dec) + Math.cos(s.dec) * Math.cos(m.dec) * Math.cos(s.ra - m.ra));
+    const inc = Math.atan2(sdist * Math.sin(phi), m.dist - sdist * Math.cos(phi));
+    const angle = Math.atan2(Math.cos(s.dec) * Math.sin(s.ra - m.ra), Math.sin(m.dec) * Math.cos(s.dec) - Math.cos(m.dec) * Math.sin(s.dec) * Math.cos(s.ra - m.ra));
+    return { fraction: (1 + Math.cos(inc)) / 2, phase: 0.5 + (0.5 * inc * (angle < 0 ? -1 : 1)) / Math.PI };
+  }
+  // Moonrise, moonset and the upper culmination within [t0, t0 + 24 h): the altitude every 10 minutes.
+  function moonDay(t0, lat, lon) {
+    const step = 600000, h0 = 0.133 * rad;
+    let prev = moonAlt(t0, lat, lon) - h0, rise = null, set = null, top = -9, topT = null;
+    for (let t = t0 + step; t <= t0 + dayMs; t += step) {
+      const a = moonAlt(t, lat, lon) - h0;
+      if (prev < 0 && a >= 0 && rise == null) rise = t - (step * a) / (a - prev);
+      if (prev >= 0 && a < 0 && set == null) set = t - (step * a) / (a - prev);
+      if (a > top) { top = a; topT = t; }
+      prev = a;
+    }
+    return { rise, set, transit: top > 0 ? topT : null };
+  }
+  return { sun, moonLight, moonDay };
+})();
+// Kept for the «По солнцу» palette: today's rise and set at the south of Ladoga.
+function sunTimes(date = new Date(), lat = 60.2, lon = 32.2) { return ASTRO.sun(+date, lat, lon); }
+const MOON_NAMES = [[0.03, 'новолуние'], [0.22, 'растущий серп'], [0.28, 'первая четверть'], [0.47, 'растущая луна'],
+  [0.53, 'полнолуние'], [0.72, 'убывающая луна'], [0.78, 'последняя четверть'], [0.97, 'убывающий серп'], [1.01, 'новолуние']];
+function moonInfo(date = new Date(), lat = 60.2, lon = 32.2) {
+  const { fraction, phase } = ASTRO.moonLight(+date);
+  const [, name] = MOON_NAMES.find(([edge]) => phase < edge);
+  const d0 = new Date(date); d0.setHours(0, 0, 0, 0);
+  return { name, illum: Math.round(fraction * 100), phase, waxing: phase < 0.5, ...ASTRO.moonDay(+d0, lat, lon) };
 }
-function wxPlace() { return WX_PLACES.find((p) => p.id === store.get('ladoga-wx-place', 'volkhov')) || WX_PLACES[0]; }
+const localDay = (t, add = 0) => { const d = new Date(t); d.setHours(12, 0, 0, 0); d.setDate(d.getDate() + add); return d; };
+
+// Where the forecast is for: one of the fixed places, or «Здесь» — the boat, else the middle of the map.
+function wxPlace() {
+  const id = store.get('ladoga-wx-place', 'volkhov');
+  const p = WX_PLACES.find((x) => x.id === id) || WX_PLACES[1];
+  if (!p.here) return p;
+  const me = typeof geo !== 'undefined' && geo.me && Date.now() - geo.me.t < 30 * 60000 ? geo.me : null;
+  const c = me || { lat: map.getCenter().lat, lon: map.getCenter().lng };
+  return { ...p, lat: +c.lat.toFixed(3), lon: +c.lon.toFixed(3), name: me ? 'Здесь (где я)' : `Здесь (центр карты, ${placeName(c)})`, fromMe: !!me };
+}
 async function loadWeather(force = false) {
   const place = wxPlace();
   const cached = store.get(WX_KEY, null);
-  if (!force && cached && cached.place === place.id && Date.now() - cached.at < 30 * 60000) { state.wx = cached; onWeather(); return cached; }
-  const q = `latitude=${place.lat}&longitude=${place.lon}&timezone=Europe%2FMoscow&forecast_days=3`;
+  const same = cached && cached.place === place.id && (!place.here || distM(cached.at_place || place, place) < 5000);
+  if (!force && same && Date.now() - cached.at < 30 * 60000) { state.wx = cached; onWeather(); return cached; }
+  const q = `latitude=${place.lat}&longitude=${place.lon}&timezone=Europe%2FMoscow`;
   try {
     const [fc, sea] = await Promise.all([
-      fetch(`https://api.open-meteo.com/v1/forecast?${q}&wind_speed_unit=ms&current=temperature_2m,wind_speed_10m,wind_direction_10m,wind_gusts_10m,pressure_msl,cloud_cover,precipitation,weather_code&hourly=temperature_2m,wind_speed_10m,wind_direction_10m,wind_gusts_10m,pressure_msl,precipitation_probability&daily=sunrise,sunset&past_days=1`).then((r) => r.json()),
-      fetch(`https://marine-api.open-meteo.com/v1/marine?${q}&hourly=wave_height&past_days=1`).then((r) => r.json()).catch(() => null),
+      fetch(`https://api.open-meteo.com/v1/forecast?${q}&cell_selection=sea&forecast_days=3&past_days=3&wind_speed_unit=ms&current=temperature_2m,wind_speed_10m,wind_direction_10m,wind_gusts_10m,pressure_msl,cloud_cover,precipitation,weather_code&hourly=temperature_2m,wind_speed_10m,wind_direction_10m,wind_gusts_10m,pressure_msl,precipitation_probability,precipitation,rain,snowfall,visibility,weather_code,cape&daily=sunrise,sunset`).then((r) => r.json()),
+      fetch(`https://marine-api.open-meteo.com/v1/marine?${q}&forecast_days=3&past_days=3&hourly=wave_height,wave_period`).then((r) => r.json()).catch(() => null),
     ]);
     if (!fc || !fc.current) throw new Error('no data');
-    state.wx = { at: Date.now(), place: place.id, fc, sea };
+    state.wx = { at: Date.now(), place: place.id, at_place: { lat: place.lat, lon: place.lon, name: place.name }, fc, sea };
     store.set(WX_KEY, state.wx);
   } catch {
     if (cached) state.wx = cached;
@@ -1131,56 +1304,156 @@ function onWeather() {
   if (typeof renderChips === 'function') renderChips();
   if (typeof refreshPage === 'function') refreshPage('today');
 }
-// Hour index of "now" in the hourly arrays.
+// Hour index of "now" in the hourly arrays (the saved forecast keeps working offline: now moves along it).
 function wxNowIndex(fc) {
-  const now = fc.current?.time?.slice(0, 13);
+  const d = new Date(), p = (n) => String(n).padStart(2, '0');
+  const now = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}`;
   const i = fc.hourly.time.findIndex((t) => t.slice(0, 13) === now);
-  return i < 0 ? 0 : i;
+  if (i >= 0) return i;
+  const j = fc.hourly.time.findIndex((t) => t.slice(0, 13) === fc.current?.time?.slice(0, 13));
+  return j < 0 ? 0 : j;
+}
+// The hours the warnings look at: from now to 14:00 tomorrow, at least the next 12.
+function wxHorizon(fc, i0) {
+  const t = fc.hourly.time;
+  const d = new Date(`${t[i0].slice(0, 10)}T12:00`); d.setDate(d.getDate() + 1);
+  const p = (n) => String(n).padStart(2, '0');
+  const k14 = t.indexOf(`${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T14:00`);
+  return Math.min(t.length - 1, Math.max(i0 + 12, k14 < 0 ? i0 + 24 : k14));
+}
+// "сегодня 15–19 ч", "ночью 01–05 ч", "завтра 05–11 ч" for the hours k0…k1 of the forecast.
+function wxWhen(fc, i0, k0, k1) {
+  const t = fc.hourly.time;
+  const today = t[i0].slice(0, 10), day = t[k0].slice(0, 10), h0 = +t[k0].slice(11, 13), h1 = +t[k1].slice(11, 13) + 1;
+  const range = k1 > k0 ? `${String(h0).padStart(2, '0')}–${String(h1 > 24 ? h1 - 24 : h1).padStart(2, '0')} ч` : `около ${String(h0).padStart(2, '0')} ч`;
+  if (k0 === i0) return `сейчас и до ${t[k1].slice(0, 10) === today ? '' : 'завтра, '}${String(h1 % 24).padStart(2, '0')} ч`;
+  if (day === today && t[k1].slice(0, 10) !== today) return `с ${String(h0).padStart(2, '0')} ч сегодня до ${String(h1 % 24).padStart(2, '0')} ч ${+t[k1].slice(11, 13) < 6 ? 'ночи' : 'завтра'}`;
+  if (day === today) return `сегодня ${range}`;
+  return h0 < 6 && k1 - k0 < 8 && h1 <= 8 ? `ночью ${range}` : `завтра ${range}`;
+}
+// Runs of consecutive hours that meet a test: [[k0, k1], …].
+function wxRuns(ks, test) {
+  const runs = [];
+  for (const k of ks) {
+    if (!test(k)) continue;
+    const last = runs[runs.length - 1];
+    if (last && last[1] === k - 1) last[1] = k; else runs.push([k, k]);
+  }
+  return runs;
 }
 function wxWarnings(wx) {
   const fc = wx.fc, h = fc.hourly, i0 = wxNowIndex(fc);
   const out = [];
   const month = new Date().getMonth() + 1;
   const ice = isIceMonth(month) || [11, 12, 4].includes(month);
-  const next = (n) => Array.from({ length: n }, (_, k) => i0 + k).filter((k) => k < h.time.length);
+  const end = wxHorizon(fc, i0);
+  const ks = Array.from({ length: end - i0 + 1 }, (_, k) => i0 + k);
+  const at = (arr, k) => (arr ? arr[k] : null);
   const offshore = (d) => d >= 112 && d <= 260; // SE, S, SW, WSW — from the land for the south shore
+  const max = (list, arr) => Math.round(Math.max(...list.map((k) => arr[k] ?? 0)));
   if (ice) {
-    const risky = next(24).filter((k) => offshore(h.wind_direction_10m[k]) && (h.wind_speed_10m[k] >= 6 || h.wind_gusts_10m[k] >= 10));
+    const risky = wxRuns(ks, (k) => offshore(h.wind_direction_10m[k]) && (h.wind_speed_10m[k] >= 6 || h.wind_gusts_10m[k] >= 10));
     if (risky.length) {
-      const k = risky[0];
-      out.push({ level: 'danger', short: `Отжимной ветер ${Math.round(h.wind_speed_10m[k])} м/с`, text: `Отжимной ветер ${rumb(h.wind_direction_10m[k])} ${Math.round(h.wind_speed_10m[k])} м/с (порывы ${Math.round(h.wind_gusts_10m[k])}) с ${h.time[k].slice(11, 16)}: у южного берега (Кобона, Леднево, Креницы, Сухо) может оторвать лёд. Далеко от берега не уходите, следите за трещинами.` });
+      const [k0, k1] = risky[0], sp = max(ks.slice(k0 - i0, k1 - i0 + 1), h.wind_speed_10m);
+      const drift = (sp * 0.025 * 3.6).toFixed(1).replace('.', ',');
+      out.push({ level: 'danger', short: `Отжимной ветер ${sp} м/с`, text: `Отжимной ветер ${rumb(h.wind_direction_10m[k0])} до ${sp} м/с (порывы ${max(ks.slice(k0 - i0, k1 - i0 + 1), h.wind_gusts_10m)}) ${wxWhen(fc, i0, k0, k1)}: у южного берега (Кобона, Леднево, Креницы, Сухо) может оторвать лёд — оторванное поле уходит на север примерно на ${drift} км/ч. Далеко от берега не уходите, следите за трещинами.` });
+    }
+    const blizzard = wxRuns(ks, (k) => (at(h.snowfall, k) || 0) >= 0.3 && h.wind_speed_10m[k] >= 9);
+    if (blizzard.length) {
+      const [k0, k1] = blizzard[0];
+      out.push({ level: 'warn', short: 'Метель', text: `Метель ${wxWhen(fc, i0, k0, k1)}: снег при ветре до ${max(ks.slice(k0 - i0, k1 - i0 + 1), h.wind_speed_10m)} м/с — на льду теряются ориентиры. Отметьте машину, пишите трек.` });
     }
   } else {
-    const windy = next(12).filter((k) => h.wind_speed_10m[k] >= 8 || h.wind_gusts_10m[k] >= 13);
-    const waves = wx.sea?.hourly?.wave_height ? next(12).map((k) => wx.sea.hourly.wave_height[k] ?? 0) : [];
-    const maxWave = waves.length ? Math.max(...waves) : 0;
-    if (windy.length || maxWave >= 0.7) {
-      const gust = Math.round(Math.max(...next(12).map((k) => h.wind_gusts_10m[k])));
-      out.push({ level: 'warn', short: `Ветер до ${gust} м/с`, text: `Ближайшие 12 ч: ветер до ${gust} м/с в порывах${maxWave ? `, волна до ${maxWave.toFixed(1).replace('.', ',')} м` : ''}. В мелких губах волна короткая и крутая — на надувной лодке далеко не уходите.` });
+    const windy = wxRuns(ks, (k) => h.wind_speed_10m[k] >= 8 || h.wind_gusts_10m[k] >= 13);
+    if (windy.length) {
+      const [k0, k1] = windy[0];
+      const span = ks.slice(k0 - i0, k1 - i0 + 1);
+      const sp = max(span, h.wind_speed_10m), gust = max(span, h.wind_gusts_10m);
+      const strong = sp >= 12 || gust >= 17;
+      out.push({ level: strong ? 'danger' : 'warn', short: `Ветер ${sp} м/с, пор. ${gust} · ${wxWhen(fc, i0, k0, k1).replace(/^сейчас и /, '')}`, text: `${wxWhen(fc, i0, k0, k1).replace(/^./, (c) => c.toUpperCase())}: ветер ${rumb(h.wind_direction_10m[k0])} до ${sp} м/с, порывы до ${gust}. В мелких губах волна короткая и крутая${strong ? ' — на лодке не выходить' : ' — на надувной лодке далеко не уходите'}.${windy.length > 1 ? ` Ещё раз ${wxWhen(fc, i0, ...windy[1])}.` : ''}` });
     }
-    const northStorm = next(24).filter((k) => (h.wind_direction_10m[k] >= 300 || h.wind_direction_10m[k] <= 60) && h.wind_speed_10m[k] >= 10);
-    if (northStorm.length) out.push({ level: 'warn', short: 'Сильный северный ветер', text: 'Сильный северный ветер: нагон воды и высокая волна у южного берега, выход из устьев и каналов опасен.' });
+    const north = wxRuns(ks, (k) => (h.wind_direction_10m[k] >= 300 || h.wind_direction_10m[k] <= 60) && h.wind_speed_10m[k] >= 10);
+    if (north.length) out.push({ level: 'warn', short: 'Сильный северный ветер', text: `Сильный северный ветер ${wxWhen(fc, i0, ...north[0])}: нагон воды и высокая волна у южного берега, выход из устьев и каналов опасен.` });
+    const storm = wxRuns(ks, (k) => (at(h.weather_code, k) || 0) >= 95);
+    if (storm.length) out.push({ level: 'danger', short: 'Гроза', text: `Гроза ${wxWhen(fc, i0, ...storm[0])}. Уйдите с воды заранее: на открытой воде лодка и удочка — самая высокая точка.` });
   }
-  const p0 = h.pressure_msl[i0], p3 = h.pressure_msl[Math.max(0, i0 - 3)];
-  if (p0 != null && p3 != null && Math.abs(p0 - p3) >= 3) out.push({ level: 'info', text: `Давление ${p0 > p3 ? 'быстро растёт' : 'быстро падает'} (${p0 > p3 ? '+' : '−'}${Math.abs(Math.round((p0 - p3) * 0.75))} мм за 3 ч) — клёв в такие часы часто хуже.` });
+  // Fog: under 1 km no sailing on the fairway; on the ice it takes away the shore.
+  const fog = wxRuns(ks, (k) => at(h.visibility, k) != null && h.visibility[k] < 1000);
+  if (fog.length) {
+    const [k0, k1] = fog[0];
+    const vis = Math.min(...ks.slice(k0 - i0, k1 - i0 + 1).map((k) => h.visibility[k]));
+    out.push({ level: 'warn', short: `Туман ${wxWhen(fc, i0, k0, k1).replace(/^сейчас и /, '')}`, text: `Туман ${wxWhen(fc, i0, k0, k1)}, видимость до ${vis < 1000 ? `${Math.max(50, Math.round(vis / 50) * 50)} м` : '1 км'}. ${ice ? 'На льду легко потерять направление: отметьте машину, пишите трек, держите компас.' : 'На судовой ход не выходите; держитесь берега, включите трек — по нему легко вернуться.'}` });
+  }
   return out;
 }
-// Sunrise and sunset for the south of Ladoga (NOAA approximation, ±2 min): the «По солнцу» palette works offline.
-function sunTimes(date = new Date(), lat = 60.2, lon = 32.2) {
-  const rad = Math.PI / 180;
-  const start = Date.UTC(date.getUTCFullYear(), 0, 0);
-  const day = Math.floor((date - start) / 86400000);
-  const g = (2 * Math.PI / 365) * (day - 1);
-  const eqt = 229.18 * (0.000075 + 0.001868 * Math.cos(g) - 0.032077 * Math.sin(g) - 0.014615 * Math.cos(2 * g) - 0.040849 * Math.sin(2 * g));
-  const decl = 0.006918 - 0.399912 * Math.cos(g) + 0.070257 * Math.sin(g) - 0.006758 * Math.cos(2 * g) + 0.000907 * Math.sin(2 * g) - 0.002697 * Math.cos(3 * g) + 0.00148 * Math.sin(3 * g);
-  const cosH = (Math.cos(90.833 * rad) - Math.sin(lat * rad) * Math.sin(decl)) / (Math.cos(lat * rad) * Math.cos(decl));
-  if (cosH > 1) return { polarNight: true };
-  if (cosH < -1) return { polarDay: true };
-  const ha = Math.acos(cosH) / rad;
-  const midnight = Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
-  const rise = midnight + (720 - 4 * (lon + ha) - eqt) * 60000;
-  const set = midnight + (720 - 4 * (lon - ha) - eqt) * 60000;
-  return { rise, set };
+/* ---------- fresh data from our server: lake level, water temperature, МЧС reports (data/live.json) ----------
+   scripts/live/fetch_live.py gathers it every hour on the server (the sources give browsers no CORS or no https).
+   The copy is kept in the phone: offline the last one is shown with its date. */
+async function loadLive() {
+  const saved = store.get('ladoga-live', null);
+  if (!state.live && saved) state.live = saved;
+  try {
+    const live = await fetch('data/live.json', { cache: 'no-cache' }).then((r) => (r.ok ? r.json() : null));
+    if (live && typeof live === 'object') { state.live = live; store.set('ladoga-live', live); }
+  } catch { /* offline, or the copy on GitHub Pages without a collector */ }
+  if (typeof onDepthReady === 'function') onDepthReady();
+  if (typeof refreshPage === 'function') refreshPage('today');
+}
+
+/* ---------- the satellite of the day: NASA GIBS (MODIS Terra, 250 m, every day; no key, CORS open) ----------
+   Where the ice edge, the leads and the break-off are today — or what the water looks like. «Лёд/вода» is the
+   7-2-1 band mix: ice and snow cyan, water black. One picture of the whole area can be kept for the ice. */
+const SAT_DAY = { layer: null, date: null, bands: false };
+const ymd = (t) => { const d = new Date(t); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+// Terra passes about 11–12 h Moscow time and the picture is up 3–5 h later: before 16 h — yesterday's.
+const satLatest = () => ymd(Date.now() - (new Date().getHours() < 16 ? 86400000 : 0));
+function satLayerName(bands) { return bands ? 'MODIS_Terra_CorrectedReflectance_Bands721' : 'MODIS_Terra_CorrectedReflectance_TrueColor'; }
+function satDayLayer() {
+  const date = SAT_DAY.date || satLatest();
+  const url = `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/${satLayerName(SAT_DAY.bands)}/default/${date}/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg`;
+  if (!SAT_DAY.layer) SAT_DAY.layer = L.tileLayer(url, { maxZoom: 18, maxNativeZoom: 9, crossOrigin: 'anonymous', zIndex: 5, errorTileUrl: CLEAR_TILE, bounds: MAX_BOUNDS });
+  else if (SAT_DAY.layer._url !== url) SAT_DAY.layer.setUrl(url);
+  return SAT_DAY.layer;
+}
+function satShift(days) {
+  const d = new Date(`${SAT_DAY.date || satLatest()}T12:00`);
+  d.setDate(d.getDate() + days);
+  if (ymd(d) > satLatest()) return;
+  SAT_DAY.date = ymd(d);
+  satDayLayer();
+  if (typeof refreshLayersSheet === 'function') refreshLayersSheet();
+}
+// The picture of the whole area for offline use: one image from GIBS WMS in Web Mercator (so it lies exactly on
+// the map), kept in the Cache with its date.
+const SAT_SNAP = 'ladoga-sat-snap';
+async function saveSatSnapshot() {
+  const date = SAT_DAY.date || satLatest();
+  const R = 6378137, x = (lon) => (lon * Math.PI / 180) * R, y = (lat) => R * Math.log(Math.tan(Math.PI / 4 + (lat * Math.PI / 180) / 2));
+  const b = regionBounds(), W = 1600, H = Math.round(W * (y(b.getNorth()) - y(b.getSouth())) / (x(b.getEast()) - x(b.getWest())));
+  const url = `https://gibs.earthdata.nasa.gov/wms/epsg3857/best/wms.cgi?SERVICE=WMS&REQUEST=GetMap&VERSION=1.3.0&LAYERS=${satLayerName(SAT_DAY.bands)}&STYLES=&CRS=EPSG:3857&BBOX=${x(b.getWest())},${y(b.getSouth())},${x(b.getEast())},${y(b.getNorth())}&WIDTH=${W}&HEIGHT=${H}&FORMAT=image/jpeg&TIME=${date}`;
+  try {
+    toast('Сохраняю снимок дня…');
+    const res = await fetch(url, { mode: 'cors' });
+    if (!res.ok || !/image/.test(res.headers.get('content-type') || '')) throw new Error('no image');
+    const cache = await caches.open(SAT_SNAP);
+    await cache.put('snapshot.jpg', res);
+    store.set('ladoga-sat-snap', { date, bands: SAT_DAY.bands, at: Date.now(), bounds: [[b.getSouth(), b.getWest()], [b.getNorth(), b.getEast()]] });
+    toast(`Снимок за ${fmtDate(date)} сохранён — откроется и без сети`, 4000);
+  } catch { toast('Не удалось скачать снимок — нужен интернет', 4000); }
+  if (typeof refreshLayersSheet === 'function') refreshLayersSheet();
+}
+async function showSatSnapshot(on) {
+  if (!on) { if (SAT_DAY.snapLayer) map.removeLayer(SAT_DAY.snapLayer); return; }
+  const info = store.get('ladoga-sat-snap', null);
+  if (!info) return;
+  try {
+    const res = await (await caches.open(SAT_SNAP)).match('snapshot.jpg');
+    if (!res) return;
+    if (SAT_DAY.snapUrl) URL.revokeObjectURL(SAT_DAY.snapUrl);
+    SAT_DAY.snapUrl = URL.createObjectURL(await res.blob());
+    if (SAT_DAY.snapLayer) map.removeLayer(SAT_DAY.snapLayer);
+    SAT_DAY.snapLayer = L.imageOverlay(SAT_DAY.snapUrl, info.bounds, { zIndex: 6, interactive: false }).addTo(map);
+  } catch { /* no cache */ }
 }
 
 /* ---------- offline packs: this part of Ladoga, not the world ----------
@@ -1221,7 +1494,7 @@ function appFiles() {
     'data/points.json', 'data/context.json', 'downloads/ladoga_points.gpx'];
   $$('script[src], link[rel="stylesheet"][href]').forEach((el) => files.push(el.getAttribute('src') || el.getAttribute('href')));
   const d = state.ctx.depth || {};
-  for (const u of [d.isobaths, d.chart_isobaths, d.grid, d.isolines, d.community]) if (u) files.push(u);
+  for (const u of [d.isobaths, d.chart_isobaths, d.grid, d.isolines, d.community, d.vvp, d.fetch, d.shade?.cover, 'data/live.json']) if (u) files.push(u);
   return [...new Set(files.map(abs))];
 }
 const PACKS = [
@@ -1239,13 +1512,13 @@ const PACKS = [
     id: 'charts', name: 'Навигационные карты глубин',
     urls: async () => {
       const list = await tileList('charts');
-      if (!list.length) for (const c of chartState.items) list.push(new URL(c.url, location.href).href);
       // the depth model files and the colour depth shading go with the charts
       try {
         const gi = chartState.gridIndex || (state.ctx.depth?.grid ? await fetch(state.ctx.depth.grid).then((r) => r.json()) : null);
         for (const f of gi?.files || []) list.push(new URL(f.file, location.href).href);
       } catch { /* no grid */ }
       const sh = state.ctx.depth?.shade;
+      if (sh?.cover) list.push(new URL(sh.cover, location.href).href);
       if (sh?.list) {
         try {
           const txt = await fetch(sh.list, { cache: 'no-cache' }).then((r) => (r.ok ? r.text() : ''));
@@ -1260,9 +1533,7 @@ const PACKS = [
   {
     id: 'genshtab', name: 'Армейская карта 1:100 000',
     urls: async () => {
-      const list = await tileList('genshtab');
-      if (!list.length) for (const o of state.ctx.depth?.overlays || []) list.push(new URL(o.url, location.href).href);
-      return list;
+      return tileList('genshtab');
     },
     estMB: () => layerMB('genshtab'),
   },
@@ -1292,7 +1563,9 @@ function layerMB(id) {
 const packInfo = (id) => store.get(`ladoga-pack-${id}`, null);
 const offline = { running: null, cancel: false, progress: null };
 // Downloads the listed packs one after another; progress goes to offline.progress and to onPackProgress().
-async function runPacks(ids) {
+// refresh («Обновить»): our own files are fetched again even if saved — charts, data and the app change under the
+// same names; the satellite tiles of Esri do not, and stay.
+async function runPacks(ids, { refresh = false } = {}) {
   if (!('caches' in window)) { toast('Этот браузер не умеет хранить карту без сети'); return; }
   if (offline.running) { toast('Уже идёт загрузка'); return; }
   offline.running = ids.join('+'); offline.cancel = false;
@@ -1313,8 +1586,8 @@ async function runPacks(ids) {
       while (i < urls.length && !offline.cancel) {
         const url = urls[i++];
         try {
-          if (await cache.match(url)) { done += 1; pr.done += 1; continue; } // resume: what is saved stays saved
           const same = url.startsWith(location.origin);
+          if (!(refresh && same) && await cache.match(url)) { done += 1; pr.done += 1; continue; } // resume: what is saved stays saved
           const res = await fetch(url, same ? { cache: 'no-cache' } : { mode: 'cors' });
           if (!res.ok) { failed += 1; pr.failed += 1; continue; }
           const blob = await res.clone().blob();

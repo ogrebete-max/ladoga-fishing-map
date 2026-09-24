@@ -1,0 +1,4 @@
+time,latitude,longitude,analysed_sst,sea_ice_fraction,mask
+UTC,degrees_north,degrees_east,degree_C,1,
+2026-01-14T09:00:00Z,60.2,32.25,-1.8000000000000007,NaN,5
+2026-01-21T09:00:00Z,60.2,32.25,-1.8000000000000007,0.5700000000000001,13

@@ -11,7 +11,7 @@ const cardFromMe = (p) => {
   const parts = [];
   if (me) { const d = distM(me, p), b = bearing(me, p); parts.push(`<b>${fmtDist(d)}</b> от вас · ${Math.round(b)}° ${rumb(b)}`); }
   const dep = depthAt(p);
-  if (dep) parts.push(`глубина ${esc(dep.text)}`);
+  if (dep) parts.push(`глубина ${esc(dep.text)} по карте${dep.value != null ? `, сейчас ≈ ${fmtM(Math.max(0, dep.value + levelNow()))}` : ''}`);
   return parts.length ? parts.join(' · ') : '<span class="muted">Нажмите ◎ на карте — появятся расстояние и курс от вас.</span>';
 };
 // Distance, course and depth in the open card follow the boat.
@@ -167,6 +167,7 @@ function openMineCard(p, opts = {}) {
         <button type="button" class="tile-btn" data-act="mine-menu" data-id="${esc(p.id)}">${ic('more-horiz')}<span>Ещё</span></button>
       </div>
       ${p.depth != null ? `<p><b>Глубина по вашему эхолоту: ${String(p.depth).replace('.', ',')} м</b></p>` : ''}
+      ${p.ice ? `<p><b>Лёд: ${p.ice.cm != null ? `${p.ice.cm} см` : 'толщина не записана'}</b>${p.ice.kind ? `, ${esc(p.ice.kind)}` : ''}${p.ice.water ? ', вода на льду' : ''} · ${esc(iceMarkText(p).split(' · ').pop())}</p><p class="small muted">Замер на одном месте ничего не говорит о льде в сотне метров: у устьев, камышей и ключей лёд тоньше.</p>` : ''}
       <div class="card"><div class="coord">${fmtDec(p.lat, p.lon)}</div><div class="coord">${fmtDM(p.lat, p.lon)}</div></div>
       ${p.note ? `<p>${esc(p.note)}</p>` : ''}`,
     onShow: () => selectRing(p.lat, p.lon),
@@ -193,11 +194,160 @@ function openRuleCard(a, label) {
   });
 }
 
-/* ---------- Сегодня: warnings, weather, bans, what bites and where, water and ice ---------- */
+/* ---------- Сегодня: warnings, bans, the conditions of the day, weather, water and ice, where to look ---------- */
+// The boats the verdicts are for (research/product_ideas.md §5.7): the wave and the mean wind that keep each ashore.
+const BOATS = {
+  pvc: { name: 'Надувная', of: 'на надувной', wave: 0.5, wind: 8 },
+  motor: { name: 'Мотолодка', of: 'на лёгкой мотолодке', wave: 0.75, wind: 10 },
+  cabin: { name: 'Катер', of: 'на катере', wave: 1.25, wind: 15 },
+};
+// «можно / осторожно / нельзя» for a boat by the wind and, when it is known, the wave near the shore.
+function boatVerdict(boat, wind, gust, hs) {
+  const b = BOATS[boat];
+  if (!b) return null;
+  let level = 0;
+  if (wind >= b.wind || (hs != null && hs >= b.wave)) level = 2;
+  else if (wind >= b.wind * 0.75 || gust >= b.wind + 3 || (hs != null && hs >= b.wave * 0.7)) level = 1;
+  return { level, word: ['можно', 'осторожно', 'нельзя'][level] };
+}
+// Species with reports on the time of day (Клёв › Снасти), joined with the calendar by name.
+function condSpecies(mo = new Date().getMonth() + 1) {
+  const cal = speciesList();
+  return tackleSpecies().map((tk) => {
+    const key = tk.name_ru.split(/[/ (]/)[0];
+    const s = cal.find((x) => speciesKey(x) === key);
+    return s ? { key, tk, s, act: activity(s, mo) } : null;
+  }).filter(Boolean);
+}
+// Morning: civil dawn to sunrise + 2 h; evening: sunset − 2 h to civil dusk; day between; night the rest.
+function lightWindows(day, lat = 60.2, lon = 32.2) {
+  const s = ASTRO.sun(+day, lat, lon), H = 3600000;
+  const rise = s.rise ?? s.noon - 9 * H, set = s.set ?? s.noon + 9 * H;
+  const dawn = s.dawn ?? rise - H, dusk = s.dusk ?? set + H; // white nights: no civil dusk at all
+  return { 'утро': [dawn, rise + 2 * H], 'день': [rise + 2 * H, set - 2 * H], 'вечер': [set - 2 * H, dusk], 'ночь': [dusk, dawn + 24 * H], white: !s.dusk };
+}
+// The best hours of a species by the share of reports in each part of the day — the next two windows from now.
+function bestHours(tk, ice, now = Date.now()) {
+  const season = tk[ice ? 'ice' : 'open_water'] || {};
+  const tod = Object.fromEntries((season.time_of_day || []).map((x) => [x.name, +x.share || 0]));
+  if (!Object.keys(tod).length) return null;
+  const light = ['утро', 'день', 'вечер'];
+  const top = Math.max(...light.map((k) => tod[k] || 0));
+  const good = light.filter((k) => (tod[k] || 0) >= 0.8 * top);
+  const wins = [];
+  for (const add of [0, 1]) {
+    const w = lightWindows(localDay(now, add));
+    if (good.length === 3) wins.push({ k: 'день', a: w['утро'][0], b: w['вечер'][1], add, all: true });
+    else for (const k of good) wins.push({ k, a: w[k][0], b: w[k][1], add });
+  }
+  const next = wins.filter((x) => x.b > now).sort((x, y) => x.a - y.a).slice(0, 2);
+  return { next, all: good.length === 3, night: tod['ночь'] >= 0.25 ? tod['ночь'] : 0, n: season.n_reports || 0, tod };
+}
+function winText(w, now = Date.now()) {
+  const span = `${fmtTime(w.a)}–${fmtTime(w.b)}`;
+  if (w.a <= now) return `сейчас, до ${fmtTime(w.b)}`;
+  const day = w.add === 0 ? 'сегодня' : 'завтра';
+  return `${day} ${w.all ? 'весь светлый день' : { 'утро': 'утром', 'день': 'днём', 'вечер': 'вечером' }[w.k]} ${span}`;
+}
+// The forecast over one window: the strongest mean wind and gust, and its direction.
+function wxOver(a, b) {
+  const fc = state.wx?.fc;
+  if (!fc) return null;
+  const h = fc.hourly;
+  const ks = h.time.map((t, k) => [Date.parse(t), k]).filter(([t]) => t + 3600000 > a && t < b).map(([, k]) => k);
+  if (!ks.length) return null;
+  const top = ks.reduce((m, k) => (h.wind_speed_10m[k] > h.wind_speed_10m[m] ? k : m), ks[0]);
+  return { wind: Math.round(h.wind_speed_10m[top]), gust: Math.round(Math.max(...ks.map((k) => h.wind_gusts_10m[k]))), dir: h.wind_direction_10m[top], k: top };
+}
+function seasonLine(c, mo) {
+  const v = c.act, prev = activity(c.s, (mo + 10) % 12 + 1), next = activity(c.s, mo % 12 + 1);
+  const ban = bansToday().find((b) => !isMotorBan(b) && b.species.toLowerCase().includes(c.key.toLowerCase().slice(0, 4)));
+  if (ban) return `<b class="v-bad">запрет</b>: ${esc(ban.now)}${ban.area ? ` <span class="muted">(${esc(ban.area)})</span>` : ''}`;
+  if (c.s.protected) return '<b class="v-bad">охраняется — ловить нельзя</b>';
+  const word = ['не сезон', 'слабо', 'хорошо', 'пик'][v];
+  const trend = v && prev > v ? `, сезон на спаде (в ${MONTHS_IN[(mo + 10) % 12]} было лучше)` : v && next > v ? `, сезон набирает силу (в ${MONTHS_IN[mo % 12]} лучше)` : '';
+  return `<b>${word}</b> ${dots(v)}${trend}`;
+}
+function conditionsHtml() {
+  const mo = new Date().getMonth() + 1;
+  const ice = isIceMonth(mo);
+  const list = condSpecies(mo).filter((c) => c.act > 0 || c.key === store.get('ladoga-cond-fish', ''));
+  if (!list.length) return '';
+  list.sort((a, b) => b.act - a.act);
+  const pick = list.find((c) => c.key === store.get('ladoga-cond-fish', '')) || list[0];
+  const hrs = bestHours(pick.tk, ice);
+  const place = wxPlace();
+  const boat = state.settings.boat;
+  const lines = [];
+  lines.push(`<div class="cond-row"><span class="cond-cap">Сезон</span><span>${seasonLine(pick, mo)}</span></div>`);
+  if (hrs) {
+    const when = hrs.next.map((w) => winText(w)).join('; ');
+    lines.push(`<div class="cond-row"><span class="cond-cap">Время</span><span>${hrs.all ? 'весь светлый день, утро и вечер чуть лучше' : when}${hrs.all ? `: ${when}` : ''}${hrs.night ? `. Ночью тоже ловят — ${Math.round(hrs.night * 100)} % отчётов` : ''} <span class="muted small">(по ${hrs.n.toLocaleString('ru-RU')} ${plural(hrs.n, 'отчёту', 'отчётам', 'отчётам')} ${ice ? 'со льда' : 'с открытой воды'})</span></span></div>`);
+  }
+  const water = typeof liveWaterLine === 'function' ? liveWaterLine() : '';
+  if (water) lines.push(`<div class="cond-row"><span class="cond-cap">Вода</span><span>${water}</span></div>`);
+  // Going out: the wind (and the shore wave) over the next good window, for the chosen boat.
+  if (!ice && state.wx?.fc && hrs?.next.length) {
+    const outs = hrs.next.map((w) => {
+      const o = wxOver(Math.max(w.a, Date.now()), w.b);
+      if (!o) return '';
+      const wave = typeof shoreWave === 'function' ? shoreWave(place.lat, place.lon, o.dir, o.wind, o.k) : null;
+      const v = boat ? boatVerdict(boat, o.wind, o.gust, wave?.hs) : null;
+      const cls = v ? ['v-ok', 'v-warn', 'v-bad'][v.level] : '';
+      return `<div>${esc(winText(w).replace(/^сейчас, до/, 'сейчас (до'))}${w.a <= Date.now() ? ')' : ''}: ${rumb(o.dir)} ${o.wind} м/с, порывы ${o.gust}${wave ? `, волна у берега ≈ ${String(wave.hs.toFixed(1)).replace('.', ',')} м` : ''}${v ? ` — <b class="${cls}">${BOATS[boat].of} ${v.word}</b>` : ''}</div>`;
+    }).filter(Boolean);
+    const motorBans = boat && boat !== 'pvc' ? bansToday().filter(isMotorBan) : [];
+    lines.push(`<div class="cond-row"><span class="cond-cap">Выход</span><span>${outs.join('') || 'нет прогноза на эти часы'}
+      ${motorBans.length ? `<div class="small v-bad">С мотором сейчас ловить нельзя: ${esc(motorBanSummary(motorBans))}.</div>` : ''}
+      <div class="seg boat-seg" style="margin-top:6px">${Object.entries(BOATS).map(([k, b]) => `<button type="button" data-set="boat" data-val="${k}" class="${boat === k ? 'on' : ''}">${b.name}</button>`).join('')}</div>
+      ${boat ? '' : '<div class="small muted">Выберите свою лодку — скажу, можно ли на ней выходить.</div>'}</span></div>`);
+  }
+  if (ice && typeof iceRisksHtml === 'function') lines.push(`<div class="cond-row"><span class="cond-cap">Лёд</span><span>${iceRisksHtml(true)}</span></div>`);
+  // For reference only: the Moon and the pressure — what people look for, and what our 23 000 reports do not back.
+  const moon = moonInfo();
+  const fc = state.wx?.fc;
+  let pres = '';
+  if (fc) {
+    const h = fc.hourly, i0 = wxNowIndex(fc), p = h.pressure_msl[i0], p24 = h.pressure_msl[Math.max(0, i0 - 24)];
+    if (p != null) pres = ` Давление ${hPaToMm(p)} мм${p24 != null ? `, за сутки ${Math.round((p - p24) * 0.75) >= 0 ? '+' : '−'}${Math.abs(Math.round((p - p24) * 0.75))}` : ''}.`;
+  }
+  return `<h3 id="cond">Условия дня</h3>
+    <div class="chips">${list.slice(0, 8).map((c) => `<button type="button" class="chip ${c === pick ? 'on' : ''}" data-cond="${esc(c.key)}"><span class="dot" style="background:${speciesColor(c.s)}"></span>${esc(shortName(c.s))} ${dots(c.act)}</button>`).join('')}</div>
+    <div class="card cond">
+      ${lines.join('')}
+      <p class="small muted" style="margin:8px 0 0">${moon.name[0].toUpperCase()}${moon.name.slice(1)}, ${moon.illum} %${moon.transit ? `, в зените в ${fmtTime(moon.transit)}` : ''}.${pres} По 23 тыс. ладожских отчётов ни Луна, ни давление улов не предсказывают — справочно.</p>
+      <div class="btns" style="margin-bottom:0">
+        <button type="button" class="btn small" data-act="filter-fish" data-name="${esc(pick.key)}">${ic('map')}${esc(shortName(pick.s))} на карте</button>
+        <button type="button" class="btn small ghost" data-act="cond-tackle" data-name="${esc(pick.tk.name_ru)}">На что ловить</button>
+      </div>
+    </div>`;
+}
+// «Волховский, Кировский, Всеволожский р-ны — до ледостава; Лодейнопольский — круглый год» from today's motor bans.
+function motorBanSummary(motor) {
+  const district = (c) => (((c.species || '').match(/\(([^)]+)\)/) || [])[1] || c.area || '').replace(/ р-н$/, '');
+  const freeze = motor.filter((c) => /ледостав/.test(c.now)).map(district), always = motor.filter((c) => !/ледостав/.test(c.now)).map(district);
+  const part = (list, tail) => (list.length ? `${list.join(', ')} ${list.length > 1 ? 'р-ны' : 'р-н'} — ${tail}` : '');
+  return [part(freeze, 'до ледостава'), part(always, 'круглый год')].filter(Boolean).join('; ');
+}
+// Official storm and emergency warnings of МЧС (from our server's live.json) that are still in force.
+function officialWarnings() {
+  const now = Date.now();
+  return (state.live?.mchs?.warnings || []).filter((w) => {
+    const to = Date.parse(w.valid_to || ''), from = Date.parse(w.published || w.valid_from || '');
+    return Number.isFinite(to) ? to > now : Number.isFinite(from) && now - from < 36 * 3600000;
+  }).map((w) => ({ title: String(w.title || 'предупреждение').replace(/^ПРЕДУПРЕЖДЕНИЕ\s*/i, 'предупреждение ').toLowerCase().replace(/^./, (c) => c.toUpperCase()), text: w.text || '', url: w.url, emergency: w.level === 'emergency' }));
+}
+// What is closed today, short: each fish ban on its own line, the motor-boat bans of the districts in one.
+function bansTodayCard(bans) {
+  if (!bans.length) return `<div class="card small ok-card">Сезонных запретов на любительский лов сегодня нет. <button type="button" class="btn small ghost" data-page-link="rules">Размеры и нормы</button></div>`;
+  const fish = bans.filter((c) => !isMotorBan(c)), motor = bans.filter(isMotorBan);
+  return `<div class="card small danger-card"><b>Сегодня действует:</b>
+    ${fish.map(banLine).join('')}
+    ${motor.length ? `<div class="ban-line">• <b>Рыбалка с моторных лодок запрещена</b>: ${esc(motorBanSummary(motor))}. <details class="inline"><summary class="small">Где именно</summary>${motor.map(banLine).join('')}</details></div>` : ''}
+    <div style="margin-top:6px"><button type="button" class="btn small ghost" data-page-link="rules">Размеры, нормы и все правила</button></div></div>`;
+}
 function todayHtml() {
   const mo = new Date().getMonth() + 1;
-  const sp = speciesList();
-  const best = sp.filter((s) => activity(s, mo) >= 1).sort((a, b) => activity(b, mo) - activity(a, mo));
   const ice = isIceMonth(mo);
   const hydro = (state.ctx.hydro_calendar || []).find((h) => +h.month === mo);
   const bans = bansToday();
@@ -207,9 +357,23 @@ function todayHtml() {
   const date = new Date().toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' });
   const { installed } = platformInfo();
   const later = (k) => Date.now() < store.get(k, 0);
+  const warnings = state.wx?.fc ? wxWarnings(state.wx) : [];
   return `
     <p class="muted" style="margin-top:0">${esc(date[0].toUpperCase() + date.slice(1))} · ${ice ? '❄ лёд' : '🌊 открытая вода'}</p>
-    ${!navigator.onLine ? `<div class="card small warn-card">Нет сети${state.wx?.at ? ` · погода от ${fmtTime(state.wx.at)}` : ''}. Карта, точки, справочники и навигатор работают${regionSaved() ? '' : ' там, где карта уже была открыта'}.</div>` : ''}
+    ${!navigator.onLine ? `<div class="card small warn-card">Нет сети${state.wx?.at ? ` · прогноз от ${fmtTime(state.wx.at)} ${fmtDay(state.wx.at)}` : ''}. Карта, точки, справочники и навигатор работают${regionSaved() ? '' : ' там, где карта уже была открыта'}.</div>` : ''}
+    ${warnings.map((w) => `<div class="card small wx-${w.level}">${w.level === 'danger' ? `${ic('warning')} <b>Опасно.</b> ` : `${ic('warning')} `}${esc(w.text)}</div>`).join('')}
+    ${officialWarnings().map((w) => `<details class="card small wx-${w.emergency ? 'danger' : 'warn'}"><summary>${ic('warning')} <b>МЧС: ${esc(w.title)}</b></summary><p>${esc(w.text)}</p>${safeUrl(w.url) ? `<a href="${esc(w.url)}" target="_blank" rel="noopener">источник</a>` : ''}</details>`).join('')}
+    ${bansTodayCard(bans)}
+    ${conditionsHtml()}
+    ${weatherBlock()}
+    ${typeof waterIceHtml === 'function' ? waterIceHtml(ice) : ''}
+    ${zones.length ? `<h3>Где искать сейчас</h3>${zones.map(({ z, open }) => listRow({ icon: 'location-on', title: esc(z.name), sub: `${open.slice(0, 3).map((s) => esc(shortName(s))).join(', ')}${z.depth_m ? ` · ${esc(z.depth_m)} м` : ''}`, attrs: `data-act="zone-open" data-zone-id="${esc(z.id)}"` })).join('')}` : ''}
+    ${hydro ? `<h3>Ладога в ${MONTHS_IN[mo - 1]}</h3><p class="small">${esc(hydro.events || '')}</p>` : ''}
+    <div class="btns">
+      <button type="button" class="btn" data-act="month-filter">${ic('play-arrow')}Отчёты за ${MONTHS_FULL[mo - 1]} на карте (${n})</button>
+      <button type="button" class="btn ghost" data-page-link="guide" data-sub="places">Места</button>
+      <button type="button" class="btn ghost" data-act="depth-help">Глубины и эхолот</button>
+    </div>
     ${navigator.onLine && !regionSaved() && !later('ladoga-later-download') ? `<div class="card">
       <b>Скачайте район для работы без сети</b>
       <p class="small">На воде связь пропадает. ~${PACKS[0].estMB() + (PACKS[1].estMB() || 30)} МБ, лучше по Wi‑Fi.</p>
@@ -219,60 +383,147 @@ function todayHtml() {
       <b>Установите на телефон</b>
       <p class="small">Иконка на экране, карта во весь экран, работа без интернета.</p>
       <div class="btns" style="margin-bottom:0"><button type="button" class="btn" data-act="install">Установить</button><button type="button" class="btn ghost" data-act="later" data-key="ladoga-later-install">Позже</button></div>
-    </div>` : ''}
-    ${weatherBlock()}
-    ${bans.length ? `<div class="card small danger-card"><b>Сегодня действует:</b>${bans.map(banLine).join('')}<div style="margin-top:6px"><button type="button" class="btn small ghost" data-page-link="rules">Размеры, нормы и все правила</button></div></div>` : `<div class="card small ok-card">Сезонных запретов на любительский лов сегодня нет. <button type="button" class="btn small ghost" data-page-link="rules">Размеры и нормы</button></div>`}
-    <h3>Что ловится в ${MONTHS_IN[mo - 1]}</h3>
-    ${best.length ? `<div class="chips">${best.slice(0, 8).map((s) => `<button type="button" class="chip" data-act="filter-fish" data-name="${esc(speciesKey(s))}"><span class="dot" style="background:${speciesColor(s)}"></span>${esc(shortName(s))} ${dots(activity(s, mo))}</button>`).join('')}</div>` : '<p class="small muted">Справка по рыбе загружается…</p>'}
-    ${best[0] && methodFor(best[0], ice) ? `<p class="small"><b>${esc(shortName(best[0]))}:</b> ${esc(methodFor(best[0], ice))}</p>` : ''}
-    ${zones.length ? `<h3>Где искать сейчас</h3>${zones.map(({ z, open }) => listRow({ icon: 'location-on', title: esc(z.name), sub: `${open.slice(0, 3).map((s) => esc(shortName(s))).join(', ')}${z.depth_m ? ` · ${esc(z.depth_m)} м` : ''}`, attrs: `data-act="zone-open" data-zone-id="${esc(z.id)}"` })).join('')}` : ''}
-    ${hydro ? `<h3>Вода и лёд</h3><p class="small">${esc(hydro.events || '')}</p>` : ''}
-    <div class="btns">
-      <button type="button" class="btn" data-act="month-filter">${ic('play-arrow')}Отчёты за ${MONTHS_FULL[mo - 1]} на карте (${n})</button>
-      <button type="button" class="btn ghost" data-page-link="guide" data-sub="places">Места</button>
-      <button type="button" class="btn ghost" data-act="depth-help">Глубины и эхолот</button>
-    </div>`;
+    </div>` : ''}`;
+}
+/* ---------- Вода и лёд: the level against the charts, the water temperature, ice risks, official reports ---------- */
+// Signs of danger on the ice from the saved forecast (the last three days and the next one). They only ever add
+// caution: none of them says the ice is safe.
+function iceRisks() {
+  const fc = state.wx?.fc;
+  const out = [];
+  const md = (new Date().getMonth() + 1) * 100 + new Date().getDate();
+  if (fc) {
+    const h = fc.hourly, i0 = wxNowIndex(fc);
+    const past = (n) => Array.from({ length: n }, (_, k) => i0 - n + k).filter((k) => k >= 0);
+    const next = (n) => Array.from({ length: n }, (_, k) => i0 + k).filter((k) => k < h.time.length);
+    const warm = past(72).filter((k) => h.temperature_2m[k] > 0);
+    const tmax = Math.max(...past(72).map((k) => h.temperature_2m[k]));
+    if (warm.length >= 24) out.push({ level: warm.length >= 60 ? 'danger' : 'warn', text: `Оттепель: ${fmtM(warm.length / 24)} сут выше нуля за три дня (до +${Math.round(tmax)} °C). Лёд белеет и пропитывается водой; после трёх суток оттепели прочность падает примерно на четверть (МЧС).` });
+    const rain = [...past(48), ...next(24)].reduce((a2, k) => a2 + (h.rain?.[k] || 0), 0);
+    if (rain >= 1) out.push({ level: 'warn', text: `Дождь на лёд: ${fmtM(rain)} мм за двое суток и прогноз на сутки. На льду вода, лёд рыхлый.` });
+    const cold = Math.min(...next(24).map((k) => h.temperature_2m[k]));
+    if (warm.length >= 12 && cold <= -10) out.push({ level: 'warn', text: `После оттепели мороз до ${Math.round(cold)} °C — ждите новых трещин.` });
+    const off = wxWarnings(state.wx).find((w) => /^Отжимной/.test(w.short || ''));
+    if (off) out.push({ level: 'danger', text: off.text });
+  }
+  if (md >= 310 && md <= 531) out.push({ level: 'warn', text: 'Поздний лёд: прочность снижается, у берегов и в устьях — вода на льду и промоины; весной припай отрывает особенно часто.' });
+  if (md >= 1101 || md <= 110) out.push({ level: 'warn', text: 'Первый лёд тонкий и неровный, особенно в устьях Волхова, Сяси и Свири — там течение подмывает его снизу.' });
+  return out;
+}
+function iceRisksHtml(short = false) {
+  const risks = iceRisks();
+  if (short) {
+    if (!risks.length) return 'явных признаков опасности по прогнозу нет — это не гарантия: смотрите лёд сами и сводки МЧС';
+    const bad = risks.some((r) => r.level === 'danger');
+    return `<b class="${bad ? 'v-bad' : 'v-warn'}">${risks.length} ${plural(risks.length, 'признак', 'признака', 'признаков')} опасности</b> — ниже, в «Лёд»`;
+  }
+  return risks.length ? risks.map((r) => `<div class="card small wx-${r.level === 'danger' ? 'danger' : 'warn'}">${esc(r.text)}</div>`).join('')
+    : '<p class="small">По прогнозу явных признаков опасности нет. Это не гарантия: отрыв бывает и при 40–60 см льда.</p>';
+}
+// «Вода 13,4 °C в открытом озере (22.09), остывает» — from the server's copy of the NOAA MUR analysis.
+function liveWaterLine() {
+  const w = state.live?.water_temp?.mur || state.live?.water_temp;
+  if (!w) return '';
+  if (w.under_ice) return `подо льдом (спутник, ${esc(fmtDate(String(w.date || '').slice(0, 10)))})`;
+  const t = +w.open_lake_c;
+  if (!Number.isFinite(t)) return '';
+  const was = +w.week_ago_c;
+  const trend = Number.isFinite(was) ? (t < was - 0.4 ? `, остывает (неделю назад ${fmtM(was)})` : t > was + 0.4 ? `, прогревается (неделю назад ${fmtM(was)})` : ', держится') : '';
+  return `${fmtM(t)} °C в открытом озере (спутник, ${esc(fmtDate(String(w.date || '').slice(0, 10)))})${trend}. В мелких губах днём на 1–3 °C иначе.`;
+}
+function waterIceHtml(ice) {
+  const live = state.live || {};
+  const lv = levelNow();
+  const g = live.level?.grealm;
+  const m = live.level?.mchs;
+  const out = [];
+  out.push(`<h3 id="water">${ice ? 'Лёд и вода' : 'Вода'}</h3>`);
+  if (ice) out.push(iceRisksHtml());
+  const review = live.mchs?.ice_review;
+  const fcUrl = live.mchs?.forecast?.url;
+  if (review?.text) {
+    const when = review.obs_date || review.date;
+    const places = (review.places || []).filter((p) => p.label || p.cm?.length);
+    out.push(`<details class="card small" ${ice ? 'open' : ''}><summary><b>Обзор льда МЧС${when ? `, ${esc(fmtDate(String(when).slice(0, 10)))}` : ''}</b></summary>
+      ${places.length ? `<div class="ice-places">${places.map((p) => `<button type="button" class="chip" data-act="ice-place" data-lat="${p.lat}" data-lon="${p.lon}" data-name="${esc(`${p.name}: ${p.label || ''}`)}">${esc(p.name)} <b>${esc(p.label || '')}</b></button>`).join('')}</div>` : ''}
+      <p>${esc(review.text)}</p>${review.forecast ? `<p><b>Прогноз:</b> ${esc(review.forecast)}</p>` : ''}
+      ${safeUrl(review.url || fcUrl) ? `<a href="${esc(review.url || fcUrl)}" target="_blank" rel="noopener">источник</a> · ` : ''}<span class="muted">данные на дату наблюдения; лёд меняется за часы; при запрете выхода на лёд — не выходить</span></details>`);
+  }
+  const storm = live.mchs?.storm;
+  if (storm && (storm.wind || storm.waves)) {
+    const waves = storm.waves && typeof storm.waves === 'object' ? Object.entries(storm.waves).map(([k, v]) => `район ${k}: ${v}`).join('; ') : '';
+    const span = [storm.valid_from, storm.valid_to].filter(Boolean).map((t) => `${fmtDay(Date.parse(t))} ${fmtTime(Date.parse(t))}`).join(' – ');
+    out.push(`<details class="card small"><summary><b>Шторм-прогноз МЧС</b>${span ? ` <span class="muted">${esc(span)}</span>` : ''}</summary>${storm.wind ? `<p><b>Ветер:</b> ${esc(storm.wind)}</p>` : ''}${waves ? `<p><b>Волна:</b> ${esc(waves)}</p>` : ''}${storm.visibility ? `<p>${esc(storm.visibility)}</p>` : ''}${safeUrl(fcUrl) ? `<a href="${esc(fcUrl)}" target="_blank" rel="noopener">источник</a>` : ''}</details>`);
+  }
+  const ims = live.ice_season;
+  if (ims?.sectors && (ice || Object.values(ims.sectors).some((x) => x.state !== 'water'))) {
+    const word = { ice: 'лёд', water: 'вода', mixed: 'частично лёд' };
+    out.push(`<p class="small"><b>Лёд по спутнику</b> (IMS, клетки 4 км, ${esc(fmtDate(String(ims.date || '').slice(0, 10)))}): ${Object.values(ims.sectors).map((x) => `${esc(x.name)} — ${word[x.state] || esc(x.state)}`).join('; ')}. Разводья и трещины такой снимок не видит.</p>`);
+  }
+  const water = liveWaterLine();
+  if (water && !ice) out.push(`<p class="small"><b>Температура воды:</b> ${water}</p>`);
+  const vb = live.level?.volgobalt;
+  const fair = (vb?.depths || []).find((x) => /Ладог|Волхов/i.test(x.name || ''));
+  out.push(`<p class="small"><b>Уровень:</b> ${lv < 0 ? `ниже среднего многолетнего на ${fmtM(-lv)} м` : `выше среднего на ${fmtM(lv)} м`} (${esc(levelSourceText())}) — все глубины на картах сейчас ${lv < 0 ? 'меньше' : 'больше'} на столько же; навигатор это учитывает.${g && Number.isFinite(+g.anomaly_m) ? ` По спутнику (${esc(fmtDate(String(g.date || '').slice(0, 10)))}) — на ${fmtM(Math.abs(g.anomaly_m))} м ${g.anomaly_m < 0 ? 'ниже' : 'выше'} обычного для ${MONTHS_GEN[new Date(g.date || Date.now()).getMonth()]} за 1993–2020.` : ''}${m?.text ? ` МЧС: ${esc(String(m.text).slice(0, 220))}` : ''} При южном ветре у южного берега ещё мельче (сгон до 0,6 м), при северном — глубже.</p>`);
+  if (fair?.expected_cm) out.push(`<p class="small"><b>Судовой ход ${esc(String(fair.name).replace(/^Ст\.?\s*Ладога\s*-\s*Устье$/i, 'Старая Ладога — устье Волхова'))}:</b> ожидается ${fmtM(fair.expected_cm / 100)} м при гарантированной ${fmtM((fair.guaranteed_cm || 0) / 100)} м (Волго-Балт${vb.decade ? `, ${['', 'I', 'II', 'III'][vb.decade]} декада` : ''}).</p>`);
+  const nw = live.level?.meteonw;
+  if (nw?.petrokrepost_cm) out.push(`<p class="small muted">Петрокрепость: ${nw.petrokrepost_cm} см над нулём поста (Северо-Западное УГМС, ${esc(fmtTime(Date.parse(nw.time)))}${safeUrl(nw.url) ? `, <a href="${esc(nw.url)}" target="_blank" rel="noopener">meteo.nw.ru</a>` : ''}).</p>`);
+  if (ice) out.push(`<div class="btns"><button type="button" class="btn small ghost" data-act="sat-open">${ic('layers')}Спутник: лёд сегодня</button></div>`);
+  return out.join('');
 }
 function weatherBlock() {
   const wx = state.wx;
   const place = wxPlace();
-  const chips = `<div class="chips" style="margin:6px 0">${WX_PLACES.map((p) => `<button type="button" class="chip ${p.id === place.id ? 'on' : ''}" data-wxplace="${p.id}">${esc(p.name)}</button>`).join('')}</div>`;
+  const chips = `<div class="chips" style="margin:6px 0">${WX_PLACES.map((p) => `<button type="button" class="chip ${p.id === place.id ? 'on' : ''}" data-wxplace="${p.id}">${p.here ? ic('my-location') : ''}${esc(p.name)}</button>`).join('')}</div>`;
   if (!wx?.fc?.current) return `<h3 id="wx">Погода</h3>${chips}<p class="muted">${navigator.onLine ? 'Загружаю прогноз…' : 'Прогноз загрузится, когда появится интернет.'}</p>`;
-  const fc = wx.fc, c = fc.current, h = fc.hourly, i0 = wxNowIndex(fc);
+  const fc = wx.fc, h = fc.hourly, i0 = wxNowIndex(fc);
+  const age = Math.round((Date.now() - wx.at) / 60000);
+  // An old forecast (no signal on the water): «now» is read from its hours, and its age is said up front.
+  const cur = age < 90 ? fc.current : { wind_speed_10m: h.wind_speed_10m[i0], wind_direction_10m: h.wind_direction_10m[i0], wind_gusts_10m: h.wind_gusts_10m[i0], temperature_2m: h.temperature_2m[i0], pressure_msl: h.pressure_msl[i0], cloud_cover: fc.current.cloud_cover };
   const p3 = h.pressure_msl[Math.max(0, i0 - 3)], p24 = h.pressure_msl[Math.max(0, i0 - 24)];
   const trend = (a, b) => {
     if (a == null || b == null) return '';
     const mm = Math.round((a - b) * 0.75);
     return mm === 0 ? 'без изменений' : `${mm > 0 ? '+' : '−'}${Math.abs(mm)} мм`;
   };
-  const wave = wx.sea?.hourly?.wave_height?.[i0];
-  const moon = moonInfo();
-  const sunrise = fc.daily?.sunrise?.find((t) => t.slice(0, 10) === c.time.slice(0, 10)) || fc.daily?.sunrise?.[1];
-  const sunset = fc.daily?.sunset?.find((t) => t.slice(0, 10) === c.time.slice(0, 10)) || fc.daily?.sunset?.[1];
-  const warnings = wxWarnings(wx);
+  const sea = wx.sea, wave = sea?.hourly?.wave_height?.[i0];
+  const cellKm = sea?.latitude != null && wx.at_place ? distM(wx.at_place, { lat: sea.latitude, lon: sea.longitude }) / 1000 : null;
+  const at = wx.at_place || place;
+  const shore = typeof shoreWave === 'function' ? shoreWave(at.lat, at.lon, cur.wind_direction_10m, cur.wind_speed_10m, i0) : null;
+  const moon = moonInfo(), sun = sunTimes(new Date(), at.lat, at.lon);
   const hours = Array.from({ length: 48 }, (_, k) => i0 + k).filter((k) => k < h.time.length && (k - i0) % 3 === 0);
-  const age = Math.round((Date.now() - wx.at) / 60000);
-  return `${warnings.map((w) => `<div class="card small wx-${w.level}">${w.level === 'danger' ? '<b>Опасно.</b> ' : ''}${esc(w.text)}</div>`).join('')}
-    <h3 id="wx">Погода: ${esc(place.name)}</h3>
+  const mm = (k) => h.precipitation?.[k];
+  const today = h.time[i0].slice(0, 10), d1 = new Date(`${today}T12:00`); d1.setDate(d1.getDate() + 1);
+  const tomorrow = `${d1.getFullYear()}-${String(d1.getMonth() + 1).padStart(2, '0')}-${String(d1.getDate()).padStart(2, '0')}`;
+  const dayTag = (k) => { const d = h.time[k].slice(0, 10); return d === today ? '' : +h.time[k].slice(11, 13) < 6 ? 'ночь ' : d === tomorrow ? 'завтра ' : 'послезавтра '; };
+  return `<h3 id="wx">Погода: ${esc(wx.at_place?.name || place.name)}</h3>
     ${chips}
+    ${age > 360 ? `<div class="card small warn-card">${ic('cloud-off')} Прогноз от ${fmtTime(wx.at)} ${fmtDay(wx.at)} — ${fmtDur(Date.now() - wx.at)} назад. Обновится, когда появится сеть.</div>` : ''}
     <div class="wx-now">
-      <div class="wx-big">${windArrow(c.wind_direction_10m, 30)}<div><b>${Math.round(c.wind_speed_10m)} м/с</b><span>${rumb(c.wind_direction_10m)}, порывы ${Math.round(c.wind_gusts_10m)}</span></div></div>
-      <div class="wx-big"><div><b>${Math.round(c.temperature_2m)}°</b><span>облачность ${Math.round(c.cloud_cover)}%</span></div></div>
+      <div class="wx-big">${windArrow(cur.wind_direction_10m, 30)}<div><b>${Math.round(cur.wind_speed_10m)} м/с</b><span>${rumb(cur.wind_direction_10m)}, порывы ${Math.round(cur.wind_gusts_10m)}</span></div></div>
+      <div class="wx-big"><div><b>${Math.round(cur.temperature_2m)}°</b><span>облачность ${Math.round(cur.cloud_cover ?? 0)} %</span></div></div>
     </div>
     <dl class="kv">
-      <dt>Давление</dt><dd>${hPaToMm(c.pressure_msl)} мм рт. ст.; за 3 ч ${trend(h.pressure_msl[i0], p3)}, за сутки ${trend(h.pressure_msl[i0], p24)}</dd>
-      ${wave != null ? `<dt>Волна</dt><dd>${String(wave.toFixed(1)).replace('.', ',')} м (модель; в губах круче, чем в открытом озере)</dd>` : ''}
-      ${sunrise ? `<dt>Солнце</dt><dd>восход ${sunrise.slice(11, 16)}, закат ${sunset ? sunset.slice(11, 16) : '—'}</dd>` : ''}
-      <dt>Луна</dt><dd>${moon.name}, освещена на ${moon.illum}%</dd>
+      <dt>Давление</dt><dd>${hPaToMm(cur.pressure_msl)} мм рт. ст.; за 3 ч ${trend(h.pressure_msl[i0], p3)}, за сутки ${trend(h.pressure_msl[i0], p24)}</dd>
+      ${shore ? `<dt>Волна у берега</dt><dd>≈ ${String(shore.hs.toFixed(1)).replace('.', ',')} м, период ${String(shore.ts.toFixed(0))} с — оценка по ветру и разгону (${Math.round(shore.fetch_km)} км открытой воды с ${rumb(cur.wind_direction_10m)}), ±30 %</dd>` : ''}
+      ${wave != null ? `<dt>Волна в озере</dt><dd>${String(wave.toFixed(1)).replace('.', ',')} м — модель${cellKm != null && cellKm > 3 ? `: открытое озеро в ${Math.round(cellKm)} км к ${rumb(bearing(at, { lat: sea.latitude, lon: sea.longitude }))}` : ''}; в губах волна короче и круче</dd>` : ''}
+      ${sun.rise ? `<dt>Солнце</dt><dd>рассвет ${fmtTime(sun.dawn ?? sun.rise)}, восход ${fmtTime(sun.rise)}, закат ${fmtTime(sun.set)}, темно с ${fmtTime(sun.dusk ?? sun.set)}</dd>` : ''}
+      <dt>Луна</dt><dd>${moon.name}, освещена на ${moon.illum} %${moon.rise ? `, восход ${fmtTime(moon.rise)}` : ''}${moon.set ? `, заход ${fmtTime(moon.set)}` : ''}</dd>
     </dl>
-    <div class="wx-hours">${hours.map((k) => `<div class="wx-h ${h.wind_speed_10m[k] >= 8 ? 'windy' : ''}">
-      <span class="t">${k - i0 < 24 ? '' : 'завтра '}${h.time[k].slice(11, 16)}</span>
+    <div class="wx-hours">${hours.map((k) => {
+      const t = h.time[k], fog = h.visibility?.[k] != null && h.visibility[k] < 1000, storm = (h.weather_code?.[k] || 0) >= 95;
+      const shoreK = typeof shoreWave === 'function' ? shoreWave(at.lat, at.lon, h.wind_direction_10m[k], h.wind_speed_10m[k], k) : null;
+      const waveK = shoreK ? shoreK.hs : sea?.hourly?.wave_height?.[k];
+      return `<div class="wx-h ${h.wind_speed_10m[k] >= 8 || h.wind_gusts_10m[k] >= 13 ? 'windy' : ''}">
+      <span class="t">${dayTag(k)}${t.slice(11, 16)}</span>
       ${windArrow(h.wind_direction_10m[k], 16)}
       <b>${Math.round(h.wind_speed_10m[k])}</b><span class="g">${Math.round(h.wind_gusts_10m[k])}</span>
       <span>${Math.round(h.temperature_2m[k])}°</span>
-      <span class="rain">${h.precipitation_probability?.[k] >= 30 ? `${h.precipitation_probability[k]}%` : ''}</span>
-    </div>`).join('')}</div>
-    <p class="small muted">Ветер в м/с: крупно — средний, мелко — порывы; стрелка — куда дует. Прогноз Open-Meteo, обновлён ${age < 1 ? 'только что' : age < 120 ? `${age} мин назад` : `в ${fmtTime(wx.at)} ${fmtDay(wx.at)}`}. Отжимной для южного берега — ветер с юго-востока, юга и юго-запада.</p>
+      <span class="rain" title="осадки">${storm ? '⚡' : fog ? '🌫' : h.precipitation_probability?.[k] >= 30 ? `💧${h.precipitation_probability[k]}%` : mm(k) >= 0.2 ? `💧${String(mm(k).toFixed(1)).replace('.', ',')}` : ''}</span>
+      ${waveK != null ? `<span class="wv" title="волна, м">${String(waveK.toFixed(1)).replace('.', ',')} м</span>` : ''}
+    </div>`;
+    }).join('')}</div>
+    <p class="small muted">Ветер в м/с: крупно — средний, мелко — порывы; стрелка — куда дует. 💧 — вероятность осадков, 🌫 — туман, ⚡ — гроза; внизу — волна${shore ? ' у берега (оценка)' : ' (модель, открытое озеро)'}. Прогноз Open-Meteo, обновлён ${age < 1 ? 'только что' : age < 120 ? `${age} мин назад` : `в ${fmtTime(wx.at)} ${fmtDay(wx.at)}`}. Отжимной для южного берега — ветер с юго-востока, юга и юго-запада.</p>
     ${(state.ctx.practical?.weather?.hazards || []).length ? `<details><summary>Опасная погода на Ладоге</summary>${state.ctx.practical.weather.hazards.map((h2) => `<div class="card small"><b>${esc(h2.title)}</b><br>${esc(h2.text)}</div>`).join('')}</details>` : ''}
     ${(state.ctx.practical?.weather?.thresholds || []).length ? `<details><summary>Цифры: ветер, волна, лёд</summary><table class="rules-table">${state.ctx.practical.weather.thresholds.map((t2) => `<tr><td>${esc(t2.what)}</td><td>${esc(t2.value)}</td></tr>`).join('')}</table></details>` : ''}
     <div class="btns"><button type="button" class="btn small ghost" data-act="wx-refresh">${ic('restart-alt')}Обновить прогноз</button></div>`;
@@ -520,6 +771,7 @@ function mePointsHtml() {
     return listRow({ icon: '', title: `<span class="tag-dot" style="background:${t.color}"></span> ${esc(p.name)}`, sub: `${t.label} · ${p.t ? `${fmtDay(p.t)} ${fmtTime(p.t)}` : ''}${me ? ` · ${fmtDist(distM(me, p))} от вас` : ''}`, attrs: `data-act="mine-open" data-id="${esc(p.id)}"`, right: ic('chevron-right') });
   };
   return `
+    ${state.car ? listRow({ icon: 'directions-car', title: 'Машина', sub: `отмечена ${fmtDay(state.car.t)} ${fmtTime(state.car.t)}${me ? ` · ${fmtDist(distM(me, state.car))} от вас` : ''}`, attrs: 'data-act="car-card"', right: ic('chevron-right') }) : ''}
     <div class="chips" style="margin:4px 0 8px">${chips.map(([k, t]) => `<button type="button" class="chip ${f === k ? 'on' : ''}" data-points-filter="${k}">${esc(t)}</button>`).join('')}</div>
     ${f === 'all' || f === 'fav' ? `${f === 'all' && favs.length ? '<h3>Избранные отчёты</h3>' : ''}${favs.map(({ m, idx }) => listRow({ icon: 'star-fill', title: esc(pointTitle(m)), sub: `${esc(state.R[m.r[0]].sector || '')}${me ? ` · ${fmtDist(distM(me, m))} от вас` : ''}`, attrs: `data-open-marker="${idx}"` })).join('')}${f === 'fav' && !favs.length ? '<p class="muted">Нажмите «Сохранить» в карточке точки — она появится здесь.</p>' : ''}` : ''}
     ${f !== 'fav' ? `${f === 'all' && mine.length ? '<h3>Мои точки и метки</h3>' : ''}${mine.slice().reverse().map(rowMine).join('')}${!mine.length ? '<p class="muted">Своих точек пока нет. Долгое нажатие на карту (или правый клик) — «Новая точка»; «Метка» при записи трека и в навигаторе сохраняет место сразу.</p>' : ''}` : ''}
@@ -545,7 +797,11 @@ function offlineHtml() {
     ? `<button type="button" class="btn ghost" data-act="pack-stop">${ic('pause')}Пауза</button>`
     : `<button type="button" class="btn" data-act="region-download">${ic('download')}${core?.complete ? 'Обновить' : core ? 'Докачать' : `Скачать район · ~${mainMB} МБ`}</button>`;
   const saved = regionSaved();
+  // The charts and the depth data were rebuilt after this phone saved them: the saved copy is the old one.
+  const built = Date.parse(state.ctx.depth?.tiles?.generated || '') || 0;
+  const stale = saved && charts?.at && charts.at < built;
   return `
+    ${stale ? `<div class="card small warn-card">${ic('warning')} Навигационные карты и данные обновились ${esc(fmtDate(state.ctx.depth.tiles.generated))} (точнее совмещены листы). В телефоне — прежние: нажмите «Обновить», лучше по Wi‑Fi (~${mainMB} МБ).</div>` : ''}
     <div class="card">
       <b>Чтобы всё работало без интернета</b>
       <div class="checklist">
@@ -645,7 +901,7 @@ function moreHtml() {
     <button type="button" class="btn small ghost" data-act="geo-off">${ic('location-disabled')}Выключить геопозицию сейчас</button>
     <h3>Приложение</h3>
     <div class="btns">
-      ${installed ? '' : `<button type="button" class="btn small" data-act="install">${ic('download')}Установить на телефон</button>`}
+      ${installed ? '' : `<button type="button" class="btn small" data-act="install">${ic('download')}${platformInfo().iOS || platformInfo().android ? 'Установить на телефон' : 'Установить приложение'}</button>`}
       <button type="button" class="btn small ghost" data-act="depth-help">Глубины и эхолот</button>
       <button type="button" class="btn small ghost" data-act="keys">${ic('keyboard')}Клавиши (ПК)</button>
       <button type="button" class="btn small ghost" data-act="copy-link">Ссылка на карту</button>
@@ -668,7 +924,7 @@ function moreHtml() {
       <p class="small">${['A', 'B', 'C'].map((c) => `<span class="badge ${c}">${c}</span> ${esc(CLASS_TEXT[c])} — ${(st.by_class || []).find((x) => x[0] === c)?.[1] || 0}`).join('<br>')}</p>
     </details>
     ${sources.length ? `<details><summary class="small">Что проверено при сборе: использовано ${used.length}, без данных ${sources.length - used.length}</summary>${sources.map((x) => `<div class="small" style="margin:4px 0">${safeUrl(x.url) ? `<a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.name || x.url)}</a>` : esc(x.name)} <span class="muted">— ${esc(x.status)}${x.note ? `: ${esc(x.note)}` : ''}</span></div>`).join('')}</details>` : ''}
-    <p class="small muted">Карта: Leaflet (BSD), leaflet-rotate (GPL-3.0), Leaflet.markercluster (MIT), Leaflet.heat (BSD). Подложки: Esri World Imagery, OpenStreetMap, OpenTopoMap, nakarte.me. Навигационные карты ГУНиО МО, Генштаб — сканы из открытых архивов. Не для судовождения.</p>`;
+    <p class="small muted">Карта: Leaflet (BSD), leaflet-rotate (GPL-3.0), Leaflet.markercluster (MIT), Leaflet.heat (BSD). Подложки: Esri World Imagery, OpenStreetMap, OpenTopoMap, nakarte.me; снимок дня — NASA EOSDIS GIBS. Навигационные карты ГУНиО МО, Генштаб — сканы из открытых архивов. Волна у берега — формулы SPM-1984, глубины озера вне карт — GLDB v2 (Choulga et al., CC BY). Уровень и сводки — Волго-Балт, G-REALM (NASA/USDA), ГУ МЧС по ЛО, Северо-Западное УГМС, температура воды — MUR SST (NASA JPL). Не для судовождения.</p>`;
 }
 
 /* ---------- Глубины и эхолот (help sheet) ---------- */
@@ -734,10 +990,14 @@ function layersTabHtml() {
     ${state.ctx.depth?.isolines ? `<label class="check switch"><span><b>Изобаты через 1 м</b><br><span class="small muted">1–8, 10, 12, 15, 20… м по той же модели, с подписями глубин</span></span><input type="checkbox" data-overlay="gridIso" ${o.gridIso ? 'checked' : ''}></label>` : ''}
     ${state.ctx.depth?.chart_isobaths ? `<label class="check switch"><span>Изобаты 2–30 м, снятые с карт</span><input type="checkbox" data-overlay="chartIso" ${o.chartIso ? 'checked' : ''}></label>` : ''}
     <label class="check switch"><span><b>Мои замеры глубин</b><br><span class="small muted">глубины из ваших меток и загруженных файлов эхолота, зелёные подписи</span></span><input type="checkbox" data-overlay="myDepth" ${o.myDepth ? 'checked' : ''}></label>
+    ${state.ctx.depth?.vvp ? `<label class="check switch"><span><b>Глубины ВВП 2023 — устье Волхова</b><br><span class="small muted">300 свежих отметок фарватера и бара (электронная карта ВВП 2023 по схеме Волго-Балта); фарватер и устье на 1,4–1,8 м глубже старых карт. Числа приведены к нулю карт — сейчас мельче на ${fmtM(-levelNow())} м</span></span><input type="checkbox" data-overlay="vvp" ${o.vvp ? 'checked' : ''}></label>` : ''}
     ${state.ctx.depth?.community ? `<label class="check switch"><span>Любительские карты глубин Garmin<br><span class="small muted">freegpsmap 2007, С. Новиков 2005: оцифровка тех же карт ГУНиО, дополняет их в бухте Петрокрепость, у истока Невы и в глубокой части; отметки подписями при приближении, камни ✚</span></span><input type="checkbox" data-overlay="community" ${o.community ? 'checked' : ''}></label>` : ''}
     ${(state.ctx.depth?.overlays || []).length ? `<label class="check switch"><span>Старая армейская карта 1:100 000<br><span class="small muted">Генштаб 1970–80-х, справочно: навигационные карты и модель дна точнее</span></span><input type="checkbox" data-overlay="genshtab" ${o.genshtab ? 'checked' : ''}></label>
       ${o.genshtab ? `<input type="range" id="genshtabOpacity" min="0.25" max="1" step="0.05" value="${state.genshtabOpacity}">` : ''}` : ''}
     <button type="button" class="btn small ghost" data-act="depth-help">Глубины и эхолот — как пользоваться</button>
+    <h3>Спутник</h3>
+    <label class="check switch"><span><b>Снимок дня (NASA)</b><br><span class="small muted">вчерашний или сегодняшний снимок 250 м: кромка льда, разводья, отрыв; облака закрывают — листайте дни</span></span><input type="checkbox" data-overlay="satDay" ${o.satDay ? 'checked' : ''}></label>
+    ${o.satDay ? satControlsHtml() : ''}
     <h3>На карте</h3>
     <label class="check switch"><span>Группировать близкие точки</span><input type="checkbox" data-overlay="cluster" ${o.cluster ? 'checked' : ''}></label>
     <label class="check switch"><span>Сезонные зоны рыбы<br><span class="small muted">месяц: ${MONTHS_FULL[state.seasonMonth - 1]}</span></span><input type="checkbox" data-overlay="seasonZones" ${o.seasonZones ? 'checked' : ''}></label>
@@ -752,6 +1012,20 @@ function layersTabHtml() {
       ${extra.map(([k, ov]) => `<label class="check switch"><span>${esc(ov.name)}${ov.note ? `<br><span class="small muted">${esc(ov.note)}</span>` : ''}</span><input type="checkbox" data-overlay="${k}" ${o[k] ? 'checked' : ''}></label>`).join('')}
       <div class="small muted">Прозрачность старых карт</div>
       <input type="range" id="overlayOpacity" min="0.2" max="1" step="0.05" value="${state.overlayOpacity}">` : ''}`;
+}
+// Day ◀ ▶, ice/water colours, and the picture kept for the ice without signal.
+function satControlsHtml() {
+  const date = SAT_DAY.date || satLatest();
+  const snap = store.get('ladoga-sat-snap', null);
+  return `<div class="row" style="margin:4px 0 8px">
+      <button type="button" class="icon-btn" data-act="sat-prev" aria-label="День раньше">${ic('chevron-left')}</button>
+      <b style="min-width:7.5em;text-align:center">${esc(fmtDate(date))}</b>
+      <button type="button" class="icon-btn" data-act="sat-next" aria-label="День позже" ${date >= satLatest() ? 'disabled' : ''}>${ic('chevron-right')}</button>
+      <button type="button" class="chip ${SAT_DAY.bands ? 'on' : ''}" data-act="sat-bands">Лёд / вода</button>
+    </div>
+    <p class="small muted" style="margin-top:0">${SAT_DAY.bands ? 'Лёд и снег — бирюзовые, открытая вода — чёрная, облака — белёсые.' : 'Как видно глазом из космоса. Толщину льда снимок не показывает, узкие трещины не видны.'} Снимок — на момент пролёта (около 11–12 ч), лёд уносит за часы. NASA EOSDIS GIBS.</p>
+    <div class="btns" style="margin-top:0"><button type="button" class="btn small ghost" data-act="sat-save">${ic('download')}Сохранить снимок района</button></div>
+    ${snap ? `<p class="small">Сохранён снимок за ${esc(fmtDate(snap.date))}${snap.bands ? ' (лёд/вода)' : ''} — без сети он и покажется.</p>` : ''}`;
 }
 function kindSwatch(k) {
   if (CATCH_KINDS.has(k)) return `<span class="pin ${k === 'observation' ? 'obs' : ''}" style="display:inline-block;width:12px;height:12px;${k === 'observation' ? 'border-color:#2f9e44' : 'background:#2f9e44'}"></span>`;
@@ -815,7 +1089,7 @@ function filterTabHtml() {
 // Quick sets of layers: depths for reading the bottom, the fishing of this month, a clean map.
 function applyPreset(k) {
   const o = state.overlays;
-  for (const x of ['heat', 'seasonZones', 'rules', 'charts', 'chartIso', 'isobaths', 'genshtab', 'radius', 'shade', 'gridIso', 'community']) o[x] = false;
+  for (const x of ['heat', 'seasonZones', 'rules', 'charts', 'chartIso', 'isobaths', 'genshtab', 'radius', 'shade', 'gridIso', 'community', 'satDay', 'vvp']) o[x] = false;
   if (k === 'depth') {
     if (state.ctx.depth?.shade?.url) { o.shade = true; o.gridIso = !!state.ctx.depth?.isolines; } else { o.charts = true; o.chartIso = true; }
     o.lines = true;
@@ -1100,7 +1374,7 @@ function handleAction(act, el) {
       const b = parts.reduce((acc, c) => acc.extend(c.b), L.latLngBounds(parts[0].bounds));
       closeAll();
       setFollowFree();
-      setTimeout(() => { map.fitBounds(b, fitPadding()); if (!chartState.tiles.length) map.setZoom(Math.max(map.getZoom(), parts[0].zmin)); }, 50);
+      setTimeout(() => map.fitBounds(b, fitPadding()), 50);
       break;
     }
     case 'base-set': setBase(d.base); $$('.base-tile').forEach((b) => b.classList.toggle('on', b.dataset.base === d.base)); break;
@@ -1113,8 +1387,8 @@ function handleAction(act, el) {
     } break;
     case 'sos-locate': geoStart({ reason: 'sos' }); toast('Определяю место…'); break;
     case 'zone-open': { const z = (state.ctx.season_zones || []).find((x) => x.id === d.zoneId); if (z) openZoneCard(z); break; }
-    case 'region-download': runPacks(['core', 'charts']); refreshPage('me'); break;
-    case 'pack-run': runPacks([d.pack]); refreshPage('me'); break;
+    case 'region-download': runPacks(['core', 'charts'], { refresh: !!packInfo('core')?.complete }); refreshPage('me'); break;
+    case 'pack-run': runPacks([d.pack], { refresh: !!packInfo(d.pack)?.complete }); refreshPage('me'); break;
     case 'pack-stop': offline.cancel = true; break;
     case 'pack-delete': confirmSheet({ title: 'Удалить сохранённые карты?', text: 'Приложение, точки и треки останутся. Карты района снова будут грузиться из интернета — на воде без сети их не будет.', ok: 'Удалить', onOk: deletePacks }); break;
     case 'wx-refresh': el.textContent = 'Обновляю…'; loadWeather(true); break;
@@ -1156,6 +1430,14 @@ function handleAction(act, el) {
     case 'filters-reset': resetFilters(); refreshLayersSheet(); break;
     case 'preset': applyPreset(d.preset); break;
     case 'depth-help': openDepthHelp(); break;
+    case 'sat-prev': satShift(-1); break;
+    case 'sat-next': satShift(1); break;
+    case 'sat-bands': SAT_DAY.bands = !SAT_DAY.bands; satDayLayer(); refreshLayersSheet(); break;
+    case 'sat-save': saveSatSnapshot(); break;
+    case 'car-card': openCarCard(); break;
+    case 'ice-place': { closeAll(); setFollowFree(); const la = +d.lat, lo = +d.lon; setTimeout(() => { map.setView([la, lo], 12); selectRing(la, lo); toast(d.name, 6000); }, 60); break; }
+    case 'sat-open': state.overlays.satDay = true; SAT_DAY.bands = true; applyOverlays(); closeAll(); if (map.getZoom() > 10) map.setZoom(10); toast('Снимок NASA: лёд бирюзовый, вода чёрная. Дни листаются в «Слоях»', 5000); break;
+    case 'cond-tackle': state.tackleFish = d.name; state.tackleSeason = isIceMonth(new Date().getMonth() + 1) ? 'ice' : 'open_water'; showPage('guide', 'tackle'); break;
     case 'install': install(); break;
     case 'keys': openKeysHelp(); break;
     case 'later': store.set(d.key, Date.now() + 7 * 86400000); refreshPage('today'); break;
@@ -1179,6 +1461,7 @@ function onContentClick(e) {
   if (d.pointsFilter) { state.pointsFilter = d.pointsFilter; refreshPage('me'); return; }
   if (d.set) { setSetting(d.set, d.val); $$(`[data-set="${d.set}"]`).forEach((b) => b.classList.toggle('on', b === t)); return; }
   if (d.wxplace) { store.set('ladoga-wx-place', d.wxplace); loadWeather(true); return; }
+  if (d.cond) { store.set('ladoga-cond-fish', d.cond); refreshPage('today'); return; }
   if (d.search) { pickSearch(t); return; }
   if (d.tseason) { state.tackleSeason = d.tseason; refreshPage(); return; }
   if (d.tfish) { state.tackleFish = d.tfish; refreshPage(); return; }
@@ -1189,6 +1472,7 @@ function onContentClick(e) {
   if (d.src) { toggleSet(f.sources, d.src); t.classList.toggle('on'); render(); return; }
   if (d.smonth) { state.seasonMonth = +d.smonth; refreshPage(); drawSeasonZones(); return; }
   if (d.tag && typeof onTagPick === 'function') { onTagPick(d.tag, t); return; }
+  if (d.iceKind) { const l = topLayer(); if (l) l.iceKind = d.iceKind; $$('[data-ice-kind]').forEach((b) => b.classList.toggle('on', b === t)); return; }
   if (d.act) handleAction(d.act, t);
 }
 function onContentChange(e) {
@@ -1213,7 +1497,7 @@ function onContentChange(e) {
     if (k === 'rules') drawRules();
     if (k === 'tracks' && typeof drawSavedTracks === 'function') drawSavedTracks();
     applyOverlays();
-    if (k === 'genshtab') refreshLayersSheet();
+    if (k === 'genshtab' || k === 'satDay') refreshLayersSheet();
   }
 }
 function onContentInput(e) {

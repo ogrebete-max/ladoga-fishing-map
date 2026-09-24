@@ -1,0 +1,13 @@
+# Hourly run of ladoga-live.service; a run missed while the server was down is made up once after boot.
+[Unit]
+Description=Hourly live.json collection for the Ladoga fishing map
+
+[Timer]
+OnCalendar=hourly
+RandomizedDelaySec=300
+AccuracySec=1min
+Persistent=true
+Unit=ladoga-live.service
+
+[Install]
+WantedBy=timers.target

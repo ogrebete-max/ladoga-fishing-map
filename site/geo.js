@@ -34,6 +34,7 @@ function startDemo() {
   Object.assign(geo, { watchId: 'demo', me: null, hist: [], sog: null, cog: null, cogVec: null, fastSince: 0, courseRot: false });
   layers.me.clearLayers();
   Object.assign(DEMO, { on: true, seg: 0, t: 0, pos: { lat: DEMO.route[0][0], lon: DEMO.route[0][1] } });
+  $('#demoTag').hidden = false;
   startNav({ lat: 60.298, lon: 32.107, title: 'Варецкие банки · демо' });
   clearInterval(DEMO.timer);
   DEMO.timer = setInterval(demoTick, 1000);
@@ -60,6 +61,7 @@ function stopDemo() {
   if (!DEMO.on) return;
   clearInterval(DEMO.timer);
   DEMO.on = false;
+  $('#demoTag').hidden = true;
   if (geo.watchId === 'demo') { geo.watchId = null; geo.me = null; geo.sog = null; geo.cog = null; layers.me.clearLayers(); }
   if (geo.follow !== 'free') setFollow('free');
   updateLocateBtn();
@@ -67,10 +69,16 @@ function stopDemo() {
 }
 
 /* ---------- the dark screen: recording and navigation go on, the OLED screen spends almost nothing ---------- */
-const saver = { on: false, tapT: 0 };
+const saver = { on: false, tapT: 0, pendingT: 0 };
 function showSaver() {
   if (saver.on) return;
-  if (topLayer()?.kind === 'modal') closeTop();
+  const top = topLayer();
+  if (top?.kind === 'modal') {
+    // Called from a sheet: the sheet closes through Back first, and the screen goes dark once it has
+    // (the popstate of that Back must not wake it at once — ui.js asks saverAfterBack()).
+    if (top.attached) { saver.pendingT = Date.now(); closeTop(); return; }
+    closeTop();
+  }
   saver.on = true;
   const el = document.createElement('div');
   el.className = 'saver'; el.id = 'saver';
@@ -79,6 +87,12 @@ function showSaver() {
   document.body.appendChild(el);
   map.getContainer().style.visibility = 'hidden';
   updateSaver();
+}
+// The Back that closed the sheet under «Погасить экран»: true once, within 2 s of the tap.
+function saverAfterBack() {
+  const t = saver.pendingT;
+  saver.pendingT = 0;
+  return !!t && Date.now() - t < 2000;
 }
 function hideSaver() {
   if (!saver.on) return;
@@ -93,7 +107,7 @@ function updateSaver() {
   const me = geo.me, t = trk.cur;
   let main = '', sub = '';
   if (nav.on) {
-    main = me ? (nav.hold ? `Снос ${Math.round(nav.d || 0)} м` : fmtDist(nav.d ?? distM(me, nav.target))) : '—';
+    main = me ? (nav.hold ? `Снос ${Math.round(nav.d || 0)} м` : fmtDist(nav.retrace ? nav.retrace.left : nav.d ?? distM(me, nav.target))) : '—';
     sub = me ? `на ${Math.round(nav.brg ?? bearing(me, nav.target))}° ${rumb(nav.brg ?? 0)} · ${speedValue(geo.sog)} ${speedUnit()}` : 'Жду GPS';
   } else if (t) {
     main = fmtClock(trackDur(t));
@@ -258,7 +272,8 @@ window.addEventListener('deviceorientationabsolute', onOrientation);
 window.addEventListener('deviceorientation', onOrientation);
 
 /* ---------- the «me» marker: a dot with a direction cone; in navigation a boat arrow ---------- */
-const meMarker = L.marker([0, 0], { interactive: false, keyboard: false, rotateWithView: true, rotation: 0, zIndexOffset: 1000 });
+// Made with its own icon: the default one would first ask for vendor/images/marker-icon.png (there is none).
+const meMarker = L.marker([0, 0], { icon: meIcon('dot'), interactive: false, keyboard: false, rotateWithView: true, rotation: 0, zIndexOffset: 1000 });
 const meCircle = L.circle([0, 0], { radius: 1, color: '#1c7ed6', weight: 1, fillOpacity: 0.14, interactive: false });
 function meIcon(kind, stale, cone) {
   if (kind === 'boat') return L.divIcon({ className: `boat${stale ? ' stale' : ''}`, html: '<svg viewBox="0 0 100 100"><path d="M50 6 82 90 50 71 18 90Z"/></svg>', iconSize: [32, 32], iconAnchor: [16, 16] });
@@ -396,8 +411,19 @@ function placeBoat(z) {
   const yShare = rotated ? 0.72 : 0.5;
   const want = L.point((fr.left + fr.right) / 2, fr.top + yShare * (fr.bottom - fr.top));
   const boat = map.latLngToContainerPoint([me.lat, me.lon]);
-  // A screen-space shift (the map pane itself never rotates), cheaper than a new view on every fix.
-  if (boat.distanceTo(want) >= 3) map.panBy(boat.subtract(want), { animate: false });
+  // A screen-space shift (the map pane itself never rotates), cheaper than a new view on every fix — but never
+  // past the edge of the area: Leaflet would pull the map straight back, and the two fought on every fix
+  // (the map jerked once a second when someone was near the edge, e.g. in Saint Petersburg).
+  if (boat.distanceTo(want) >= 3) {
+    const mid = map.getSize().divideBy(2);
+    const to = map._limitCenter(map.containerPointToLatLng(mid.add(boat.subtract(want))), map.getZoom(), map.options.maxBounds);
+    const shift = map.latLngToContainerPoint(to).subtract(mid);
+    if (Math.abs(shift.x) >= 1 || Math.abs(shift.y) >= 1) map.panBy(shift, { animate: false });
+  }
+  if (!geo.outsideSaid && !MAX_BOUNDS.contains([me.lat, me.lon])) {
+    geo.outsideSaid = true;
+    toast('Вы за пределами карты района — она держится у своего края', 5000);
+  }
   if (z != null && z !== map.getZoom()) {
     geo.progZoom = true;
     map.setZoomAround([me.lat, me.lon], z, { animate: true });
@@ -419,14 +445,26 @@ map.on('zoomstart', () => {
   nav.autoZoomPaused = true; nav.lastTouch = Date.now();
   updateRecenter(); updateZoomAuto();
 });
-// +/− on screen and on the keyboard.
+// +/− on screen and on the keyboard. Leaflet silently drops a zoom asked for during a zoom animation (250 ms):
+// a press then counts from where the animation is going and waits for its end, so every press is a step.
+geo.zoomWant = null;
 function userZoom(dir) {
   if (nav.on) { nav.autoZoomPaused = true; nav.lastTouch = Date.now(); updateRecenter(); }
-  const z = Math.max(map.getMinZoom(), Math.min(map.getMaxZoom(), map.getZoom() + dir));
+  const from = geo.zoomWant ?? (map._animatingZoom ? map._animateToZoom : map.getZoom());
+  const z = Math.max(map.getMinZoom(), Math.min(map.getMaxZoom(), from + dir));
+  if (z === from) return;
+  geo.zoomWant = z;
+  applyUserZoom();
+  updateZoomAuto();
+}
+function applyUserZoom() {
+  const z = geo.zoomWant;
+  if (z == null) return;
+  if (map._animatingZoom) { map.once('zoomend', () => setTimeout(applyUserZoom, 0)); return; }
+  geo.zoomWant = null;
   if (z === map.getZoom()) return;
   if (geo.follow !== 'free' && geo.me) { geo.progZoom = true; map.setZoomAround([geo.me.lat, geo.me.lon], z); }
   else map.setZoom(z);
-  updateZoomAuto();
 }
 function updateZoomAuto() {
   const el = $('#zoomAuto');
@@ -445,7 +483,7 @@ function startNav(target) {
   Object.assign(nav, {
     on: true, target: { lat: +target.lat, lon: +target.lon, title: target.title || 'Точка' }, start: null, d: null, arrived: false, hold: false,
     zSpeed: 17, zoomCand: null, autoZoomPaused: false, firstPlace: true, lastTouch: 0, followBefore: null,
-    offSince: 0, offCourse: null, hazard: null, banner: '', depth: null, depthT: 0, left: null,
+    offSince: 0, offCourse: null, hazard: null, banner: '', depth: null, depthT: 0, left: null, retrace: null,
   });
   store.set('ladoga-nav', { ...nav.target, t: Date.now() });
   if (!again) openLayer({ kind: 'nav', guard: navGuard, onClose: stopNav }, { replace });
@@ -556,8 +594,11 @@ function navOnFix() {
   const me = geo.me, t = nav.target;
   if (me) {
     if (!nav.start) nav.start = { lat: me.lat, lon: me.lon };
-    nav.d = distM(me, t); nav.brg = bearing(me, t);
-    navLine.setLatLngs([[me.lat, me.lon], [t.lat, t.lon]]);
+    nav.d = distM(me, t);
+    retraceStep(me);
+    const aim = navAim();
+    nav.brg = bearing(me, aim);
+    navLine.setLatLngs(nav.retrace ? [[me.lat, me.lon], ...nav.retrace.pts.slice(nav.retrace.j).map((q) => [q.lat, q.lon])] : [[me.lat, me.lon], [t.lat, t.lon]]);
     const fresh = Date.now() - me.t < 10000;
     // Arrival: the radius never smaller than the GPS error allows.
     const R = Math.max(+state.settings.arrivalR || 30, Math.min(100, 1.5 * me.acc));
@@ -572,7 +613,7 @@ function navOnFix() {
     }
     if (nav.arrived && !nav.hold && Date.now() - nav.arriveT > 20000) nav.hold = true;
     // Off course: moving, far from the point, heading more than 30° away for 10 s.
-    if (courseValid() && nav.d > 200) {
+    if (courseValid() && nav.d > 200 && !(nav.retrace && nav.retrace.off < 40)) {
       const diff = angleDiff(geo.cog, nav.brg);
       if (Math.abs(diff) > 30) { if (!nav.offSince) nav.offSince = Date.now(); if (Date.now() - nav.offSince > 10000) nav.offCourse = diff; }
       else if (Math.abs(diff) < 15) { nav.offSince = 0; nav.offCourse = null; }
@@ -646,13 +687,50 @@ function wholeRoute() {
   updateRecenter();
 }
 
+/* ---------- «Назад по треку»: the way home is the way you came ----------
+   The navigator leads along the recorded line back to its start: the arrow points at a spot ~150 m ahead on the
+   line, the distance is what is left along it. In fog or a blizzard on the ice this is the safe way back. */
+function startRetrace(t) {
+  const raw = t.segs.flat();
+  const pts = [];
+  for (let i = raw.length - 1; i >= 0; i -= 1) {
+    const q = { lat: raw[i][0], lon: raw[i][1] };
+    if (!pts.length || distM(pts[pts.length - 1], q) >= 12) pts.push(q);
+  }
+  if (pts.length < 2) { toast('В треке пока нет пройденного пути'); return; }
+  const cum = [0];
+  for (let i = 1; i < pts.length; i += 1) cum.push(cum[i - 1] + distM(pts[i - 1], pts[i]));
+  const end = pts[pts.length - 1];
+  startNav({ lat: end.lat, lon: end.lon, title: `Начало трека: ${t.name || fmtTime(t.start)}` });
+  nav.retrace = { pts, cum, i: 0, j: 0, left: cum[cum.length - 1] };
+  toast(`Назад по треку: ${fmtDist(cum[cum.length - 1])} до начала`, 4000);
+  navOnFix();
+}
+// Where the arrow points: the spot ahead on the track, or the target itself.
+const navAim = () => (nav.retrace?.via || nav.target);
+function retraceStep(me) {
+  const r = nav.retrace;
+  if (!r) return;
+  // The nearest point of the line from the last one reached on (never back), wider if we left the line.
+  let best = r.i, bd = Infinity;
+  const scan = (from, to) => { for (let i = from; i < to; i += 1) { const dd = distM(me, r.pts[i]); if (dd < bd) { bd = dd; best = i; } } };
+  scan(r.i, Math.min(r.pts.length, r.i + 120));
+  if (bd > 300) scan(0, r.pts.length);
+  r.i = best;
+  let j = best;
+  while (j < r.pts.length - 1 && r.cum[j] - r.cum[best] < 150) j += 1;
+  r.j = j; r.via = r.pts[j];
+  r.left = r.cum[r.cum.length - 1] - r.cum[best] + bd;
+  r.off = bd;
+}
+
 /* ---------- the navigation screen ---------- */
 function updateNavArrow() {
   if (!nav.on) return;
   const me = geo.me;
   const box = $('#ntArrowBox'), arrow = $('#ntArrow');
   if (!me) { box.classList.add('north'); arrow.style.transform = 'rotate(0deg)'; return; }
-  const brg = bearing(me, nav.target);
+  const brg = bearing(me, navAim());
   const hd = headingNow();
   box.classList.toggle('north', !hd);
   arrow.style.transform = `rotate(${Math.round(hd ? angleDiff(hd.h, brg) : brg)}deg)`;
@@ -675,11 +753,12 @@ function updateNavFields(force = false) {
   }
   const age = now - me.t;
   const stale = age > 10000;
-  const d = distM(me, t), brg = bearing(me, t);
+  const d = nav.retrace ? nav.retrace.left : distM(me, t), brg = bearing(me, navAim());
   if (nav.hold) {
+    // The big figure stays a distance (to the point = the drift); the words say what it is.
     const from = bearing(t, me);
-    setText('#ntDist', `Снос ${Math.round(d)} м`);
-    setText('#ntLine2', `${rumb(from)} от точки · держу точку`);
+    setText('#ntDist', `${Math.round(d)} м`);
+    setText('#ntLine2', `Снос: ${rumb(from)} от точки · держу точку`);
   } else {
     setText('#ntDist', fmtDist(d));
     let eta = '';
@@ -688,7 +767,7 @@ function updateNavFields(force = false) {
       if (vmg * 3.6 >= 1) { const ms = (d / vmg) * 1000; eta = `в ${fmtTime(now + ms)} (${fmtDur(ms)})`; }
       else if (vmg < -0.3) eta = 'удаляетесь';
     }
-    setText('#ntLine2', `на ${Math.round(brg)}° ${rumb(brg)}${eta ? ` · ${eta}` : ''}`);
+    setText('#ntLine2', `${nav.retrace ? 'по треку · ' : ''}на ${Math.round(brg)}° ${rumb(brg)}${eta ? ` · ${eta}` : ''}`);
   }
   // GPS quality: colour and words, not colour alone.
   gpsDot.className = `gps-dot ${stale ? 'r' : me.acc <= 10 ? 'g' : me.acc <= 30 ? 'y' : 'r'}`;
@@ -705,14 +784,15 @@ function updateNavFields(force = false) {
     nav.depthT = now;
     nav.depth = depthAt(me);
   }
-  const dep = nav.depth;
-  const depText = !dep ? '—' : dep.value != null ? String(dep.value).replace('.', ',') : `${dep.min}–${dep.max}`;
+  // The big figure is the water there is NOW (the chart depth plus today's level against the charts' zero) —
+  // the same figure the shoal warning counts; the chart's own is under it.
+  const dep = nav.depth, lv = levelNow();
+  const depText = !dep ? '—' : dep.value != null ? fmtM(Math.max(0, dep.value + lv)) : `${fmtM(Math.max(0, dep.min + lv), 0)}–${fmtM(Math.max(0, dep.max + lv), 0)}`;
   setText('#nfDepth', depText);
   const depUnit = $('#nfDepth')?.nextElementSibling;
-  const du = dep ? 'м · по карте' : 'нет карты';
+  const du = !dep ? 'нет карты' : `м сейчас · карта ${dep.value != null ? fmtM(dep.value) : `${dep.min}–${dep.max}`}`;
   if (depUnit && depUnit.textContent !== du) depUnit.textContent = du;
-  // The warning counts the water there is now: the lake is ~0,9 m below the charts' mean level in 2026.
-  $('#nfDepthBox').classList.toggle('shallow', !!dep && (dep.value ?? dep.max) + levelNow() <= (+state.settings.shallow || 2));
+  $('#nfDepthBox').classList.toggle('shallow', !!dep && (dep.value ?? dep.max) + lv <= (+state.settings.shallow || 2));
   updateNavArrow();
   navBanner();
   updateRecenter();
@@ -745,6 +825,15 @@ function setBanner(b) {
   if (nav.banner !== b.key) { nav.banner = b.key; el.className = `nav-banner ${b.cls}`; el.innerHTML = b.html; }
   el.hidden = false;
 }
+// The real heights of the navigation panel and the banner go to CSS (--nt-h, --nb-h): the banner, the compass
+// and SOS stand below them however the text wraps (a two-row arrival banner used to cover SOS).
+const navSizes = new ResizeObserver(() => {
+  for (const [id, prop] of [['navTop', '--nt-h'], ['navBanner', '--nb-h']]) {
+    const el = document.getElementById(id);
+    if (!el.hidden && el.offsetHeight) document.body.style.setProperty(prop, `${el.offsetHeight}px`);
+  }
+});
+navSizes.observe($('#navTop')); navSizes.observe($('#navBanner'));
 // «Завершить»: the confirmation and the navigation leave together.
 function endNav() {
   const i = ui.stack.findIndex((l) => l.kind === 'nav');
@@ -779,6 +868,8 @@ function openNavMore() {
     key: 'nav-more', title: 'Навигация',
     body: () => `
       ${listRow({ icon: 'route', title: 'Весь путь', sub: 'я и точка на одном экране', attrs: 'data-act="nav-whole"' })}
+      ${state.car && nav.target?.title !== 'Машина' ? listRow({ icon: 'directions-car', title: 'К машине', sub: geo.me ? `${fmtDist(distM(geo.me, state.car))} по прямой` : 'отмеченная машина', attrs: 'data-act="car-go"' }) : ''}
+      ${trk.cur && trk.cur.segs.flat().length > 1 && !nav.retrace ? listRow({ icon: 'restart-alt', title: 'Назад по своему треку', sub: 'та же дорога, что пришли: в туман и в пургу', attrs: 'data-act="retrace"' }) : ''}
       ${listRow({ icon: 'restart-alt', title: 'Погасить экран', sub: 'навигация идёт, чёрный экран бережёт заряд; двойное касание — назад', attrs: 'data-act="saver"' })}
       <h3>Карта</h3>
       <div class="seg">${[['north', 'Север'], ['course', 'По курсу'], ['compass', 'По компасу']].map(([k, t]) => `<button type="button" data-act="nav-orient" data-val="${k}" class="${cur === k ? 'on' : ''}">${t}</button>`).join('')}</div>
@@ -795,6 +886,7 @@ function openNavMore() {
   });
 }
 function onSettingChange(key) {
+  if (key === 'boat') refreshPage('today');
   if (key === 'units') updateNavFields(true);
   if (key === 'autoZoom') { updateZoomAuto(); if (nav.on) { nav.firstPlace = true; navOnFix(); } }
   if (key === 'orient' && nav.on && geo.follow !== 'free') setFollow(state.settings.orient === 'course' ? 'course' : 'north');
@@ -833,7 +925,8 @@ async function wakeUpdate() {
       wakeLock = await navigator.wakeLock.request('screen');
       wakeLock.addEventListener('release', () => { wakeLock = null; });
     } catch {
-      if (!store.get('ladoga-wake-warned', false)) { store.set('ladoga-wake-warned', true); toast('Экран может погаснуть — отключите автоблокировку на время рыбалки', 6000); }
+      // After the toast that started this (e.g. «Пишу трек…»), not over it.
+      if (!store.get('ladoga-wake-warned', false)) { store.set('ladoga-wake-warned', true); setTimeout(() => toast('Экран может погаснуть — отключите автоблокировку на время рыбалки', 6000), 5500); }
     }
   } else if (!want && wakeLock) {
     try { await wakeLock.release(); } catch { /* ignore */ }
