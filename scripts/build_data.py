@@ -408,6 +408,157 @@ def tile_index():
     return {"generated": idx.get("generated"), "layers": layers}
 
 
+# ---------- How long a record stays true (research/freshness.md) ----------
+# The owner's rule (24.09.2026): a place where fish were caught stays on the map for good and new ones are added,
+# but what was true for a day, a week or one winter must not look current years later. Every record gets `life`:
+#   perm    постоянно: дно, камни, рифы, затонувшие суда, маяки, острова, спуски, базы; места ловли;
+#   spring  каждую весну (`months`): промысловые мережи на корюшку в устьях — только в апреле–мае;
+#   season  до конца того сезона (`until`): сети, топляки, трещины и промоины, «дальше не ехать»;
+#   event   несколько дней (`until` = дата + EVENT_DAYS): происшествие;
+#   gone    больше не нужно (`until` = дата записи): закрыто, лодка на старом фото.
+# The app hides a record after `until` and outside `months` unless the filter asks for the archive: nothing is
+# deleted. Incidents and ice notes whose cause is the ice itself make the «опасный лёд» zones (ice_zones()).
+EVENT_DAYS = 10
+# Incidents that say nothing about the place: a broken snowmobile, lost in fog, an injury.
+NON_ICE = re.compile(r"поломк|заглох|сломал|застрял|заблуд|потерял\w*\s+направлен|травм|не\s+могл\w+\s+вернуться|"
+                     r"не\s+смог\w*\s+найти|пропал\w*\s+при", re.I)
+ICE_CAUSES = [
+    ("detach", re.compile(r"отрыв|оторва|дрейф|унесл|отколов|отнесл", re.I)),
+    ("fall", re.compile(r"провал|ушл[аио]?\s+под|ушёл\s+под|полынью|майна", re.I)),
+    ("crack", re.compile(r"трещин|треска|разрушени\w*\s+льда|разрушающ|отрезал|отрезан", re.I)),
+    ("polynya", re.compile(r"промоин|полынь|с\s+выходом\s+воды|вода\s+на\s+льду", re.I)),
+    ("weak", re.compile(r"опасн\w+\s+льд|не\s+ехать|тонк\w+\s+л[её]д", re.I)),
+]
+ICE_NOTE = re.compile(r"трещин|промоин|полынь|не\s+ехать|л[её]д\s*~?\d", re.I)
+GONE = {  # title fragment → why it is not shown any more
+    "Рыболовецкий бот ССП-34": "лодка на фото 2020 г., не место",
+    "рыбокомбинат (1975)": "старое фото 1975 г.",
+    "«Камнеломня»": "поворот к парковке закрыт шлагбаумом",
+}
+
+
+def winter_end(d: str) -> str:
+    y, m = int(d[:4]), int(d[5:7]) if len(d) >= 7 else 1
+    return f"{y + 1 if m >= 10 else y}-04-30"
+
+
+def plus_days(d: str, n: int) -> str:
+    y, m = int(d[:4]), int(d[5:7]) if len(d) >= 7 else 1
+    day = int(d[8:10]) if len(d) >= 10 else 1
+    return date.fromordinal(date(y, m, day).toordinal() + n).isoformat()
+
+
+def ice_causes(r) -> list[str]:
+    text = f"{r.get('title', '')} {r.get('comment', '')}"
+    return [k for k, rx in ICE_CAUSES if rx.search(text)]
+
+
+def lifetime(r):
+    """(life, until, months, why) of one record — see the table above."""
+    title, d, kind = r.get("title") or "", r.get("date") or "", r["kind"]
+    text = f"{title} {r.get('comment', '')}"
+    for frag, why in GONE.items():
+        if frag in title:
+            return "gone", d or "2000-01-01", None, why
+    if kind == "ice_incident":
+        if NON_ICE.search(title) or not ice_causes(r):
+            return "event", plus_days(d, EVENT_DAYS), None, "случай к месту не относится: поломка, заблудились, травма"
+        return "event", plus_days(d, EVENT_DAYS), None, "давний случай — место в слое «Опасный лёд»"
+    if kind == "hazard":
+        if re.search(r"топляк", title, re.I):
+            return "season", f"{d[:4]}-11-30", None, "топляки уносит — точки одного лета"
+        if re.search(r"мереж", title, re.I):
+            return "spring", None, [4, 5], "только весной: мережи на корюшку ставят в апреле–мае"
+        if re.search(r"сети", title, re.I) and not d:
+            return "gone", "2000-01-01", None, "сети переставляют каждый сезон, схема без даты"
+        if re.search(r"опрокидыван|перевернул", text, re.I) and d:
+            return "event", plus_days(d, EVENT_DAYS), None, "происшествие — важно несколько дней"
+        if d and ICE_NOTE.search(text):
+            return "season", winter_end(d), None, "лёд той зимы — место в слое «Опасный лёд»"
+    return "perm", None, None, ""
+
+
+ZONE_LINK_M = 2500
+FLOW = re.compile(r"канал|(?<![а-яё])р\.\s|реки|река|проток|устье Волхова|Свир|Сясь|Валгом", re.I)
+ZONE_ALIAS = {
+    "Губа Черная Сатама": "Чёрное", "Осиновецкая гавань": "Осиновец", "Осиновецкий маяк": "Осиновец",
+    "р. Волхов у Креницы": "Волхов у Новой Ладоги", "протока у Волховца": "Волхов у Новой Ладоги",
+    "Новая Ладога, канал судозавода": "Волхов у Новой Ладоги", "канал у Немятово-2": "Волхов у Новой Ладоги",
+    "Сясьстрой, р. Валгома": "Сясьстрой", "р. Сясь в Сясьстрое": "Сясьстрой", "р. Свирь у Свирицы": "Свирица",
+    "Шлиссельбург, Новоладожский канал": "Новоладожский канал в Шлиссельбурге",
+    "южн. берег бухты Петрокрепость": "бухта Петрокрепость, южный берег", "Лаврово–Шальдиха": "Лаврово — Шальдиха",
+}
+ZONE_TITLE_NAME = {"Две промоины в 4 км от Лаврово к Зеленцу": "Лаврово — Зеленцы", "Промоина в устье Волхова": "Волхов у Новой Ладоги",
+                   "Трещины с выходом воды у Осиновца": "Осиновец", "Промоина у Леднево (сводка МЧС)": "Леднево"}
+
+
+def ice_zones(reports):
+    """«Опасный лёд»: places where the ice itself hurt people (fell through, a floe broke off, cracks, polynyas),
+    from the incident reports and the anglers' ice notes of all years. One case is history; the place is what stays.
+    Single-link clusters (≤ ZONE_LINK_M) of the same water (lake / river or canal with a current)."""
+    items = []
+    for i, r in enumerate(reports):
+        if r["kind"] not in ("ice_incident", "hazard") or r.get("life") not in ("event", "season"):
+            continue
+        causes = ice_causes(r)
+        if r["kind"] == "ice_incident" and NON_ICE.search(r.get("title") or ""):
+            continue
+        if r["kind"] == "hazard" and not ICE_NOTE.search(f"{r.get('title', '')} {r.get('comment', '')}"):
+            continue
+        if not causes:
+            continue
+        items.append({"i": i, "lat": r["lat"], "lon": r["lon"], "flow": bool(FLOW.search(r.get("title") or "")), "causes": causes})
+    groups = []
+    for it in items:
+        near = [g for g in groups if g[0]["flow"] == it["flow"] and any(haversine_m(it["lat"], it["lon"], o["lat"], o["lon"]) <= ZONE_LINK_M for o in g)]
+        if near:
+            keep = near[0]
+            for g in near[1:]:
+                keep.extend(g)
+                groups.remove(g)
+            keep.append(it)
+        else:
+            groups.append([it])
+    zones = []
+    for g in groups:
+        rs = [reports[x["i"]] for x in g]
+        if not any(r["kind"] == "ice_incident" for r in rs) and len(rs) < 2:
+            continue  # one old crack is not a place yet
+        votes = Counter()
+        for r in rs:
+            t = r.get("title") or ""
+            if t in ZONE_TITLE_NAME:
+                votes[ZONE_TITLE_NAME[t]] += 1
+            elif ":" in t:
+                p = re.sub(r"\s*\(.*?\)", "", t.split(":")[0]).strip()
+                votes[ZONE_ALIAS.get(p, p)] += 1
+        ranked = votes.most_common()
+        name = ranked[0][0] if ranked else sector_of(rs[0]["lat"], rs[0]["lon"])
+        if len(ranked) > 1 and ranked[1][1] * 3 >= ranked[0][1] and ranked[1][0] not in name:
+            name = f"{name} — {ranked[1][0]}"
+        lat = sum(r["lat"] for r in rs) / len(rs)
+        lon = sum(r["lon"] for r in rs) / len(rs)
+        radius = max(haversine_m(lat, lon, r["lat"], r["lon"]) + min(r.get("prec") or 500, 1500) / 2 for r in rs)
+        causes = defaultdict(list)
+        for x in g:
+            for c in x["causes"]:
+                causes[c].append(int(reports[x["i"]]["date"][:4]))
+        zid = f"z{len(zones) + 1}"
+        cases = []
+        for x in sorted(g, key=lambda x: reports[x["i"]]["date"], reverse=True):
+            r = reports[x["i"]]
+            r["icez"] = zid
+            t = re.sub(r"\s*\(\d{4}\)\s*$", "", r.get("title") or "")
+            t = t.split(":", 1)[1].strip() if ":" in t else t
+            cases.append({"d": r["date"], "t": short(t, 70), "u": r.get("url") or "", "s": r["src"]})
+        zones.append({"id": zid, "name": name, "lat": round(lat, 5), "lon": round(lon, 5),
+                      "r": int(round(min(3500, max(800, radius)) / 100) * 100), "flow": g[0]["flow"],
+                      "causes": {k: sorted(v) for k, v in causes.items()}, "n": len(g),
+                      "last": max(r["date"] for r in rs), "cases": cases})
+    zones.sort(key=lambda z: (-z["n"], z["name"]))
+    return zones
+
+
 def load_json(name):
     path = RESEARCH / f"{name}.json"
     if name in SKIP or not path.exists():
@@ -500,6 +651,12 @@ def main():
         m["kind"] = "fishing" if "fishing" in kinds else kinds[0]
 
     for r in reports:
+        life, until, months, why = lifetime(r)
+        r.update({"life": life, "until": until, "months": months, "why": why})
+    zones = ice_zones(reports)
+    for r in reports:
+        if r["life"] == "perm":
+            r.pop("life")  # the default: saves 13 bytes on 1900 records
         for k in [k for k, v in r.items() if v in ("", None, [])]:
             r.pop(k)
         r["lat"], r["lon"] = round(r["lat"], 6), round(r["lon"], 6)
@@ -516,6 +673,8 @@ def main():
             "by_source": Counter(r["src"] for r in reports).most_common(),
             "by_kind": Counter(r["kind"] for r in reports).most_common(),
             "by_class": Counter(r["cls"] for r in reports).most_common(),
+            "by_life": Counter(r.get("life", "perm") for r in reports).most_common(),
+            "ice_zones": len(zones),
             "dropped": dict(dropped),
         },
     }
@@ -557,6 +716,7 @@ def main():
         "wind_effects": bio.get("wind_effects") or [],
         "regulations": rules.get("regulations") or {},
         "ice_rules": rules.get("ice_rules") or [],
+        "ice_zones": zones,
         "timeseries": timeseries(),
         "tackle": tackle_context(),
         "practical": {k: practical.get(k) for k in ("boat_rules", "ice_rules_general", "weather", "emergency", "coverage")},
