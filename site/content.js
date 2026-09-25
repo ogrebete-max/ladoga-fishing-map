@@ -299,8 +299,9 @@ function conditionsHtml() {
       return `<div>${esc(winText(w).replace(/^сейчас, до/, 'сейчас (до'))}${w.a <= Date.now() ? ')' : ''}: ${rumb(o.dir)} ${o.wind} м/с, порывы ${o.gust}${wave ? `, волна у берега ≈ ${String(wave.hs.toFixed(1)).replace('.', ',')} м` : ''}${v ? ` — <b class="${cls}">${BOATS[boat].of} ${v.word}</b>` : ''}</div>`;
     }).filter(Boolean);
     const motorBans = boat && boat !== 'pvc' ? bansToday().filter(isMotorBan) : [];
+    const motorSeasonal = motorBanParts(motorBans).seasonal.size > 0;
     lines.push(`<div class="cond-row"><span class="cond-cap">Выход</span><span>${outs.join('') || 'нет прогноза на эти часы'}
-      ${motorBans.length ? `<div class="small v-bad">С мотором сейчас ловить нельзя: ${esc(motorBanSummary(motorBans))}.</div>` : ''}
+      ${motorSeasonal ? `<div class="small v-bad">С мотором сейчас ловить нельзя: ${esc(motorBanSummary(motorBans))}.</div>` : ''}
       <div class="seg boat-seg" style="margin-top:6px">${Object.entries(BOATS).map(([k, b]) => `<button type="button" data-set="boat" data-val="${k}" class="${boat === k ? 'on' : ''}">${b.name}</button>`).join('')}</div>
       ${boat ? '' : '<div class="small muted">Выберите свою лодку — скажу, можно ли на ней выходить.</div>'}</span></div>`);
   }
@@ -324,12 +325,32 @@ function conditionsHtml() {
       </div>
     </div>`;
 }
-// «Волховский, Кировский, Всеволожский р-ны — до ледостава; Лодейнопольский — круглый год» from today's motor bans.
+// Today's motor-boat bans in two kinds (25.09.2026: the card said «Волховский … р-ны — круглый год» in any month):
+// the seasonal bans of whole districts — from the ice break-up to 20 June, from 15 September to the freeze-up — and
+// the year-round bans of single waters (the Свирская губа, the Neva source, a few rivers), which are listed apart.
+const motorDistrict = (c) => (((c.species || '').match(/\(([^)]+)\)/) || [])[1] || c.area || '').replace(/ р-н$/, '');
+function motorBanParts(motor) {
+  const seasonal = new Map(), always = [];
+  for (const c of motor) {
+    for (const part of String(c.now || '').split('; ')) {
+      if (!part.trim()) continue;
+      if (/круглый год/i.test(part)) {
+        const place = part.replace(/^\s*круглый год:\s*/i, '').replace(/:\s*круглый год\s*$/i, '').replace(/Ладожское озеро \(Свирская губа\)/, 'Свирская губа')
+          .replace(/\s*\((?:от|так в тексте)[^)]*\)/g, '').trim();
+        if (place && !always.includes(place)) always.push(place);
+      } else {
+        const period = (part.match(/(с распаления льда до \d+ [а-яё]+|с \d+ [а-яё]+ до ледостава)/i) || [])[1] || part.replace(/^[^:]*:\s*/, '');
+        if (!seasonal.has(period)) seasonal.set(period, new Set());
+        seasonal.get(period).add(motorDistrict(c));
+      }
+    }
+  }
+  return { seasonal, always };
+}
+// «Волховский, Кировский, Всеволожский р-ны — с 15 сентября до ледостава (обычно середина декабря)»
 function motorBanSummary(motor) {
-  const district = (c) => (((c.species || '').match(/\(([^)]+)\)/) || [])[1] || c.area || '').replace(/ р-н$/, '');
-  const freeze = motor.filter((c) => /ледостав/.test(c.now)).map(district), always = motor.filter((c) => !/ледостав/.test(c.now)).map(district);
-  const part = (list, tail) => (list.length ? `${list.join(', ')} ${list.length > 1 ? 'р-ны' : 'р-н'} — ${tail}` : '');
-  return [part(freeze, 'до ледостава'), part(always, 'круглый год')].filter(Boolean).join('; ');
+  const { seasonal } = motorBanParts(motor);
+  return [...seasonal.entries()].map(([period, ds]) => `${[...ds].join(', ')} ${ds.size > 1 ? 'р-ны' : 'р-н'} — ${period}${/ледостава/.test(period) ? ' (обычно середина декабря)' : /распаления/.test(period) ? ' (лёд сходит обычно во второй половине апреля)' : ''}`).join('; ');
 }
 // Official storm and emergency warnings of МЧС (from our server's live.json) that are still in force.
 function officialWarnings() {
@@ -341,11 +362,14 @@ function officialWarnings() {
 }
 // What is closed today, short: each fish ban on its own line, the motor-boat bans of the districts in one.
 function bansTodayCard(bans) {
-  if (!bans.length) return `<div class="card small ok-card">Сезонных запретов на любительский лов сегодня нет. <button type="button" class="btn small ghost" data-page-link="rules">Размеры и нормы</button></div>`;
   const fish = bans.filter((c) => !isMotorBan(c)), motor = bans.filter(isMotorBan);
+  const { seasonal, always } = motorBanParts(motor);
+  const alwaysLine = always.length ? `<div class="ban-line small">Круглый год моторы запрещены только в отдельных местах: ${esc(always.join('; '))}.</div>` : '';
+  if (!fish.length && !seasonal.size) return `<div class="card small ok-card">Сезонных запретов на любительский лов сегодня нет.${alwaysLine} <button type="button" class="btn small ghost" data-page-link="rules">Размеры и нормы</button></div>`;
   return `<div class="card small danger-card"><b>Сегодня действует:</b>
     ${fish.map(banLine).join('')}
-    ${motor.length ? `<div class="ban-line">• <b>Рыбалка с моторных лодок запрещена</b>: ${esc(motorBanSummary(motor))}. <details class="inline"><summary class="small">Где именно</summary>${motor.map(banLine).join('')}</details></div>` : ''}
+    ${seasonal.size ? `<div class="ban-line">• <b>Рыбалка с моторных лодок запрещена</b>: ${esc(motorBanSummary(motor))}. <details class="inline"><summary class="small">Где именно</summary>${motor.map(banLine).join('')}</details></div>` : ''}
+    ${alwaysLine}
     <div style="margin-top:6px"><button type="button" class="btn small ghost" data-page-link="rules">Размеры, нормы и все правила</button></div></div>`;
 }
 function todayHtml() {
@@ -450,6 +474,15 @@ function liveWaterLine() {
   const trend = Number.isFinite(was) ? (t < was - 0.4 ? `, остывает (неделю назад ${fmtM(was)})` : t > was + 0.4 ? `, прогревается (неделю назад ${fmtM(was)})` : ', держится') : '';
   return `${fmtM(t)} °C в открытом озере (спутник, ${esc(fmtDate(String(w.date || '').slice(0, 10)))})${trend}. В мелких губах днём на 1–3 °C иначе.`;
 }
+// «Лёд по отчётам рыбаков»: the thickness and the cracks anglers wrote about this week (scripts/live/fetch_reports.py
+// takes them out of the reports: «лёд 15 см», «трещины», «вода на льду»).
+function iceReportsHtml() {
+  const since = Date.now() - 7 * 86400000;
+  const list = state.R.filter((r) => r.ice && (r.ice.cm || r.ice.flags?.length) && r.date && Date.parse(r.date) >= since)
+    .sort((a, b) => String(b.date).localeCompare(String(a.date))).slice(0, 6);
+  if (!list.length) return '';
+  return `<p class="small"><b>Лёд по отчётам рыбаков за неделю:</b> ${list.map((r) => `${esc(r.place || r.sector || '')} — ${[r.ice.cm ? `${esc(r.ice.cm)} см` : '', (r.ice.flags || []).map(esc).join(', ')].filter(Boolean).join(', ')} (${esc(ageText(r.date) || fmtDate(r.date))})`).join('; ')}. Лёд меняется за часы — проверяйте пешнёй.</p>`;
+}
 function waterIceHtml(ice) {
   const live = state.live || {};
   const lv = levelNow();
@@ -459,6 +492,7 @@ function waterIceHtml(ice) {
   out.push(`<h3 id="water">${ice ? 'Лёд и вода' : 'Вода'}</h3>`);
   if (ice) {
     out.push(iceRisksHtml());
+    out.push(iceReportsHtml());
     out.push(`<button type="button" class="btn small" data-act="${guard.on ? 'guard-sheet' : 'guard-on'}">${ic('warning')}${guard.on ? 'Сторож места включён' : 'Сторож льдины: предупредить, если место относит'}</button>`);
   }
   const review = live.mchs?.ice_review;
