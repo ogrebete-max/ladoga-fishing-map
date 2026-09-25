@@ -95,6 +95,12 @@ FUEL_LABELS = {
     "locationByAddress": "«Искать АЗС по адресу»", "locationRetry": "«Попробовать ещё раз» (место)", "openInSafari": "«Открыть в Safari»",
     "routeLink": "маршрут из карточки", "yandexLink": "Яндекс из карточки", "trafficLink": "пробки из карточки", "copyCoords": "скопировать координаты",
     "code-share": "поделиться кодом клуба", "invite-share": "отправить приглашение", "toast": "всплывающее сообщение",
+    "drive-pick-close": "«Готово» в настройках навигатора", "drive-untap": "назад к своей АЗС в навигаторе", "drive-list": "список из навигатора",
+    "problemWithLog": "журнал к сообщению вкл/выкл", "copyLink": "скопировать ссылку", "locationCopyLink": "скопировать ссылку (место)",
+    "collectorDetails": "«Подробнее» об источниках", "own-back": "назад из «Свои»", "own-more": "ещё АЗС в «Свои»",
+    "return-yes": "подтвердил возврат в клуб", "return-no": "отклонил возврат в клуб", "invite-revoke": "отозвать приглашение",
+    "login-code": "код входа участнику", "remove": "удалить из клуба", "award": "благодарность клуба", "grant": "добавить приглашения",
+    "ban": "исключить из клуба", "unban": "вернуть в клуб", "leaflet-popup-close-button": "закрыть подсказку на карте",
 }
 FUEL_FEATURES = ["screen-drive", "screen-map", "screen-list", "locateButton", "card-main", "map-pin", "mark-seen", "compose-grade",
                  "drive-mark", "drive-send-look", "drive-answer", "verdict", "thanks-station", "own", "drive-own", "drive-route",
@@ -248,6 +254,14 @@ def fmt_t(ms):
         return ""
 
 
+def fmt_rt(rt):
+    """The server's time of a report (ISO, UTC) in Moscow time, like the rest of the page."""
+    try:
+        return datetime.fromisoformat(rt).astimezone(MSK).strftime("%d.%m %H:%M")
+    except (TypeError, ValueError):
+        return str(rt or "")[5:16].replace("T", " ")
+
+
 def app_stats(batches):
     people = {}
     feat = collections.Counter()
@@ -307,7 +321,7 @@ def render_stats(root, days):
                    f"<b>{len(reports)}</b> сообщений о проблемах <b>{sum(errors.values())}</b> ошибок</div>")
         if reports:
             out.append("<h3>Что пишут о проблемах</h3><ul>" + "".join(
-                f"<li><span class=m>{e(r.get('rt', '')[5:16].replace('T', ' '))}</span> {e(r.get('who') or '')} «{e(r.get('text') or '')}»</li>"
+                f"<li><span class=m>{e(fmt_rt(r.get('rt', '')))}</span> {e(r.get('who') or '')} «{e(r.get('text') or '')}»</li>"
                 for r in reports[-30:][::-1]) + "</ul>")
         if people:
             rows = []
