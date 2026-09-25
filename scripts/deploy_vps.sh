@@ -90,8 +90,8 @@ fi
 if [[ -f "$SRC/scripts/logs/ladoga-logs.service" ]]; then
   if ! cmp -s "$SRC/scripts/logs/ladoga-logs.service" /etc/systemd/system/ladoga-logs.service; then
     install -m 644 "$SRC/scripts/logs/ladoga-logs.service" /etc/systemd/system/; systemctl daemon-reload
-    systemctl enable --quiet ladoga-logs.service; systemctl restart ladoga-logs.service
-  else systemctl enable --now --quiet ladoga-logs.service; fi
+  fi
+  systemctl enable --quiet ladoga-logs.service; systemctl restart ladoga-logs.service  # the new code of the receiver
   echo "log receiver: $(systemctl is-active ladoga-logs.service)"
 fi
 echo "now serving $(readlink "$BASE/current"): $(find "$BASE/current/" -type f | wc -l) files, $(du -sh "$BASE/current/" | cut -f1)"

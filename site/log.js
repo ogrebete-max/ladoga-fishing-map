@@ -32,6 +32,8 @@ async function logApiOn() {
   try { logApi = !!(await fetch('api.json', { cache: 'no-cache' }).then((r) => (r.ok ? r.json() : {}))).log; } catch { logApi = false; }
   return logApi;
 }
+// The name a person chose to give in Settings (empty unless they typed it): «кто что нажимает» for the owner.
+const logWho = () => { try { return String(JSON.parse(localStorage.getItem('ladoga-settings') || '{}').whoName || '').slice(0, 40); } catch { return ''; } };
 const logSendingOn = () => { try { return JSON.parse(localStorage.getItem('ladoga-settings') || '{}').sendLog !== false; } catch { return true; } };
 const round2 = (x) => Math.round(x * 100) / 100;
 
@@ -84,7 +86,7 @@ function logSendSoon(ms = 20000) {
 }
 function logPayload(events) {
   return {
-    v: 1, iid: logState.iid, sid: logState.sid, app: typeof APP_VERSION !== 'undefined' ? APP_VERSION : '',
+    v: 1, iid: logState.iid, sid: logState.sid, app: typeof APP_VERSION !== 'undefined' ? APP_VERSION : '', who: logWho(),
     ua: navigator.userAgent.slice(0, 200), sent: Date.now(), events,
   };
 }

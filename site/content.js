@@ -960,7 +960,9 @@ function moreHtml() {
     <p class="small">Включается сама, когда нужна: ◎ на карте, «Вести», запись трека.${platformInfo().iOS ? ' iPhone спрашивает каждый раз? <a href="#" data-act="ios-geo-help">Как сделать, чтобы не спрашивал</a>.' : ''}</p>
     <button type="button" class="btn small ghost" data-act="geo-off">${ic('location-disabled')}Выключить геопозицию сейчас</button>
     <h3>Журнал работы</h3>
-    ${sw('sendLog', 'Отправлять журнал работы', 'Что нажимали, как работали GPS и навигатор, ошибки — чтобы находить и исправлять проблемы. Места — с точностью до километра, без имён и телефонов.')}
+    ${sw('sendLog', 'Отправлять журнал работы', 'Что нажимали, как работали GPS и навигатор, ошибки — чтобы находить и исправлять проблемы. Места — с точностью до километра, без телефонов.')}
+    <label class="small" style="display:block;margin:8px 0 4px">Как вас зовут — необязательно, чтобы по журналу было понятно, у кого что не так</label>
+    <input type="text" id="whoName" maxlength="40" autocomplete="nickname" value="${esc(s.whoName || '')}" placeholder="Имя или прозвище" style="width:100%;font:inherit;padding:10px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--ink)">
     <button type="button" class="btn small" data-act="report-problem">${ic('warning')}Сообщить о проблеме</button>
     <h3>Приложение</h3>
     <div class="btns">
@@ -1617,6 +1619,7 @@ function onContentInput(e) {
     if (p) { layer.touched = true; p.depth = parseDepth(t.value); saveMine(); clearTimeout(t._timer); t._timer = setTimeout(() => { drawMine(); drawIsoLabels(); }, 400); }
     return;
   }
+  if (t.id === 'whoName') { state.settings.whoName = t.value.trim().slice(0, 40); saveSettings(); return; }
   if (t.id === 'searchInput') onSearchInput(t.value);
   else if (t.id === 'yearMin') {
     const v = +t.value, min = +t.min;
