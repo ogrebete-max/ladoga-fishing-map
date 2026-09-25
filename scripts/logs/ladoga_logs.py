@@ -63,6 +63,57 @@ LABELS = {
 }
 FEATURES = ["today", "map", "guide", "rules", "me", "btnLocate", "nav", "btnTrack", "btnLayers", "base-set", "marker", "fav", "share",
             "btnDark", "guard-on", "mob", "btnSos", "report-problem", "car-go", "retrace", "demo", "install", "depth-help", "icez-show"]
+# The navigator's and the track's own events, as the page names them.
+LADOGA_EVENTS = {"geo_start": "включали геопозицию", "nav_start": "начинали навигацию", "nav_arrived": "дошли до точки",
+                 "map_free": "сдвигали карту в навигации", "recenter": "возврат к лодке", "shoal_ahead": "мель впереди",
+                 "voice": "голосовых подсказок", "saver_on": "тёмный экран", "guard_on": "сторож места", "guard_alarm": "тревог сторожа",
+                 "mob": "человек за бортом", "gap": "перерывов в треке (телефон заблокирован)", "report_sent": "сообщений о проблемах"}
+
+# «СПб Топливо» (spb-fuel-intelligence, web/log.js): its taps are the button's data-drive (`drive-…`, the navigator),
+# data-screen (`screen-…`, the bottom bar), another data-attribute, or the id.
+FUEL_LABELS = {
+    "screen-drive": "«Навигатор» (внизу)", "screen-map": "«Карта» (внизу)", "screen-list": "«Список» (внизу)", "club-tab": "«Клуб» (внизу)",
+    "locateButton": "«Рядом со мной»", "mapLocate": "«⌖» на карте", "driveButton": "«За рулём» на карте", "driveListButton": "«За рулём» в списке",
+    "aboutButton": "«i» — о данных и настройки", "clubButton": "«Клуб» в шапке", "installButton": "«Установить»", "sourcesButton": "«Источники и методика»",
+    "nearbySearchButton": "«Проверить по адресу»", "mapAreaButton": "«Искать в этой области»", "refreshButton": "«Обновить данные»",
+    "grade": "марка в списке", "map-grade": "марка на карте", "area": "СПб / область", "status": "фильтр по статусу", "timeline": "«появилось»",
+    "card-main": "карточка АЗС", "map-pin": "метка на карте", "popup-open": "«Открыть и отметить» на карте", "drawerClose": "закрыть окно",
+    "mark-seen": "«есть / нет» на карточке", "compose-grade": "марка в отметке", "compose-queue": "очередь в отметке", "quick-grade": "быстрая марка у колонки",
+    "verdict": "👍 / 👎 чужой отметке", "thanks-station": "«Спасибо» за отметку", "delete-station": "удалить отметку", "own": "«👁 Свои»",
+    "own-open": "«Свои» за сутки", "own-station": "АЗС в «Свои»", "push": "уведомления вкл/выкл", "scout-station": "АЗС из подсказки",
+    "passed-station": "проехал АЗС — отметить", "nearby-station": "АЗС рядом", "feed-station": "отметка в «Свои сообщают»",
+    "drive-close": "«🗺» из навигатора", "drive-recenter": "«⌖» вернуть карту к машине", "drive-route-toggle": "линия маршрута",
+    "drive-theme": "«◐» настройки навигатора", "drive-grades": "«Моя марка»", "drive-grade": "выбор марки в навигаторе", "drive-own": "«👁 Свои» в навигаторе",
+    "drive-mark": "отметка из навигатора", "drive-pick": "марка у колонки", "drive-send-look": "«Отправить» у колонки", "drive-queue": "очередь у колонки",
+    "drive-answer": "ответ на вопрос на остановке", "drive-skip": "«не видел» на остановке", "drive-vote": "👍 / 👎 у колонки",
+    "drive-route": "«Маршрут в Яндексе»", "drive-yandex": "«В Яндексе»", "drive-card": "карточка из навигатора", "drive-target": "«Дальше»: другая АЗС",
+    "drive-passenger": "«я пассажир»", "drive-start-mode": "первый экран", "drive-theme-mode": "тема экрана", "drive-location-help": "«Что делать» с местом",
+    "drive-pin": "метка в навигаторе", "drive-problem": "«Сообщить о проблеме» из навигатора", "driveOfferYes": "«Включить» навигатор на ходу",
+    "driveOfferNo": "«Не сейчас» навигатору", "problemOpen": "«Сообщить о проблеме»", "problemSend": "отправил сообщение о проблеме",
+    "locationProblem": "«Не помогло — сообщить»", "workLogSend": "журнал работы вкл/выкл", "analyticsToggle": "статистика вкл/выкл",
+    "locationYes": "«Да, точка на месте»", "locationNo": "«Нет, не там»", "locationRecheck": "«Проверить место ещё раз»",
+    "locationByAddress": "«Искать АЗС по адресу»", "locationRetry": "«Попробовать ещё раз» (место)", "openInSafari": "«Открыть в Safari»",
+    "routeLink": "маршрут из карточки", "yandexLink": "Яндекс из карточки", "trafficLink": "пробки из карточки", "copyCoords": "скопировать координаты",
+    "code-share": "поделиться кодом клуба", "invite-share": "отправить приглашение", "toast": "всплывающее сообщение",
+}
+FUEL_FEATURES = ["screen-drive", "screen-map", "screen-list", "locateButton", "card-main", "map-pin", "mark-seen", "compose-grade",
+                 "drive-mark", "drive-send-look", "drive-answer", "verdict", "thanks-station", "own", "drive-own", "drive-route",
+                 "drive-yandex", "drive-target", "drive-grades", "nearbySearchButton", "status", "push", "installButton", "club-tab",
+                 "problemOpen", "drive-problem"]
+FUEL_EVENTS = {"nav_start": "открывали навигатор", "drive_offer": "навигатор предложен на ходу", "map_free": "сдвигали карту в навигаторе",
+               "recenter": "возвращали карту к машине", "mark_sent": "отметок ушло", "mark_queued": "отметок ждали связи",
+               "mark_refused": "отметок не принято", "mark_expired": "отметок так и не ушло", "geo_error": "сбоев геопозиции",
+               "gps_odd": "странностей GPS (грубое место, пропуски)", "report_sent": "сообщений о проблемах",
+               "reload": "перезагрузок на новую версию", "boot_failed": "приложение не загрузилось", "stalled": "«Приложение не загрузилось» на экране",
+               "load_error": "не догрузился файл приложения"}
+# Per app: the names of its taps, what it offers (for «Чем не пользуются») and its own events.
+APP_LABELS = {"ladoga": LABELS, "fuel": FUEL_LABELS}
+APP_FEATURES = {"ladoga": FEATURES, "fuel": FUEL_FEATURES}
+APP_EVENTS = {"ladoga": ("Навигатор и трек", LADOGA_EVENTS), "fuel": ("Навигатор, GPS и отметки", FUEL_EVENTS)}
+COUNTED = set(LADOGA_EVENTS) | set(FUEL_EVENTS) | {"fresh_merged"}
+# СПб Топливо is published on GitHub Pages, not on this server: its phones send from that origin (text/plain, so no
+# preflight), and this lets the app read the answer and so know a batch arrived. The stats page never gets it.
+CORS_ORIGINS = ("https://ogrebete-max.github.io",)
 
 
 def utcnow():
@@ -229,8 +280,9 @@ def app_stats(batches):
                 errors[f"{e.get('msg', '')} · {e.get('src', '')}:{e.get('line', '')}"] += 1
             elif name == "geo_permission":
                 perm[e.get("state") or "?"] += 1
-            elif name in ("nav_start", "nav_arrived", "map_free", "recenter", "shoal_ahead", "guard_on", "guard_alarm", "mob", "gap",
-                          "saver_on", "voice", "report_sent", "geo_start", "fresh_merged"):
+            elif name == "fix" and e.get("odd"):
+                nav["gps_odd"] += 1
+            elif name in COUNTED:
                 nav[name] += 1
     return people, feat, feat_people, errors, perm, nav
 
@@ -245,6 +297,10 @@ def render_stats(root, days):
     for app in apps:
         batches, reports = read_app(root, app, days)
         people, feat, feat_people, errors, perm, nav = app_stats(batches)
+        names = APP_LABELS.get(app, {})
+
+        def label(k, names=names):
+            return names.get(k, k)
         sessions = sum(len(p["sessions"]) for p in people.values())
         out.append(f"<h2>{e(APP_NAMES.get(app, app))}</h2>")
         out.append(f"<div class=kpi><b>{len(people)}</b> телефонов <b>{sessions}</b> запусков <b>{nav.get('nav_start', 0)}</b> навигаций "
@@ -256,7 +312,7 @@ def render_stats(root, days):
         if people:
             rows = []
             for iid, p in sorted(people.items(), key=lambda kv: -(kv[1]["last"] or 0)):
-                top = ", ".join(f"{e(LABELS.get(k, k))} {v}" for k, v in p["taps"].most_common(5))
+                top = ", ".join(f"{e(label(k))} {v}" for k, v in p["taps"].most_common(5))
                 name = e(p["who"]) or f"<span class=m>без имени · {e(iid[-5:])}</span>"
                 inst = "" if p["standalone"] is None else (" · установлено" if p["standalone"] else " · в браузере")
                 rows.append(f"<tr><td>{name}<br><span class=m>{e(p['device'])}{inst}</span></td><td>{len(p['sessions'])}</td>"
@@ -265,16 +321,13 @@ def render_stats(root, days):
                        + "".join(rows) + "</table>")
             used = [(k, v, len(feat_people[k])) for k, v in feat.most_common(25)]
             out.append("<h3>Чем пользуются</h3><table><tr><th>Что</th><th>Нажатий</th><th>Людей</th></tr>" + "".join(
-                f"<tr><td>{e(LABELS.get(k, k))}</td><td>{v}</td><td>{n}</td></tr>" for k, v, n in used) + "</table>")
-            if app == "ladoga":
-                unused = [LABELS.get(k, k) for k in FEATURES if not feat.get(k)]
-                if unused:
-                    out.append(f"<h3>Чем не пользуются</h3><p>{e(', '.join(unused))}</p>")
-                labels = {"geo_start": "включали геопозицию", "nav_start": "начинали навигацию", "nav_arrived": "дошли до точки",
-                          "map_free": "сдвигали карту в навигации", "recenter": "возврат к лодке", "shoal_ahead": "мель впереди",
-                          "voice": "голосовых подсказок", "saver_on": "тёмный экран", "guard_on": "сторож места", "guard_alarm": "тревог сторожа",
-                          "mob": "человек за бортом", "gap": "перерывов в треке (телефон заблокирован)", "report_sent": "сообщений о проблемах"}
-                out.append("<h3>Навигатор и трек</h3><p>" + " · ".join(f"{e(labels[k])}: <b>{nav[k]}</b>" for k in labels if nav.get(k)) + "</p>")
+                f"<tr><td>{e(label(k))}</td><td>{v}</td><td>{n}</td></tr>" for k, v, n in used) + "</table>")
+            unused = [label(k) for k in APP_FEATURES.get(app, []) if not feat.get(k)]
+            if unused:
+                out.append(f"<h3>Чем не пользуются</h3><p>{e(', '.join(unused))}</p>")
+            if app in APP_EVENTS:
+                title, events = APP_EVENTS[app]
+                out.append(f"<h3>{e(title)}</h3><p>" + " · ".join(f"{e(events[k])}: <b>{nav[k]}</b>" for k in events if nav.get(k)) + "</p>")
             if perm:
                 out.append("<h3>Геопозиция при запуске</h3><p>" + " · ".join(
                     f"{e({'granted': 'разрешена', 'prompt': 'спрашивает', 'denied': 'запрещена'}.get(k, k))}: {v}" for k, v in perm.most_common()) + "</p>")
@@ -297,9 +350,13 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):  # no access log: it would hold the addresses
         pass
 
-    def _send(self, code, body=b"", ctype="text/plain; charset=utf-8"):
+    def _send(self, code, body=b"", ctype="text/plain; charset=utf-8", cors=False):
         self.send_response(code)
         self.send_header("Cache-Control", "no-store")
+        origin = self.headers.get("Origin") or ""
+        if cors and origin in CORS_ORIGINS:
+            self.send_header("Access-Control-Allow-Origin", origin)
+            self.send_header("Vary", "Origin")
         if body:
             self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
@@ -310,7 +367,8 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         app, action = route(self.path)
         if action == "health":
-            self._send(200, b"ok")
+            # An app on another origin asks here whether it may read the answers (web/log.js of СПб Топливо).
+            self._send(200, b"ok", cors=True)
             return
         if action == "stats":
             q = parse_qs(urlparse(self.path).query)
@@ -329,11 +387,11 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         app, kind = route(self.path)
         if not app or kind not in ("log", "report"):
-            self._send(404)
+            self._send(404, cors=True)
             return
         client = (self.headers.get("X-Forwarded-For") or self.client_address[0]).split(",")[-1].strip()
         if not rate_ok(client):
-            self._send(429)
+            self._send(429, cors=True)
             return
         try:
             size = int(self.headers.get("Content-Length") or 0)
@@ -341,16 +399,16 @@ class Handler(BaseHTTPRequestHandler):
             size = 0
         limit = MAX_LOG_BYTES if kind == "log" else MAX_REPORT_BYTES
         if size <= 0 or size > limit:
-            self._send(413 if size > limit else 400)
+            self._send(413 if size > limit else 400, cors=True)
             return
         try:
             obj = json.loads(self.rfile.read(size).decode("utf-8"))
         except (ValueError, UnicodeDecodeError):
-            self._send(400)
+            self._send(400, cors=True)
             return
         batch = clean_batch(obj)
         if not batch:
-            self._send(400)
+            self._send(400, cors=True)
             return
         now = utcnow()
         batch["rt"] = now.isoformat(timespec="seconds")
@@ -367,7 +425,7 @@ class Handler(BaseHTTPRequestHandler):
                 json.dump(batch, fh, ensure_ascii=False, indent=1)
             append_line(os.path.join(base, "reports.jsonl"), {"rt": batch["rt"], "iid": batch["iid"], "who": batch["who"], "app": batch["app"],
                                                               "file": name, "text": batch["text"][:300]})
-        self._send(204)
+        self._send(204, cors=True)
 
 
 def main():
