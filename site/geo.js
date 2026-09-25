@@ -645,6 +645,14 @@ function drawNavHazards() {
   layers.navHazards.clearLayers();
   const me = geo.me;
   if (!nav.on) return;
+  if (me) {
+    const lv = levelNow();
+    for (const z of dangersNear(me, 1200)) {
+      const now = Math.max(0, z.depth + lv);
+      if (now > (+state.settings.shallow || 1.5) + 1) continue;
+      L.marker([z.lat, z.lon], { interactive: false, keyboard: false, icon: L.divIcon({ className: 'danger-pt', html: `<span>+${fmtM(now)}</span>`, iconSize: [0, 0] }) }).addTo(layers.navHazards);
+    }
+  }
   const t = nav.target;
   const from = me || nav.start || t;
   for (const h of hazards()) {
@@ -676,22 +684,36 @@ const onIceNow = () => {
   if (!(m >= 11 || m <= 4)) return false;
   return Object.values(state.live?.ice_season?.sectors || {}).some((x) => x.state === 'ice');
 };
+// The corridor is a strip of fixed width along the course (±CORRIDOR_M), not a fan: a shoal 100 m off the side of
+// a dredged channel is not «ahead» of a boat going along the channel (no warnings every minute there).
+const CORRIDOR_M = 30;
 function shoalAhead(me) {
   if (!courseValid() || geo.sog * 3.6 < 3 || !chartState.gridIndex || onIceNow()) return null;
-  const lv = levelNow(), lim = +state.settings.shallow || 2;
-  const here = gridDepth(me);
-  const hereNow = here != null && here >= 0 ? here + lv : null;
+  const lv = levelNow(), lim = +state.settings.shallow || 1.5;
+  const hereDepth = depthAt(me);
+  const hereNow = hereDepth?.value != null ? hereDepth.value + lv : null;
   const range = Math.min(1500, Math.max(300, geo.sog * 120));
+  // Worth a word: going from deeper water into shallow, or — where it is already shallow — a place clearly shallower
+  // than here (0,7 m) or under 0,8 m of water. Not every dip of a shallow bay.
+  const counts = (now) => now <= lim && (hereNow == null || hereNow > lim + 0.3 || now <= hereNow - 0.7 || now < 0.8);
   let best = null;
-  for (const off of [0, -10, 10]) {
+  // The model along the course line and two lines CORRIDOR_M to the sides.
+  for (const side of [0, -CORRIDOR_M, CORRIDOR_M]) {
+    const start = side ? destPoint(me, (geo.cog + (side > 0 ? 90 : 270)) % 360, Math.abs(side)) : me;
     for (let d = 30; d <= range; d += d < 200 ? 30 : d < 600 ? 60 : 120) {
-      const p = destPoint(me, (geo.cog + off + 360) % 360, d);
+      const p = destPoint(start, geo.cog, d);
       const g = gridDepth(p);
       if (g == null || g < 0) continue;
-      const now = g + lv;
-      const counts = now <= lim && (hereNow == null || hereNow > lim || now <= hereNow - 0.5 || now < 1);
-      if (counts) { if (!best || d < best.d) best = { d, depth: Math.max(0, now), lat: p.lat, lon: p.lon }; break; }
+      if (counts(g + lv)) { if (!best || d < best.d) best = { d, depth: Math.max(0, g + lv), lat: p.lat, lon: p.lon }; break; }
     }
+  }
+  // The danger points the model smooths: along-track distance and how far off the course line.
+  const mid = destPoint(me, geo.cog, range / 2);
+  for (const z of dangersNear(mid, range / 2 + CORRIDOR_M + 50)) {
+    const dist = distM(me, z), a = toRad(angleDiff(geo.cog, bearing(me, z)));
+    const along = dist * Math.cos(a), cross = Math.abs(dist * Math.sin(a));
+    if (along < 20 || along > range || cross > CORRIDOR_M + Math.min(20, (geo.me?.acc || 0) / 2)) continue;
+    if (counts(z.depth + lv) && (!best || along < best.d)) best = { d: Math.round(along), depth: Math.max(0, z.depth + lv), lat: z.lat, lon: z.lon, point: true };
   }
   return best;
 }
@@ -952,7 +974,7 @@ function updateNavFields(force = false) {
   const depUnit = $('#nfDepth')?.nextElementSibling;
   const du = !dep ? 'нет карты' : `м сейчас · карта ${dep.value != null ? fmtM(dep.value) : `${dep.min}–${dep.max}`}`;
   if (depUnit && depUnit.textContent !== du) depUnit.textContent = du;
-  $('#nfDepthBox').classList.toggle('shallow', !!dep && (dep.value ?? dep.max) + lv <= (+state.settings.shallow || 2));
+  $('#nfDepthBox').classList.toggle('shallow', !!dep && (dep.value ?? dep.max) + lv <= (+state.settings.shallow || 1.5));
   updateNavArrow();
   navBanner();
   updateRecenter();
@@ -1061,6 +1083,20 @@ function openNavMore() {
       <p class="small muted">Цель: ${esc(nav.target.title)} · ${fmtDM(nav.target.lat, nav.target.lon)}</p>`,
   });
 }
+// «Глубина» on the navigation screen → where the figure comes from and how far to trust it (owner, 25.09.2026:
+// the years and the accuracy are wanted, but not on the screen itself).
+function openDepthInfo() {
+  const me = geo.me, dep = me ? depthAt(me) : null, lv = levelNow(), src = me ? depthSource(me) : null;
+  const near = me ? dangersNear(me, 300) : [];
+  openModal({
+    key: 'depth-info', title: 'Глубина под лодкой',
+    body: () => `${dep ? `<p><b>${fmtM(Math.max(0, (dep.value ?? dep.min) + lv))} м сейчас</b> — по карте ${dep.value != null ? fmtM(dep.value) : `${dep.min}–${dep.max}`} м, уровень озера ${lv < 0 ? 'ниже' : 'выше'} среднего на ${fmtM(Math.abs(lv))} м (${esc(levelSourceText())}).</p>` : '<p>Здесь глубин на картах нет.</p>'}
+      ${src ? `<p class="small">Откуда: навигационная ${esc(src.survey || 'карта')} — «${esc(src.title || src.id)}». Между отметками карты глубина рассчитана.</p>` : ''}
+      ${dep?.danger ? '<p class="small"><b>Здесь рядом мель или камень</b> — глубина взята по ней, а не по расчёту.</p>' : ''}
+      <p class="small">Насколько верить: обычно расчёт отличается от карты на 0,3 м, в одном месте из десяти — больше чем на метр. Отдельный камень расчёт сглаживает, поэтому ~900 известных мелей и камней (отметки карт над опасностями и мели, найденные сверкой с картами Garmin) навигатор учитывает отдельно: глубина — меньшая из двух.</p>
+      <p class="small">Карты сняты в 1930–1990-х: устья заносит, фарватеры углубляют. На мелководье и у камней смотрите эхолот.${near.length ? ` Мелей и камней в 300 м от вас: ${near.length}.` : ''}</p>`,
+  });
+}
 function onSettingChange(key) {
   if (key === 'boat') refreshPage('today');
   if (key === 'units') updateNavFields(true);
@@ -1163,19 +1199,26 @@ function navVoice() {
   }
   // One shoal ahead is one warning (and one more close to it), however the found spot shifts as the boat moves;
   // it counts as a new one after 15 s without shallow water ahead.
+  // The banner shows a shoal up to two minutes ahead; the voice speaks a minute before it (at least 200 m), and once
+  // more close to it only if there is under a metre of water there.
   if (nav.shoal) {
     const s = nav.shoal, now = Date.now();
     if (!said.shoal || now - said.shoal.seen > 15000) said.shoal = { n: 0, seen: now };
     said.shoal.seen = now;
-    if (said.shoal.n === 0) { said.shoal.n = 1; beep('hazard'); navigator.vibrate?.([100, 60, 100]); say(`Внимание! Впереди мелко: ${sayDepth(s.depth)}, через ${sayDist(s.d)}`, { force: true }); return; }
-    if (said.shoal.n === 1 && s.d <= 120) { said.shoal.n = 2; say(`Мель! ${sayDist(s.d)}`, { force: true }); return; }
+    if (said.shoal.n === 0 && s.d <= Math.max(200, (geo.sog || 0) * 60)) { said.shoal.n = 1; said.shoalT = now; beep('hazard'); navigator.vibrate?.([100, 60, 100]); say(`Внимание! Впереди мелко: ${sayDepth(s.depth)}, через ${sayDist(s.d)}`, { force: true }); return; }
+    if (said.shoal.n === 1 && s.d <= 120 && s.depth < 1) { said.shoal.n = 2; said.shoalT = now; say(`Мель! ${sayDist(s.d)}`, { force: true }); return; }
   }
   if (nav.place && !said[nav.place.key]) { said[nav.place.key] = true; say(nav.place.say, { force: true }); logEvent('place_note', { key: nav.place.key }); return; }
-  // The water under the boat: said when it becomes shallow while moving, again after a minute if it still is.
-  const dep = nav.depth, lv = levelNow();
+  // The water under the boat: said once when the boat comes into shallow water, again only if it gets half a metre
+  // shallower still; out of it (0,5 m deeper than the limit) the next shallow stretch is a new one.
+  const dep = nav.depth, lv = levelNow(), lim = +state.settings.shallow || 1.5;
   const now = dep ? (dep.value ?? dep.max) + lv : null;
-  if (now != null && now >= 0.2 && !onIceNow() && moving && now <= (+state.settings.shallow || 2) && Date.now() - (said.shallowT || 0) > 60000) {
-    said.shallowT = Date.now();
+  if (now != null && now > lim + 0.5) said.shallowAt = null;
+  if (now != null && now >= 0.2 && !onIceNow() && moving && now <= lim && (said.shallowAt == null || now <= said.shallowAt - 0.7)
+      && Date.now() - (said.shallowSaidT || 0) > 30000) {
+    said.shallowAt = now; said.shallowSaidT = Date.now();
+    // Just announced as the shoal ahead: coming onto it needs no second word.
+    if (Date.now() - (said.shoalT || 0) < 90000) return;
     say(`Под лодкой мелко: ${sayDepth(now)}`, { force: true });
     return;
   }

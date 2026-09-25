@@ -739,6 +739,8 @@ def main():
             "community": "data/depth_community.geojson" if (SITE_DATA / "depth_community.geojson").exists() else "",
             # Fresh soundings of the Volkhov mouth and bar (ENC 2023 via a Волго-Балт scheme, research/fresh_depth.md).
             "vvp": "data/depth_vvp.geojson" if (SITE_DATA / "depth_vvp.geojson").exists() else "",
+            # Shallow places the model smooths (scripts/build_depth_dangers.py): the navigator takes the smaller depth.
+            "dangers": "data/depth_dangers.json" if (SITE_DATA / "depth_dangers.json").exists() else "",
             # Fetch table for the wave near the shore (scripts/build_fetch.py, research/wave_report.md).
             "fetch": "data/fetch.json" if (SITE_DATA / "fetch.json").exists() else "",
             "shade": depth_shade() if "depth_model" not in SKIP else {},

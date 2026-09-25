@@ -499,6 +499,7 @@ $('#navTrack').addEventListener('click', onTrackButton);
 $('#navMark').addEventListener('click', quickMark);
 $('#navMore').addEventListener('click', openNavMore);
 $('#recenter').addEventListener('click', () => recenter(false));
+$('#nfDepthBox').addEventListener('click', openDepthInfo);
 $('#zoomAuto').addEventListener('click', toggleAutoZoom);
 $('#btnDark').addEventListener('click', showSaver);
 $('#mbPrev').addEventListener('click', () => { setAutoplay(false); showSeasonMonth((state.seasonMonth + 10) % 12 + 1); });
@@ -626,6 +627,7 @@ async function boot() {
   render();
   loadChartIsobaths(); // the depth of each point and under the boat
   loadDepthGrid();
+  loadDepthDangers();
   loadFetchTable(); // the wave near the shore
   await loadTracks();
   // A shared link (#pt=lat,lon) opens its point; no history entry was made by a tap, so ✕ closes it directly.

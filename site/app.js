@@ -69,7 +69,7 @@ const state = {
   chartOpacity: store.get('ladoga-chart-opacity', 1),
   genshtabOpacity: store.get('ladoga-genshtab-opacity', 0.8),
   overlayOpacity: store.get('ladoga-overlay-opacity', 0.7),
-  settings: Object.assign({ theme: 'system', units: 'kmh', autoZoom: true, navShowPoints: true, keepAwake: false, sound: true, voice: true, sendLog: true, guardR: 50, arrivalR: 30, orient: 'course', autoReturn: 20, shallow: 2 }, store.get('ladoga-settings', {})),
+  settings: Object.assign({ theme: 'system', units: 'kmh', autoZoom: true, navShowPoints: true, keepAwake: false, sound: true, voice: true, sendLog: true, guardR: 50, arrivalR: 30, orient: 'course', autoReturn: 20, shallow: 1.5 }, store.get('ladoga-settings', {})),
   home: store.get('ladoga-home', null) || HOME_DEFAULT,
   car: store.get('ladoga-car', null), // {lat, lon, t}: «К машине»
   navHide: false,
@@ -84,6 +84,12 @@ if (!store.get('ladoga-nav-v2', false)) {
   if (state.settings.autoReturn === 15 || state.settings.autoReturn === 5) state.settings.autoReturn = 20;
   state.settings.navShowPoints = true;
   saveSettings();
+}
+// 25.09.2026: «мелко» from 1,5 m of water, not 2: with the lake 1,4 m below its mean, 2 m made half the south shore
+// «shallow» and the navigator spoke every minute (scripts/qa/shoal_routes.py). A boat with an outboard needs ~0,7 m.
+if (!store.get('ladoga-shallow-v2', false)) {
+  store.set('ladoga-shallow-v2', true);
+  if (+state.settings.shallow === 2) { state.settings.shallow = 1.5; saveSettings(); }
 }
 // 24.09.2026: the map opens the way anglers need it — satellite with the depths on it (the owner's wish, «как в
 // Навиониксе»). Turned on once for those who had them off; any later choice in «Слои» is kept.
@@ -610,6 +616,53 @@ async function loadChartIsobaths() {
 // The depth model digitised from 18 000 chart soundings (data/depth_grid.json → data/depth/depth_*.json, one file
 // per chart, 50 m cells, 25 m in the 1:10 000 sheets; median error 0,27 m). A file loads only when a depth inside
 // it is asked for; row 0 is the northernmost, values are depth × scale in Uint16 LE (base64), nodata 65535.
+/* ---------- shallow places the model smooths: a rock on a bank, a small shoal, a narrow shallow band ----------
+   The owner's check of 25.09.2026 (research/depth_check.md): between the chart soundings the model is usually right
+   to 0,3 m, but a single rock or a small shoal can vanish in it (the 1,2 m rock of the Северная Торпакова bank came
+   out 6,7 m). data/depth_dangers.json keeps ~900 such places — chart soundings over dangers, soundings the model
+   smoothed, shoals of the anglers' Garmin maps checked against the charts — and the depth anywhere is the smaller
+   of the model and a danger within DANGER_R metres. */
+const DANGER_R = 40;
+const dangers = { cells: null, loading: null };
+function loadDepthDangers() {
+  const url = state.ctx.depth?.dangers;
+  if (!url || dangers.loading) return dangers.loading;
+  dangers.loading = fetch(url).then((r) => (r.ok ? r.json() : null)).then((j) => {
+    const cells = new Map();
+    for (const [lat, lon, depth, src] of j?.points || []) {
+      const k = `${Math.round(lat / 0.002)},${Math.round(lon / 0.004)}`;
+      if (!cells.has(k)) cells.set(k, []);
+      cells.get(k).push({ lat, lon, depth, src });
+    }
+    dangers.cells = cells;
+  }).catch(() => { dangers.loading = null; });
+  return dangers.loading;
+}
+// Danger points within r metres of p (cells of 0,002° × 0,004° ≈ 220 m).
+function dangersNear(p, r) {
+  if (!dangers.cells) return [];
+  const out = [], ci = Math.round(p.lat / 0.002), cj = Math.round(p.lon / 0.004), span = Math.ceil(r / 200);
+  for (let di = -span; di <= span; di += 1) {
+    for (let dj = -span; dj <= span; dj += 1) {
+      for (const d of dangers.cells.get(`${ci + di},${cj + dj}`) || []) if (distM(p, d) <= r) out.push(d);
+    }
+  }
+  return out;
+}
+// Which chart a depth comes from (the grid file the lookup answers from) and when that water was surveyed
+// (research/depth_model_report.md §1): for «Глубина» → tap, not for the navigation screen itself.
+const SURVEY = {
+  28081: 'карта 1984 г. (1:10 000)', 28070: 'карта 1983 г. (1:10 000)', 28079: 'карта 1995 г. (1:25 000)', 28071: 'карта 1993 г. (1:25 000)',
+  25069: 'карта 1997 г., промер 1933–1972 гг.', 25068: 'карта 1998 г., промер 1958–1971 и 1992–1996 гг.',
+  25070: 'карта 1998 г., промер 1931–1971 и 1992 гг.', 25067: 'карта 1996 г.',
+};
+function depthSource(p) {
+  for (const f of chartState.gridIndex?.files || []) {
+    const [[S, W], [N, E]] = f.bounds;
+    if (p.lat >= S && p.lat <= N && p.lon >= W && p.lon <= E && gridDepth(p) != null) return { id: f.id, title: f.title, survey: SURVEY[f.id] || '' };
+  }
+  return null;
+}
 async function loadDepthGrid() {
   const url = state.ctx.depth?.grid;
   if (!url || chartState.gridIndex) return;
@@ -682,10 +735,12 @@ function depthNowText(dep) {
 // Depth at a place: the digitised grid if the place is on it, else the chart isobaths: on a line → "≈ 5 м";
 // between two → "5–10 м". null off the charts.
 function depthAt(p) {
-  const gd = gridDepth(p);
+  let gd = gridDepth(p);
+  const shoal = dangersNear(p, DANGER_R).reduce((a, d) => (a == null || d.depth < a ? d.depth : a), null);
+  if (shoal != null && (gd == null || shoal < gd)) gd = shoal;
   if (gd != null && gd >= 0) {
     const v = gd < 10 ? Math.round(gd * 10) / 10 : Math.round(gd);
-    return { text: `≈ ${String(v).replace('.', ',')} м`, min: v, max: v, value: v, model: true };
+    return { text: `≈ ${String(v).replace('.', ',')} м`, min: v, max: v, value: v, model: true, danger: shoal != null && shoal <= gd };
   }
   const lines = chartState.isoLines;
   if (!lines) return null;
