@@ -1,0 +1,39 @@
+# Monitor of fresh angler reports for the Ladoga fishing map (scripts/live/README.md, «Монитор свежих отчётов»).
+# Started every day by ladoga-reports.timer; the script decides what is due (the club forum every 3 days in season and
+# every 5 days otherwise, the 47news RSS on every run, each official page by its every_days in watch.json).
+# Same user and data directory as ladoga-live.service (it must exist first, see that unit):
+#   useradd --system --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin ladoga-live
+#   install -d -o ladoga-live -g ladoga-live -m 755 /var/www/ladoga/live
+[Unit]
+Description=Ladoga fishing map: fresh angler reports, incidents and notices (fisher.spb.ru, 47news.ru, Telegram via GitHub)
+Documentation=https://github.com/ogrebete-max/ladoga-fishing-map/tree/main/scripts/live
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=ladoga-live
+Group=ladoga-live
+# t.me does not answer servers in Russia: the Telegram part comes from the GitHub Actions copy (--relay-tg, branch
+# live-tg, .github/workflows/live-reports-tg.yml). Records already on the map (points.json of the current release)
+# are not added again.
+ExecStart=/usr/bin/python3 /var/www/ladoga/src/scripts/live/fetch_reports.py --out /var/www/ladoga/live --known /var/www/ladoga/current/data/points.json --relay-tg https://raw.githubusercontent.com/ogrebete-max/ladoga-fishing-map/live-tg/tg.json --budget 240
+Environment=PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+Nice=10
+IOSchedulingClass=idle
+TimeoutStartSec=330
+MemoryMax=150M
+UMask=0022
+# The script writes only to /var/www/ladoga/live (reports.json, reports_state.json, a lock file) and reads the site.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/var/www/ladoga/live
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+RestrictSUIDSGID=yes
+LockPersonality=yes

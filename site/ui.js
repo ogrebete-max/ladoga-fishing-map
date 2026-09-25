@@ -393,6 +393,7 @@ function renderChips() {
   }
   if (!navigator.onLine) chips.push(`<button type="button" class="schip offline ${regionSaved() ? '' : 'warn'}" data-chip="offline">${ic('cloud-off')}${regionSaved() ? 'Без сети' : 'Без сети · район не скачан'}</button>`);
   if (geo.me && geo.me.acc > 50 && Date.now() - geo.me.t < 15000) chips.push(`<button type="button" class="schip gps" data-chip="gps">GPS ±${Math.round(geo.me.acc / 10) * 10} м</button>`);
+  if (guard.on) chips.push(`<button type="button" class="schip warn" data-chip="guard">${ic('warning')}Сторож · ${guard.anchor ? `${Math.round(guard.d || 0)} м` : 'запоминаю место'}</button>`);
   // With a depth layer on but the map too far out for the digits: one tap brings them.
   const o = state.overlays;
   // Only for the paper charts, whose figures need z14: the shading and isolines on by default speak at any zoom.
@@ -497,7 +498,9 @@ $('#navEnd').addEventListener('click', () => confirmEndNav(false));
 $('#navTrack').addEventListener('click', onTrackButton);
 $('#navMark').addEventListener('click', quickMark);
 $('#navMore').addEventListener('click', openNavMore);
-$('#recenter').addEventListener('click', recenter);
+$('#recenter').addEventListener('click', () => recenter(false));
+$('#zoomAuto').addEventListener('click', toggleAutoZoom);
+$('#btnDark').addEventListener('click', showSaver);
 $('#mbPrev').addEventListener('click', () => { setAutoplay(false); showSeasonMonth((state.seasonMonth + 10) % 12 + 1); });
 $('#mbNext').addEventListener('click', () => { setAutoplay(false); showSeasonMonth(state.seasonMonth % 12 + 1); });
 $('#mbPlay').addEventListener('click', () => setAutoplay(!state.playing));
@@ -513,6 +516,7 @@ $('#statusChips').addEventListener('click', (e) => {
   else if (k === 'filter') openLayersSheet('filter');
   else if (k === 'zoom-depth') { setFollowFree(); map.setZoom(14); }
   else if (k === 'car') { if (geo.me) goToCar(); else openCarCard(); }
+  else if (k === 'guard') openGuardSheet();
 });
 map.on('zoomend', () => renderChips());
 // A tap on the empty map closes the card; a long press (right click) puts a point there.
@@ -618,7 +622,7 @@ async function boot() {
   buildDepthModel();
   loadChartTiles();
   applyOverlays();
-  drawLines(); drawMine(); drawRules(); drawSeasonZones();
+  drawLines(); drawMine(); drawRules(); drawSeasonZones(); drawIceZones();
   render();
   loadChartIsobaths(); // the depth of each point and under the boat
   loadDepthGrid();
@@ -643,11 +647,14 @@ async function boot() {
     showNotice({ text: `Продолжить навигацию к «${saved.title}»?`, actions: [['Продолжить', () => startNav(saved), true], ['Нет', () => store.set('ladoga-nav', null)]] });
   } else store.set('ladoga-nav', null);
   updateLocateBtn(); updateTrackUi(); updateCompassBtn(); onFilterChange();
+  geoAutoStart();
   syncChrome();
   refreshLayersSheet(); refreshPage(); // opened while the data was still loading
   loadWeather();
   loadLive();
+  loadReports();
   setInterval(() => { loadWeather(); loadLive(); }, 30 * 60000);
+  setInterval(loadReports, 6 * 3600000);
 }
 boot();
 

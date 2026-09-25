@@ -73,13 +73,15 @@ function pointBodyHtml(idx) {
     ${launch ? `<p class="small muted">Ближайший спуск / гавань «${esc(launch.title)}» — ${fmtDist(launch.d)} от точки по прямой.</p>` : ''}`;
 }
 function reportHtml(r, ok) {
+  const age = ageText(r.date), stale = !isCurrent(r);
   const extra = [r.depth && `глубина ${r.depth}`, r.method && r.method, r.catch && `улов: ${r.catch}`].filter(Boolean).join(' · ');
   const links = [safeUrl(r.url) && `<a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.srcd || r.src)}</a>`, safeUrl(r.orig) && `<a href="${esc(r.orig)}" target="_blank" rel="noopener">первоисточник</a>`].filter(Boolean).join(' · ') || esc(r.srcd || r.src);
   return `<div class="report ${ok ? '' : 'dim'}">
-    <div><b>${esc((r.fish || []).join(', ') || r.title || KINDS[r.kind].short)}</b> · ${esc(fmtDate(r.date))}${r.season ? ` · ${r.season === 'ice' ? '❄ лёд' : '🌊 вода'}` : ''} <span class="badge ${r.cls}" title="${esc(CLASS_TEXT[r.cls])}">${r.cls}</span></div>
+    <div><b>${esc((r.fish || []).join(', ') || r.title || KINDS[r.kind].short)}</b> · ${esc(fmtDate(r.date))}${age ? ` <span class="age ${isFresh(r) ? 'fresh' : ''}">${age}</span>` : ''}${r.season ? ` · ${r.season === 'ice' ? '❄ лёд' : '🌊 вода'}` : ''} <span class="badge ${r.cls}" title="${esc(CLASS_TEXT[r.cls])}">${r.cls}</span></div>
     ${r.title && (r.fish || []).length ? `<div class="small">${esc(r.title)}</div>` : ''}
     ${r.comment ? `<div>${esc(r.comment)}</div>` : ''}
     ${extra ? `<div class="small">${esc(extra)}</div>` : ''}
+    ${r.why && (stale || r.months) ? `<div class="small ${stale ? 'stale-note' : ''}">${stale ? 'Устарело: ' : ''}${esc(r.why)}</div>` : ''}
     <div class="meta">${links}${r.prec ? ` · точность ±${r.prec} м` : ''}${r.raw ? ` · в источнике: <span class="coord">${esc(r.raw)}</span>` : ''}</div>
   </div>`;
 }
@@ -367,6 +369,7 @@ function todayHtml() {
     ${conditionsHtml()}
     ${weatherBlock()}
     ${typeof waterIceHtml === 'function' ? waterIceHtml(ice) : ''}
+    ${freshHtml()}
     ${zones.length ? `<h3>Где искать сейчас</h3>${zones.map(({ z, open }) => listRow({ icon: 'location-on', title: esc(z.name), sub: `${open.slice(0, 3).map((s) => esc(shortName(s))).join(', ')}${z.depth_m ? ` · ${esc(z.depth_m)} м` : ''}`, attrs: `data-act="zone-open" data-zone-id="${esc(z.id)}"` })).join('')}` : ''}
     ${hydro ? `<h3>Ладога в ${MONTHS_IN[mo - 1]}</h3><p class="small">${esc(hydro.events || '')}</p>` : ''}
     <div class="btns">
@@ -384,6 +387,22 @@ function todayHtml() {
       <p class="small">Иконка на экране, карта во весь экран, работа без интернета.</p>
       <div class="btns" style="margin-bottom:0"><button type="button" class="btn" data-act="install">Установить</button><button type="button" class="btn ghost" data-act="later" data-key="ladoga-later-install">Позже</button></div>
     </div>` : ''}`;
+}
+// «Свежие отчёты»: what anglers reported this week (the map has them with a green ring), and when the server looked.
+function freshHtml() {
+  const list = freshReports(7);
+  const f = state.fresh;
+  const checked = f?.checked ? Object.values(f.checked).filter(Boolean).sort().pop() : null;
+  const when = checked ? `проверено ${fmtDay(Date.parse(checked))}${f.next_check ? `, следующая проверка ${fmtDay(Date.parse(f.next_check))}` : ''}` : '';
+  const news = (f?.notices || []).filter((n) => n.date && Date.now() - Date.parse(n.date) < 10 * 86400000).slice(0, 3);
+  if (!list.length && !news.length) return when ? `<p class="small muted">Свежих отчётов с Ладоги за неделю нет · ${esc(when)}</p>` : '';
+  return `${list.length ? `<h3>Свежие отчёты рыбаков</h3>
+    ${list.slice(0, 5).map((r) => {
+      const idx = state.M.findIndex((m) => m.r.some((i) => state.R[i] === r));
+      return listRow({ icon: 'set-meal', title: esc(`${(r.fish || []).join(', ') || 'рыбалка'} — ${r.place || r.title || r.sector || ''}`), sub: esc([ageText(r.date) || fmtDate(r.date), r.depth ? `глубина ${r.depth}` : '', r.method || '', r.src].filter(Boolean).join(' · ')), attrs: idx >= 0 ? `data-open-marker="${idx}"` : '' });
+    }).join('')}
+    <p class="small muted">${list.length > 5 ? `Ещё ${list.length - 5} на карте — с зелёным кольцом. ` : ''}${esc(when)}</p>` : ''}
+    ${news.map((n) => `<div class="card small">${ic('gavel')} <b>${esc(n.src || 'Официально')}:</b> ${esc(n.title)} <span class="muted">${esc(fmtDate(n.date))}</span>${safeUrl(n.url) ? ` · <a href="${esc(n.url)}" target="_blank" rel="noopener">открыть</a>` : ''}</div>`).join('')}`;
 }
 /* ---------- Вода и лёд: the level against the charts, the water temperature, ice risks, official reports ---------- */
 // Signs of danger on the ice from the saved forecast (the last three days and the next one). They only ever add
@@ -438,7 +457,10 @@ function waterIceHtml(ice) {
   const m = live.level?.mchs;
   const out = [];
   out.push(`<h3 id="water">${ice ? 'Лёд и вода' : 'Вода'}</h3>`);
-  if (ice) out.push(iceRisksHtml());
+  if (ice) {
+    out.push(iceRisksHtml());
+    out.push(`<button type="button" class="btn small" data-act="${guard.on ? 'guard-sheet' : 'guard-on'}">${ic('warning')}${guard.on ? 'Сторож места включён' : 'Сторож льдины: предупредить, если место относит'}</button>`);
+  }
   const review = live.mchs?.ice_review;
   const fcUrl = live.mchs?.forecast?.url;
   if (review?.text) {
@@ -729,12 +751,14 @@ function rulesHtml() {
   const species = [...new Set([...sizes.map((x) => x.species), ...bags.map((x) => x.species)])];
   const amateurAreas = (g.prohibited_areas || []).filter((a) => !/^\[Промысел\]|справочно/i.test(`${a.name} ${a.applies_to}`));
   const tradeAreas = (g.prohibited_areas || []).filter((a) => !amateurAreas.includes(a));
-  const incidents = state.R.filter((r) => r.kind === 'ice_incident').length;
   const anchors = [['r-today', 'Сегодня'], ['r-sizes', 'Размеры'], ['r-seasons', 'Сроки'], ['r-areas', 'Запретные места'], ['r-boat', 'Лодка'], ['r-ice', 'Лёд']];
   return `
     <nav class="anchors">${anchors.map(([id, t]) => `<button type="button" data-anchor="${id}">${t}</button>`).join('')}</nav>
     <button type="button" class="card" data-act="sos" style="display:flex;gap:12px;align-items:center"><span class="fab sos" style="flex:none;box-shadow:none">SOS</span><span><b>SOS и телефоны</b><br><span class="small">112, МЧС, ГИМС, больницы рядом и что делать на оторванной льдине</span></span></button>
     <div class="card small">Выжимка из Правил рыболовства Западного бассейна (приказ № 620 в ред. № 747, действует с 01.09.2024 до 01.09.2027). Перед поездкой сверяйтесь с текстом: ${safeUrl(g.url) ? `<a href="${esc(g.url)}" target="_blank" rel="noopener">официальная публикация</a>` : ''}${(g.consolidated_text_urls || []).filter(safeUrl).map((u, i) => ` · <a href="${esc(u)}" target="_blank" rel="noopener">${i ? 'Гарант' : 'КонсультантПлюс'}</a>`).join('')}.</div>
+    ${(state.fresh?.notices || []).length ? `<details class="card small"><summary><b>Новое от ведомств</b> <span class="muted">${state.fresh.checked?.notices ? `· проверено ${esc(fmtDay(Date.parse(state.fresh.checked.notices)))}` : ''}</span></summary>
+      ${state.fresh.notices.slice(0, 10).map((n) => `<div style="margin:6px 0">${esc(fmtDate(n.date))} · <b>${esc(n.src || '')}</b>: ${safeUrl(n.url) ? `<a href="${esc(n.url)}" target="_blank" rel="noopener">${esc(n.title)}</a>` : esc(n.title)}</div>`).join('')}
+      <p class="muted" style="margin-bottom:0">Сервер раз в неделю проверяет сайты Росрыболовства, Правительства и МЧС Ленобласти, Волго-Балта и публикацию правовых актов. Новое появляется здесь со ссылкой; сами правила в приложении обновляются после проверки.</p></details>` : ''}
     <h3 id="r-today">Действует сегодня</h3>
     ${now.length ? `<div class="card small danger-card">${now.map(banLine).join('')}</div>` : '<p class="small">Сегодня сезонных запретов на любительский лов в этом районе нет — действуют только общие правила ниже.</p>'}
     <h3 id="r-sizes">Размер и норма вылова</h3>
@@ -756,7 +780,7 @@ function rulesHtml() {
     <h3 id="r-ice">Лёд</h3>
     ${(state.ctx.practical?.ice_rules_general || []).map((b) => `<details class="card small"><summary>${esc(b.title)}</summary><p>${esc(b.text)}</p>${safeUrl(b.source_url) ? `<a href="${esc(b.source_url)}" target="_blank" rel="noopener">источник</a>` : ''}</details>`).join('')}
     ${ice.map((b) => `<details class="card small"><summary>${esc(b.title || b.type || '')}</summary><p>${esc(b.description || b.summary || '')}</p>${safeUrl(b.source_url) ? `<a href="${esc(b.source_url)}" target="_blank" rel="noopener">источник</a>` : ''}</details>`).join('')}
-    ${incidents ? `<p class="small">Есть ${incidents} ${plural(incidents, 'случай', 'случая', 'случаев')} на льду за 2009–2026 по сводкам МЧС: отрывы льдин, провалы, машины под лёд. Это и опасные места, и места, куда массово выходят рыбаки. На карте они включаются в «Слои и фильтр → Фильтр → Что показывать».</p>` : ''}`;
+    ${(state.ctx.ice_zones || []).length ? `<p class="small">${state.ctx.ice_zones.length} ${plural(state.ctx.ice_zones.length, 'место', 'места', 'мест')}, где за 2005–2026 проваливались под лёд и отрывало льдины (сводки МЧС, спасателей, рыбаков), — на карте слоем «Опасный лёд»: <button type="button" class="chip" data-act="icez-show">показать</button></p>` : ''}`;
 }
 
 /* ---------- Моё › Точки, Без сети, Ещё ---------- */
@@ -886,19 +910,24 @@ function moreHtml() {
     ${seg('units', [['kmh', 'км/ч'], ['kn', 'узлы']], s.units)}
     <div class="small muted" style="margin-top:8px">Радиус прибытия</div>
     ${seg('arrivalR', [[15, '15 м'], [30, '30 м'], [50, '50 м'], [100, '100 м']], s.arrivalR)}
-    <div class="small muted" style="margin-top:8px">Автовозврат к лодке после сдвига карты</div>
-    ${seg('autoReturn', [[5, '5 с'], [15, '15 с'], [30, '30 с'], [0, 'никогда']], s.autoReturn)}
+    <div class="small muted" style="margin-top:8px">Сдвинули карту пальцем — вернуть её к лодке через</div>
+    ${seg('autoReturn', [[10, '10 с'], [20, '20 с'], [60, '1 мин'], [0, 'никогда']], s.autoReturn)}
+    <p class="small muted" style="margin:4px 0 0">Отсчёт — с момента, когда палец убран; пока открыта карточка точки, карта стоит.</p>
     <div class="small muted" style="margin-top:8px">Предупреждать о глубине меньше</div>
     ${seg('shallow', [[1, '1 м'], [2, '2 м'], [3, '3 м'], [5, '5 м']], s.shallow)}
     ${sw('autoZoom', 'Автомасштаб', 'Масштаб по скорости и расстоянию до точки')}
     ${sw('sound', 'Звук прибытия и опасности')}
-    ${sw('navShowPoints', 'Точки рыбаков в навигации', 'Обычно в навигации они спрятаны')}
+    ${sw('voice', 'Голосовые подсказки', 'Сколько до точки, «правее/левее», мель впереди, «вы на месте» — можно не смотреть на экран')}
+    ${sw('navShowPoints', 'Точки рыбаков в навигации', 'Места ловли и ваши метки остаются на карте')}
     <h3>Мой район</h3>
     <p class="small">${esc(state.home.name)} — кнопка ${ic('home')} на карте показывает его целиком. Сделать своим можно любой район в его карточке.</p>
     ${state.home.name !== HOME_DEFAULT.name ? '<button type="button" class="btn small ghost" data-act="home-reset">Вернуть всю южную Ладогу</button>' : ''}
     <h3>Геопозиция</h3>
-    <p class="small">Включается сама, когда нужна: ◎ на карте, «Вести», запись трека.</p>
+    <p class="small">Включается сама, когда нужна: ◎ на карте, «Вести», запись трека.${platformInfo().iOS ? ' iPhone спрашивает каждый раз? <a href="#" data-act="ios-geo-help">Как сделать, чтобы не спрашивал</a>.' : ''}</p>
     <button type="button" class="btn small ghost" data-act="geo-off">${ic('location-disabled')}Выключить геопозицию сейчас</button>
+    <h3>Журнал работы</h3>
+    ${sw('sendLog', 'Отправлять журнал работы', 'Что нажимали, как работали GPS и навигатор, ошибки — чтобы находить и исправлять проблемы. Места — с точностью до километра, без имён и телефонов.')}
+    <button type="button" class="btn small" data-act="report-problem">${ic('warning')}Сообщить о проблеме</button>
     <h3>Приложение</h3>
     <div class="btns">
       ${installed ? '' : `<button type="button" class="btn small" data-act="install">${ic('download')}${platformInfo().iOS || platformInfo().android ? 'Установить на телефон' : 'Установить приложение'}</button>`}
@@ -1001,6 +1030,7 @@ function layersTabHtml() {
     <h3>На карте</h3>
     <label class="check switch"><span>Группировать близкие точки</span><input type="checkbox" data-overlay="cluster" ${o.cluster ? 'checked' : ''}></label>
     <label class="check switch"><span>Сезонные зоны рыбы<br><span class="small muted">месяц: ${MONTHS_FULL[state.seasonMonth - 1]}</span></span><input type="checkbox" data-overlay="seasonZones" ${o.seasonZones ? 'checked' : ''}></label>
+    ${(state.ctx.ice_zones || []).length ? `<label class="check switch"><span><b>Опасный лёд</b><br><span class="small muted">${state.ctx.ice_zones.length} мест, где проваливались и отрывало льдины за 2005–2026; с ноября по апрель включается сам</span></span><input type="checkbox" data-overlay="iceZones" ${o.iceZones ? 'checked' : ''}></label>` : ''}
     <label class="check switch"><span>Запретные районы</span><input type="checkbox" data-overlay="rules" ${o.rules ? 'checked' : ''}></label>
     <label class="check switch"><span>Фарватеры</span><input type="checkbox" data-overlay="lines" ${o.lines ? 'checked' : ''}></label>
     <label class="check switch"><span>Морские знаки, буи, маяки (OpenSeaMap)</span><input type="checkbox" data-overlay="seamarks" ${o.seamarks ? 'checked' : ''}></label>
@@ -1043,7 +1073,8 @@ function filterTabHtml() {
   const monthCounts = Array(13).fill(0);
   for (const r of catchR) monthCounts[monthOf(r)] += 1;
   const kindCounts = new Map();
-  for (const r of state.R) kindCounts.set(r.kind, (kindCounts.get(r.kind) || 0) + 1);
+  let stale = 0;
+  for (const r of state.R) { if (!f.archive && !isCurrent(r)) { stale += 1; continue; } kindCounts.set(r.kind, (kindCounts.get(r.kind) || 0) + 1); }
   const srcCounts = new Map();
   for (const r of state.R) srcCounts.set(r.src, (srcCounts.get(r.src) || 0) + 1);
   const years = state.R.map(yearOf).filter(Boolean);
@@ -1060,6 +1091,8 @@ function filterTabHtml() {
     </div>
     <h3>Что показывать</h3>
     ${Object.entries(KINDS).map(([k, v]) => `<label class="check"><input type="checkbox" data-kind="${k}" ${f.kinds.has(k) ? 'checked' : ''}> ${kindSwatch(k)} ${esc(v.label)} <span class="muted small">${kindCounts.get(k) || 0}</span></label>`).join('')}
+    <label class="check"><input type="checkbox" id="archiveOn" ${f.archive ? 'checked' : ''}> Показать и устаревшее (архив) ${f.archive ? '' : `<span class="muted small">${stale}</span>`}</label>
+    <p class="small muted" style="margin:2px 0 0">Устаревшее — то, что было верно день, неделю или одну зиму: сети и топляки прошлых лет, трещины прошлых зим, давние происшествия. Ничего не удалено: места, где проваливались и отрывало лёд, — в слое «Опасный лёд»; места ловли остаются всегда.</p>
     <details><summary>Ещё фильтры</summary>
       <h3>Достоверность координат</h3>
       ${['A', 'B', 'C'].map((c) => `<label class="check"><input type="checkbox" data-cls="${c}" ${f.cls.has(c) ? 'checked' : ''}> <span class="badge ${c}">${c}</span> <span class="small">${esc(CLASS_TEXT[c])}</span></label>`).join('')}
@@ -1202,6 +1235,7 @@ function openSos() {
       return `
       <a class="btn sos-call" href="tel:112">${ic('phone-in-talk')}Позвонить 112</a>
       <p class="small muted">112 работает без SIM-карты и без денег на счёте, через любую сеть, которая ловит.</p>
+      <button type="button" class="btn danger" data-act="mob" style="width:100%">${ic('warning')}Человек за бортом — вести назад к месту</button>
       <div class="card">
         <b>Где я — продиктуйте спасателям</b>
         ${me ? `<div class="coord big" style="margin-top:4px">${fmtDM(me.lat, me.lon)}</div>
@@ -1228,6 +1262,16 @@ function showLocationHelp(kind) {
   const url = location.href.split('#')[0];
   let title = 'Разрешите геопозицию', lead = '', steps = [];
   if (kind === 'unsupported') { title = 'Браузер не сообщает место'; lead = 'Откройте карту в Safari (iPhone), Chrome или Edge.'; }
+  else if (kind === 'ios-once') {
+    title = 'Чтобы iPhone не спрашивал каждый раз';
+    lead = 'iPhone снова спрашивает про геопозицию — значит, в прошлый раз было выбрано «Разрешить один раз». Так он будет спрашивать при каждом запуске.';
+    steps = [
+      'Когда iPhone спросит, выберите <b>«При использовании приложения»</b> — не «Разрешить один раз».',
+      '<b>Настройки → Конфиденциальность и безопасность → Службы геолокации → Сайты Safari</b> → «При использовании приложения» и включите <b>«Точная геопозиция»</b>.',
+      '<b>Настройки → Приложения → Safari → Геопозиция → «Разрешить»</b> (в iOS 17 и раньше: Настройки → Safari → Геопозиция).',
+      'Если карта стоит на экране «Домой» дважды (например, из разных профилей Safari), у каждой копии своё разрешение — в той, что спрашивает, ответьте «При использовании приложения».',
+    ];
+  }
   else if (kind === 'inapp') {
     title = iOS ? 'Откройте карту в Safari' : 'Откройте карту в браузере';
     lead = 'Ссылка открылась внутри Telegram или другого приложения. Его встроенный браузер почти никогда не даёт сайтам геопозицию — навигатор там не заработает.';
@@ -1263,11 +1307,22 @@ function showLocationHelp(kind) {
       ${steps.length ? `<ol class="small" style="padding-left:18px">${steps.map((x) => `<li style="margin:6px 0">${x}</li>`).join('')}</ol>` : ''}
       <div class="btns">
         ${kind === 'inapp' && iOS ? `<a class="btn" href="x-safari-${esc(url)}">Открыть в Safari</a>` : ''}
-        ${kind !== 'unsupported' ? `<button type="button" class="btn" data-act="locate-retry">${ic('my-location')}Попробовать ещё раз</button>` : ''}
+        ${kind !== 'unsupported' && kind !== 'ios-once' ? `<button type="button" class="btn" data-act="locate-retry">${ic('my-location')}Попробовать ещё раз</button>` : ''}
         <button type="button" class="btn ghost" data-act="copy-link">Скопировать ссылку</button>
       </div>
       <p class="small muted">Без геопозиции карта, точки, фильтры и GPX работают — не работают только «где я», навигатор и треки.</p>`,
   });
+}
+// «Сообщить о проблеме»: a few words from the person, and the log of the last 40 minutes goes with them.
+function openProblemReport() {
+  openModal({
+    key: 'report', title: 'Сообщить о проблеме',
+    body: () => `<p class="small">Что не получилось или работало не так? Пара слов хватит: «карта прыгает», «не пишется трек», «скорость врёт».</p>
+      <textarea id="problemText" rows="4" style="width:100%;font:inherit;padding:10px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--ink)" placeholder="Что случилось"></textarea>
+      <p class="small muted">Вместе с сообщением уйдёт журнал работы за последние 40 минут: нажатия, работа GPS и навигатора, ошибки. Места — с точностью до километра.</p>`,
+    foot: () => `<button type="button" class="btn ghost" data-act="close-top">Отмена</button><button type="button" class="btn" data-act="report-send">Отправить</button>`,
+  });
+  setTimeout(() => $('#problemText')?.focus(), 200);
 }
 let installPrompt = null;
 window.addEventListener('beforeinstallprompt', (event) => { event.preventDefault(); installPrompt = event; });
@@ -1418,7 +1473,25 @@ function handleAction(act, el) {
     case 'home-reset': state.home = HOME_DEFAULT; store.set('ladoga-home', null); refreshPage('me'); toast('Мой район — вся южная Ладога'); break;
     case 'copy-link': copy(location.href.split('#')[0], 'Ссылка'); break;
     case 'locate-retry': closeTop(); geoRestart(); break;
-    case 'geo-off': geoStop(); toast('Геопозиция выключена'); break;
+    case 'geo-off': geoStop(); store.set('ladoga-geo-on', false); toast('Геопозиция выключена'); break;
+    case 'ios-geo-help': showLocationHelp('ios-once'); break;
+    case 'icez-show': {
+      state.overlays.iceZones = true; store.set('ladoga-icez-hand', true); applyOverlays();
+      const zs = state.ctx.ice_zones || [];
+      if (zs.length) { revealMap(); setTimeout(() => map.fitBounds(L.latLngBounds(zs.map((z) => [z.lat, z.lon])).pad(0.1), fitPadding()), 60); }
+      break;
+    }
+    case 'report-problem': openProblemReport(); break;
+    case 'report-send': {
+      const text = $('#problemText')?.value || '';
+      if (!text.trim()) { toast('Напишите в двух словах, что случилось'); break; }
+      el.disabled = true;
+      sendProblemReport(text).then((how) => {
+        closeTop();
+        toast(how === 'server' ? 'Отправлено. Спасибо — разберёмся' : how ? 'Сообщение сохранено — отправьте его в Telegram или почтой' : 'Не получилось отправить — попробуйте, когда будет сеть', 5000);
+      });
+      break;
+    }
     case 'filter-fish': {
       state.f.fish = new Set([d.name]);
       render(); drawSeasonZones();
@@ -1482,6 +1555,7 @@ function onContentChange(e) {
   else if (t.id === 'coreOnly') { f.core = t.checked; render(); }
   else if (t.id === 'favOnly') { f.fav = t.checked; render(); }
   else if (t.id === 'depthOnly') { f.depthOnly = t.checked; render(); }
+  else if (t.id === 'archiveOn') { f.archive = t.checked; render(); refreshLayersSheet(); }
   else if (t.dataset.pack) {
     const [season, i] = t.dataset.pack.split(':');
     const set = new Set(store.get(`ladoga-pack-${season}`, []));
@@ -1494,6 +1568,7 @@ function onContentChange(e) {
     state.overlays[k] = t.checked;
     if (k === 'cluster') render();
     if (k === 'seasonZones') drawSeasonZones();
+    if (k === 'iceZones') store.set('ladoga-icez-hand', true);
     if (k === 'rules') drawRules();
     if (k === 'tracks' && typeof drawSavedTracks === 'function') drawSavedTracks();
     applyOverlays();

@@ -1,0 +1,75 @@
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+    <channel>
+        <title>47news.ru</title>
+        <link>https://47news.ru/rss/</link>
+        <description>в RSS-ленту попадают последние опубликованные 100 новостей</description>
+        <lastBuildDate>Thu, 24 Sep 2026 19:28:45 +0300</lastBuildDate>
+        <atom:link href="https://47news.ru/rss/" rel="self" type="application/rss+xml" />
+                    
+                    <item>
+                <title>Назван продукт, который является королем диетического питания</title>
+                <link>https://47news.ru/articles/293351/</link>
+                <guid>https://47news.ru/articles/293351/</guid>
+                <pubDate>Thu, 24 Sep 2026 19:22:00 +0300</pubDate>
+                <description>Он содержит всего 24-27 килокалорий на 100 граммов.</description>
+                <enclosure url="https://i.47news.ru/titles/2026/09/20260924_rxbmwtpze74lw9swxo0e.jpg" type="image/jpeg" />                            </item>
+                    <item>
+                <title>В Тихвине ищут самокатчика, сбившего мужчину </title>
+                <link>https://47news.ru/articles/293375/</link>
+                <guid>https://47news.ru/articles/293375/</guid>
+                <pubDate>Thu, 24 Sep 2026 19:09:00 +0300</pubDate>
+                <description>В Тихвинском районе Ленобласти мужчина пострадал от наезда двухколесного транспорта. Водителя ищут.</description>
+                <enclosure url="https://i.47news.ru/titles/2026/09/20260924_w2rn9fg1s5k5ocamrrgq.jpg" type="image/jpeg" />                            </item>
+                    <item>
+                <title>Яхта &quot;Сигулда&quot; пройдет под Ладожским мостом в рабочий понедельник</title>
+                <link>https://47news.ru/articles/293367/</link>
+                <guid>https://47news.ru/articles/293367/</guid>
+                <pubDate>Thu, 24 Sep 2026 17:20:00 +0300</pubDate>
+                <description>Как сообщает ФКУ &quot;Упрдор &quot;Северо-Запад&quot;, разводка Ладожского мост запланирована на 28 сентября. </description>
+                <enclosure url="https://i.47news.ru/titles/2026/09/20260924_z1qg70ryo03fify4cisn.png" type="image/png" />                            </item>
+                    <item>
+                <title>Убегали от медведя. Два человека застряли в лесу в Приозерском районе до утра</title>
+                <link>https://47news.ru/articles/293335/</link>
+                <guid>https://47news.ru/articles/293335/</guid>
+                <pubDate>Thu, 24 Sep 2026 09:15:00 +0300</pubDate>
+                <description>Двое провели ночь в осеннем лесу, заблудившись в Приозерском районе. Вокруг – болота и тишина.</description>
+                <enclosure url="https://i.47news.ru/titles/2026/09/20260924_pq7ezu2hp1ui0xo0hnkw.jpg" type="image/jpeg" />                            </item>
+                    <item>
+                <title>Рыбалка, несмотря на запреты: в Туве медведь напал на туриста из Москвы, мужчина умер в больнице</title>
+                <link>https://47news.ru/articles/293334/</link>
+                <guid>https://47news.ru/articles/293334/</guid>
+                <pubDate>Thu, 24 Sep 2026 08:14:00 +0300</pubDate>
+                <description>В регионе действую запреты на проведение мероприятий на природе, в том числе запрет на рыбалку.</description>
+                <enclosure url="https://i.47news.ru/titles/2026/09/20260924_1uwvp08f4uesgzxmezbu.jpg" type="image/jpeg" />                            </item>
+            <!-- test items (not in the real feed of 24.09.2026): an incident placed by the RSS text alone, one that needs
+                 its article (the real article 283454 of 28.02.2026), a swimmer and a road accident that must be skipped -->
+            <item>
+                <title>У Кобоны перевернулась лодка с двумя рыбаками</title>
+                <link>https://47news.ru/articles/900001/</link>
+                <guid>https://47news.ru/articles/900001/</guid>
+                <pubDate>Thu, 24 Sep 2026 07:30:00 +0300</pubDate>
+                <description>Спасатели вытащили из воды двоих мужчин у деревни Кобона на Ладожском озере, лодка опрокинулась на волне.</description>
+            </item>
+            <item>
+                <title>Спасатели вытащили со льда Ладоги мужчину на снегоходе</title>
+                <link>https://47news.ru/articles/283454/</link>
+                <guid>https://47news.ru/articles/283454/</guid>
+                <pubDate>Sat, 28 Feb 2026 18:59:00 +0300</pubDate>
+                <description>Водитель снегохода застрял на Ладоге, приехали его выручать спасатели из Кировского района Ленобласти. </description>
+            </item>
+            <item>
+                <title>В Шлиссельбурге утонул купальщик</title>
+                <link>https://47news.ru/articles/900002/</link>
+                <guid>https://47news.ru/articles/900002/</guid>
+                <pubDate>Wed, 23 Sep 2026 20:00:00 +0300</pubDate>
+                <description>Мужчина купался на городском пляже на Неве и не выплыл.</description>
+            </item>
+            <item>
+                <title>У Кобоны перевернулся автомобиль</title>
+                <link>https://47news.ru/articles/900003/</link>
+                <guid>https://47news.ru/articles/900003/</guid>
+                <pubDate>Wed, 23 Sep 2026 19:30:00 +0300</pubDate>
+                <description>ДТП на трассе у деревни Кобона: легковушка съехала в кювет и перевернулась.</description>
+            </item>
+    </channel>
+</rss>

@@ -44,12 +44,13 @@
     <div class="mu-right">
       <button type="button" class="fab" id="btnLayers" title="Слои и фильтр (M)" aria-label="Слои и фильтр"><svg class="i"><use href="#i-layers"/></svg></button>
       <button type="button" class="fab" id="btnFull" title="Весь экран (F)" aria-label="Карта на весь экран"><svg class="i"><use href="#i-fullscreen"/></svg></button>
+      <button type="button" class="fab dark" id="btnDark" hidden title="Тёмный экран: запись и навигация идут, заряд почти не тратится" aria-label="Тёмный экран"><svg class="i"><use href="#i-dark-mode"/></svg></button>
       <button type="button" class="fab sos" id="btnSos" title="Экстренная помощь" aria-label="SOS — экстренная помощь">SOS</button>
     </div>
     <div class="mu-zoom" id="zoomGroup">
       <button type="button" id="zoomIn" title="Приблизить (+)" aria-label="Приблизить"><svg class="i"><use href="#i-add"/></svg></button>
       <button type="button" id="zoomOut" title="Отдалить (−)" aria-label="Отдалить"><svg class="i"><use href="#i-remove"/></svg></button>
-      <span class="zoom-auto" id="zoomAuto" hidden>авто</span>
+      <button type="button" class="zoom-auto" id="zoomAuto" hidden aria-label="Автомасштаб: включить или выключить">Авто</button>
     </div>
     <div class="mu-br">
       <button type="button" class="fab" id="btnHome" title="Мой район (H)" aria-label="Мой район"><svg class="i"><use href="#i-home"/></svg></button>
@@ -121,7 +122,7 @@
   </div>
   <div class="nav-banner" id="navBanner" hidden></div>
   <div class="demo-tag" id="demoTag" hidden>ДЕМО · лодка идёт сама</div>
-  <button type="button" class="recenter" id="recenter" hidden><svg class="i"><use href="#i-restart-alt"/></svg><span id="recenterText">Вернуться ко мне</span></button>
+  <button type="button" class="recenter" id="recenter" hidden><svg class="i"><use href="#i-restart-alt"/></svg><span id="recenterText">Ко мне</span></button>
   <div class="nav-bottom" id="navBottom" hidden>
     <div class="nb-fields">
       <div class="nb-field"><span class="nb-cap">Скорость</span><b id="nfSpeed">—</b><span class="nb-unit">км/ч</span></div>
@@ -138,6 +139,8 @@
 
   <div class="toast" id="toast" role="status" aria-live="polite"><span id="toastText"></span><button type="button" id="toastAction" hidden></button></div>
 
+  <script>const APP_VERSION = '__V__';</script>
+  <script src="log.js?v=__V__"></script>
   <script src="vendor/leaflet.js"></script>
   <script src="vendor/leaflet-rotate.js"></script>
   <script src="vendor/leaflet.markercluster.js"></script>

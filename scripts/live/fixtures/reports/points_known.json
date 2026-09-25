@@ -1,0 +1,16 @@
+{
+  "generated": "2026-09-24",
+  "reports": [
+    {"lat": 60.116429, "lon": 32.326642, "kind": "fishing", "cls": "A", "prec": 20, "fish": ["Судак", "Лещ"], "date": "2026-09-21",
+     "title": "Река Волхов, г.Новая Ладога", "comment": "фидер/донка", "src": "Telegram: Рыболовная сводка СПб",
+     "url": "https://t.me/rybalka_spb_lenoblasti/26696", "sid": "https://t.me/rybalka_spb_lenoblasti/26696"},
+    {"lat": 60.01107, "lon": 31.10082, "kind": "fishing", "cls": "C", "prec": 1500, "fish": ["Судак", "Щука"], "date": "2026-08-10",
+     "title": "Кошкино: судак, щука (авг. 2026)", "src": "fisher.spb.ru (Питерский клуб рыбаков)",
+     "url": "https://fisher.spb.ru/news/message.php?messageId=115832", "sid": "115832"},
+    {"lat": 60.13795, "lon": 31.61420, "kind": "launch", "cls": "A", "prec": 30, "title": "Парковка у д. Чёрное",
+     "src": "OpenStreetMap", "url": "https://www.openstreetmap.org/node/1", "sid": "node/1"},
+    {"lat": 59.91227, "lon": 31.45198, "kind": "ice_incident", "cls": "C", "prec": 2500, "date": "2026-02-28",
+     "title": "Нижняя Шальдиха: поломка снегохода, 1 чел. (2026)", "src": "47news.ru",
+     "url": "https://47news.ru/articles/283454/", "sid": "47news:283454"}
+  ]
+}

@@ -61,7 +61,7 @@ body:not([data-layout="compact"]) .leaflet-control-scale { margin: 0 0 calc(84px
 /* A panel lying over the map (phone on its side, tablet): the scale moves out from under it. */
 body.panel-open[data-layout="land"] .leaflet-control-scale, body.panel-open[data-layout="medium"] .leaflet-control-scale { margin-left: calc(min(var(--panel-w), 50vw) + 16px) !important; }
 body[data-mode="nav"] .leaflet-control-scale { margin: 0 0 12px 12px !important; }
-body[data-mode="nav"][data-layout="compact"] .leaflet-control-scale { margin-bottom: calc(196px + var(--safe-b)) !important; }
+body[data-mode="nav"][data-layout="compact"] .leaflet-control-scale { margin-bottom: calc(150px + var(--safe-b)) !important; }
 body.card-open[data-layout="compact"] .leaflet-control-scale { display: none; }
 
 /* ---------- controls over the map ---------- */
@@ -87,6 +87,7 @@ body:not([data-layout="compact"]) .mu-top { right: auto; width: min(420px, calc(
   display: inline-flex; align-items: center; gap: 6px; padding: 0 12px; font-size: 14px; font-weight: 600; white-space: normal; text-align: left; }
 .schip svg.i { width: 20px; height: 20px; }
 .schip.danger { background: var(--danger); color: #fff; border-color: var(--danger); }
+.schip.warn { background: var(--warn-bg); color: var(--warn-ink); border-color: var(--warn-bg); }
 .schip.rec { background: #c92a2a; color: #fff; border-color: #c92a2a; }
 .schip.paused { background: #e8590c; color: #fff; border-color: #e8590c; }
 .schip.offline { background: #343a40; color: #fff; border-color: #343a40; }
@@ -109,7 +110,10 @@ body[data-layout="land"] .mu-zoom { top: auto; bottom: calc(16px + var(--safe-b)
 body[data-layout="land"] .mu-zoom button + button { border-top: 0; border-left: 1px solid var(--line); }
 /* «авто» hangs under +/−: room for it above the bottom edge. */
 body[data-layout="land"][data-mode="nav"] .mu-zoom { right: calc(12px + var(--safe-r)); bottom: calc(26px + var(--safe-b)); }
-.zoom-auto { position: absolute; bottom: -18px; left: 0; right: 0; text-align: center; font-size: 11px; font-weight: 700; color: #fff; text-shadow: 0 0 3px #000; }
+/* «Авто» under ± in navigation: filled — the navigator sets the zoom; outlined — the zoom is yours. */
+.zoom-auto { position: absolute; top: calc(100% + 8px); left: 0; width: 48px; height: 32px; border-radius: 16px; border: 1px solid var(--fab-line); background: var(--fab-bg); color: var(--muted); font: 800 12px/1 var(--font); box-shadow: var(--fab-shadow); padding: 0; }
+.zoom-auto.on { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+body[data-layout="land"] .zoom-auto { top: auto; bottom: calc(100% + 8px); }
 .mu-br { position: absolute; right: calc(12px + var(--safe-r)); bottom: 16px; display: flex; flex-direction: column; gap: 12px; align-items: center; }
 body:not([data-layout="compact"]) .mu-br { right: calc(16px + var(--safe-r)); bottom: calc(24px + var(--safe-b)); }
 .fab.locate { width: 56px; height: 56px; border-radius: 28px; }
@@ -154,8 +158,9 @@ body[data-mode="nav"] .map-ui .mu-top, body[data-mode="nav"] .map-ui .mu-bl, bod
 body[data-mode="nav"] .map-ui .hint-card, body[data-mode="nav"] .map-ui .fullexit { display: none !important; }
 body[data-mode="nav"] .map-ui { bottom: 0; }
 body[data-mode="nav"] .map-ui .mu-right { top: calc(var(--nt-h, calc(124px + var(--safe-t))) + 16px); }
-body[data-mode="nav"] .map-ui .mu-right > :not(.sos) { display: none; }
-body[data-mode="nav"][data-layout="compact"] .map-ui .mu-zoom { top: auto; bottom: calc(240px + var(--safe-b)); transform: none; }
+body[data-mode="nav"] .map-ui .mu-right > :not(.sos):not(#btnLayers):not(#btnDark) { display: none; }
+.fab.dark { background: #10151b; color: #ffd43b; border-color: #10151b; }
+body[data-mode="nav"][data-layout="compact"] .map-ui .mu-zoom { top: auto; bottom: calc(196px + var(--safe-b)); transform: none; }
 body[data-mode="full"] .mu-top, body[data-mode="full"] #btnLayers, body[data-mode="full"] #btnFull, body[data-mode="full"] .hint-card { display: none; }
 body[data-mode="full"] .map-ui { left: 0 !important; bottom: 0 !important; }
 body[data-mode="full"] .mu-right { top: calc(68px + var(--safe-t)); }
@@ -506,6 +511,10 @@ html[data-theme="night"] .v-warn { color: var(--warn-ink); }
 .me-cone { position: absolute; inset: 0; transition: transform .3s linear; }
 .me-cone::before { content: ""; position: absolute; left: 13px; top: 0; width: 34px; height: 30px; background: radial-gradient(circle at 50% 100%, rgba(28, 126, 214, .6), rgba(28, 126, 214, 0) 75%); clip-path: polygon(50% 100%, 0 0, 100% 0); }
 .boat svg { width: 32px; height: 32px; fill: #1c7ed6; stroke: #fff; stroke-width: 6; filter: drop-shadow(0 1px 3px rgba(0, 0, 0, .5)); }
+/* The boat glides to a new fix in step with the map (placeBoat): smooth like a car navigator, not a jump a second.
+   Not during a zoom or a turn of the picture — there it must move with everything else at once. */
+.leaflet-marker-icon.glide { transition: transform .9s linear; }
+.leaflet-zoom-anim .leaflet-marker-icon.glide, .no-glide .leaflet-marker-icon.glide, .leaflet-dragging .leaflet-marker-icon.glide { transition: none !important; }
 .boat.stale svg { fill: #adb5bd; }
 .target-ring { width: 34px; height: 34px; border-radius: 50%; border: 3px solid #fa5252; background: rgba(250, 82, 82, .15); animation: pulse 1.6s infinite; }
 @keyframes pulse { 0% { transform: scale(.8); opacity: 1; } 100% { transform: scale(1.5); opacity: .2; } }
@@ -562,3 +571,30 @@ body.card-open[data-layout="compact"] .toast { bottom: calc(var(--card-h, 0px) +
 
 @media (prefers-reduced-motion: reduce) { *, *::before { animation: none !important; transition: none !important; } }
 @media (forced-colors: active) { .fab, .btn, .chip, .schip, .nbtn { border: 1px solid ButtonText; } }
+
+/* ---------- navigation on a phone held upright: slimmer panels, more map (owner, 24.09.2026) ---------- */
+body[data-mode="nav"][data-layout="compact"] .nav-top { padding: calc(6px + var(--safe-t)) 10px 6px; gap: 10px; }
+body[data-mode="nav"][data-layout="compact"] .nt-arrow { width: 64px; height: 64px; border-radius: 14px; }
+body[data-mode="nav"][data-layout="compact"] .nt-arrow svg { width: 46px; height: 46px; }
+body[data-mode="nav"][data-layout="compact"] .nt-dist { font-size: 34px; }
+body[data-mode="nav"][data-layout="compact"] .nt-line2 { font-size: 14px; }
+body[data-mode="nav"][data-layout="compact"] .nt-target { font-size: 13px; }
+body[data-mode="nav"][data-layout="compact"] .nav-bottom { padding: 6px 10px calc(6px + var(--safe-b)); }
+body[data-mode="nav"][data-layout="compact"] .nb-fields { gap: 6px; }
+body[data-mode="nav"][data-layout="compact"] .nb-field { min-height: 60px; padding: 4px 8px; border-radius: 10px; }
+body[data-mode="nav"][data-layout="compact"] .nb-field b { font-size: 28px; }
+body[data-mode="nav"][data-layout="compact"] .nb-cap { font-size: 11px; }
+body[data-mode="nav"][data-layout="compact"] .nb-unit { font-size: 11.5px; }
+body[data-mode="nav"][data-layout="compact"] .nb-buttons { gap: 6px; margin-top: 6px; grid-template-columns: 100px repeat(3, minmax(0, 1fr)); }
+body[data-mode="nav"][data-layout="compact"] .nbtn { height: 52px; border-radius: 12px; font-size: 12px; }
+body[data-mode="nav"][data-layout="compact"] .nbtn svg.i { width: 22px; height: 22px; }
+body[data-mode="nav"][data-layout="compact"] .recenter { bottom: calc(150px + var(--safe-b)); height: 48px; min-width: 150px; }
+/* ---------- how fresh a record is (research/freshness.md) ---------- */
+/* A catch reported in the last 7 days: a green ring round the pin. */
+.pin.fresh { box-shadow: 0 0 0 3px #fff, 0 0 0 6px #2f9e44, 0 1px 4px rgba(0, 0, 0, .45); }
+.report .age { font-size: 12.5px; color: var(--muted); }
+.report .age.fresh { color: #2b8a3e; font-weight: 800; }
+.report .stale-note { color: var(--muted); font-style: italic; }
+/* «Опасный лёд»: names from zoom 11. */
+.icez-label span { position: absolute; transform: translate(-50%, -50%); white-space: nowrap; font-size: 12px; font-weight: 800; color: #c92a2a; text-shadow: 0 0 3px #fff, 0 0 3px #fff, 0 0 2px #fff; pointer-events: none; }
+.leaflet-container:not(.icez-names) .icez-label { display: none; }

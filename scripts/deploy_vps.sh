@@ -43,8 +43,10 @@ else
   git -C "$SRC" fetch --quiet --depth 1 origin "$BRANCH"
   git -C "$SRC" reset --quiet --hard FETCH_HEAD
 fi
-# site/ is the site; scripts/live/ the hourly collector of data/live.json (lake level, water temperature, МЧС).
-git -C "$SRC" sparse-checkout set site scripts/live
+# site/ is the site; scripts/live/ the collectors of data/live.json (hourly: lake level, water temperature, МЧС) and
+# data/reports.json (daily timer: forum and Telegram reports, incidents, official news); scripts/logs/ the receiver
+# of the phones' work log.
+git -C "$SRC" sparse-checkout set site scripts/live scripts/logs
 echo "server has $(git -C "$SRC" rev-parse --short HEAD)"
 link=()
 [[ -e "$BASE/current" ]] && link=(--link-dest="$(readlink -f "$BASE/current")")
@@ -52,6 +54,9 @@ rsync -a --delete "${link[@]}" --exclude index.template.html --exclude styles.ol
 # The live data lives outside the releases (the collector rewrites it every hour): each release points at it.
 install -d -m 755 "$BASE/live"
 ln -sfn "$BASE/live/live.json" "$BASE/releases/$STAMP/data/live.json"
+# reports.json only grows (fresh reports are added, never replaced): it lives outside the releases too.
+[[ -s "$BASE/live/reports.json" ]] || cp "$SRC/site/data/reports.json" "$BASE/live/reports.json"
+ln -sfn "$BASE/live/reports.json" "$BASE/releases/$STAMP/data/reports.json"
 ln -sfn "releases/$STAMP" "$BASE/current.new"
 mv -T "$BASE/current.new" "$BASE/current"
 ls -1dt "$BASE"/releases/* | tail -n +4 | xargs -r rm -rf
@@ -67,6 +72,27 @@ if [[ -f "$SRC/scripts/live/fetch_live.py" ]]; then
   systemctl enable --now --quiet ladoga-live.timer
   if [[ ! -s "$BASE/live/live.json" ]]; then systemctl start --no-block ladoga-live.service; echo "collector: first run started"; fi
   echo "collector: $(systemctl is-active ladoga-live.timer) timer, next $(systemctl show ladoga-live.timer -p NextElapseUSecRealtime --value)"
+fi
+# The reports collector (daily timer; it decides itself when the forums are due: every 3 days in season, 5 otherwise).
+if [[ -f "$SRC/scripts/live/fetch_reports.py" && -f "$SRC/scripts/live/ladoga-reports.timer" ]]; then
+  chown ladoga-live:ladoga-live "$BASE/live/reports.json" 2>/dev/null || true
+  changed=0
+  for unit in ladoga-reports.service ladoga-reports.timer; do
+    if ! cmp -s "$SRC/scripts/live/$unit" "/etc/systemd/system/$unit"; then install -m 644 "$SRC/scripts/live/$unit" /etc/systemd/system/; changed=1; fi
+  done
+  if [[ $changed == 1 ]]; then systemctl daemon-reload; fi
+  systemctl enable --now --quiet ladoga-reports.timer
+  if [[ ! -s "$BASE/live/reports_state.json" ]]; then systemctl start --no-block ladoga-reports.service; echo "reports: first run started"; fi
+  echo "reports: $(systemctl is-active ladoga-reports.timer) timer, next $(systemctl show ladoga-reports.timer -p NextElapseUSecRealtime --value)"
+fi
+# The work log receiver: listens on 127.0.0.1:8791 only; the phones reach it once Caddy has the /ladoga/api/ route
+# (scripts/logs/enable_caddy_route.sh — a separate step, the web server is shared with «СПб Топливо»).
+if [[ -f "$SRC/scripts/logs/ladoga-logs.service" ]]; then
+  if ! cmp -s "$SRC/scripts/logs/ladoga-logs.service" /etc/systemd/system/ladoga-logs.service; then
+    install -m 644 "$SRC/scripts/logs/ladoga-logs.service" /etc/systemd/system/; systemctl daemon-reload
+    systemctl enable --quiet ladoga-logs.service; systemctl restart ladoga-logs.service
+  else systemctl enable --now --quiet ladoga-logs.service; fi
+  echo "log receiver: $(systemctl is-active ladoga-logs.service)"
 fi
 echo "now serving $(readlink "$BASE/current"): $(find "$BASE/current/" -type f | wc -l) files, $(du -sh "$BASE/current/" | cut -f1)"
 REMOTE

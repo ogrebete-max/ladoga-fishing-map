@@ -1,0 +1,48 @@
+# The Telegram part of the monitor of fresh angler reports (scripts/live/fetch_reports.py, README.md «Монитор свежих
+# отчётов»). t.me does not answer our Moscow server, so once a day this runs the same collector on GitHub's machine for
+# the public channels only. The script itself decides whether a check is due (every 3 days in season, every 5 days
+# otherwise), so most runs make no requests at all. The result — tg.json (records found in the last 120 days) and the
+# collector's state (last message ids, hashes of lower-case words to recognise reposts) — is force-pushed as one orphan
+# commit to the branch live-tg; the server merges tg.json on every run (--relay-tg, scripts/live/ladoga-reports.service).
+# A branch of its own: live-foreign.yml force-pushes live-data and would delete these files.
+name: Telegram reports for the monitor
+
+on:
+  schedule:
+    - cron: "40 3 * * *"   # 06:40 Moscow time, before the server's run at 07:10
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: live-tg
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          sparse-checkout: scripts/live
+      - name: The previous copy (last message ids, the repost index, the records)
+        run: |
+          mkdir -p out
+          if git fetch --quiet --depth 1 origin live-tg; then
+            git show FETCH_HEAD:tg.json > out/tg.json || true
+            git show FETCH_HEAD:tg_state.json > out/tg_state.json || true
+          fi
+      - name: Collect
+        run: python3 scripts/live/fetch_reports.py --out out --only tg --name tg --budget 300 --keep-days 120
+      - name: Publish to the branch live-tg
+        run: |
+          cd out
+          git init --quiet --initial-branch live-tg
+          git add tg.json tg_state.json
+          git -c user.name="ladoga-live" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit --quiet -m "Telegram reports for the monitor, $(date -u +%Y-%m-%dT%H:%MZ)"
+          git push --quiet --force "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" live-tg
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

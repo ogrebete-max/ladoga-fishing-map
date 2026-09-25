@@ -12,13 +12,13 @@ const geo = {
   watchId: null, me: null, hist: [], sog: null, cog: null, cogT: 0, cogVec: null,
   heading: null, headingT: 0, headVec: null, hasCompass: false, compassOn: false, compassAcc: null,
   follow: 'free', wantFollow: null, searching: false, error: null, iconKey: '',
-  rotT: 0, progZoom: false, fastSince: 0, hiddenAt: 0,
+  rotT: 0, progZoom: false, fastSince: 0, hiddenAt: 0, pressed: false, restartT: 0,
 };
 const nav = {
   on: false, target: null, start: null, d: null, brg: null, arrived: false, arriveT: 0, hold: false,
   zSpeed: 17, zoomCand: null, zoomCandT: 0, autoZoomPaused: false, firstPlace: true, lastTouch: 0, followBefore: null,
   offSince: 0, offCourse: null, hazard: null, hazardSeen: {}, banner: '', depth: null, depthT: 0, left: null, leftT: 0,
-  audio: null, lastFields: 0,
+  audio: null, lastFields: 0, trail: [], said: {},
 };
 
 /* ---------- demo: a boat going to the Varetsky banks, to try the navigator at home ---------- */
@@ -30,7 +30,7 @@ function destPoint(p, brg, d) {
 }
 function startDemo() {
   if (nav.on) { toast('Сначала завершите навигацию'); return; }
-  if (geo.watchId != null && geo.watchId !== 'demo') navigator.geolocation.clearWatch(geo.watchId);
+  if (geo.watchId != null && geo.watchId !== 'demo') gps.clear(geo.watchId);
   Object.assign(geo, { watchId: 'demo', me: null, hist: [], sog: null, cog: null, cogVec: null, fastSince: 0, courseRot: false });
   layers.me.clearLayers();
   Object.assign(DEMO, { on: true, seg: 0, t: 0, pos: { lat: DEMO.route[0][0], lon: DEMO.route[0][1] } });
@@ -82,8 +82,11 @@ function showSaver() {
   saver.on = true;
   const el = document.createElement('div');
   el.className = 'saver'; el.id = 'saver';
-  el.innerHTML = '<b id="saverMain"></b><span id="saverSub"></span><small>Экран почти не тратит заряд. Двойное касание — вернуть карту.</small>';
-  el.addEventListener('pointerup', () => { const now = Date.now(); if (now - saver.tapT < 450) hideSaver(); saver.tapT = now; });
+  el.innerHTML = '<b id="saverMain"></b><span id="saverSub"></span><small>Экран почти не тратит заряд, GPS и голос работают. Вернуть карту — нажмите и держите секунду.<br>Не блокируйте телефон кнопкой: тогда телефон останавливает приложение.</small>';
+  logEvent('saver_on');
+  // A long press, not a double tap: a phone in a pocket or a glove taps twice by itself.
+  el.addEventListener('pointerdown', () => { clearTimeout(saver.holdT); saver.holdT = setTimeout(hideSaver, 900); });
+  for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) el.addEventListener(ev, () => clearTimeout(saver.holdT));
   document.body.appendChild(el);
   map.getContainer().style.visibility = 'hidden';
   updateSaver();
@@ -100,7 +103,7 @@ function hideSaver() {
   $('#saver')?.remove();
   map.getContainer().style.visibility = '';
   map.invalidateSize();
-  if (geo.follow !== 'free' && geo.me) placeBoat(null);
+  if (geo.follow !== 'free' && geo.me) placeBoat(null, false);
 }
 function updateSaver() {
   if (!saver.on) return;
@@ -112,12 +115,24 @@ function updateSaver() {
   } else if (t) {
     main = fmtClock(trackDur(t));
     sub = `Запись · ${fmtDist(t.dist)} · ${me ? `GPS ±${Math.round(me.acc)} м` : 'жду GPS'}`;
+  } else if (guard.on) {
+    main = guard.anchor ? `${Math.round(guard.d || 0)} м` : '…';
+    sub = guard.anchor ? `Сторож: от места · тревога после ${guard.r} м` : 'Сторож запоминает место';
   } else { hideSaver(); return; }
   $('#saverMain').textContent = main;
   $('#saverSub').textContent = sub;
 }
 
 /* ---------- position ---------- */
+// Every GPS request goes through here. In a browser it is navigator.geolocation; an app build for iPhone/Android
+// (a Capacitor shell with background location — the only way to keep a track with the phone locked) puts its own
+// object with the same three calls into window.LadogaNative.gps, and nothing else in the app changes.
+const gps = {
+  src: () => window.LadogaNative?.gps || navigator.geolocation,
+  watch: (ok, err, opts) => gps.src().watchPosition(ok, err, opts),
+  once: (ok, err, opts) => gps.src().getCurrentPosition(ok, err, opts),
+  clear: (id) => gps.src().clearWatch(id),
+};
 function geoStart({ follow = null } = {}) {
   if (!navigator.geolocation) { showLocationHelp('unsupported'); return false; }
   if (follow) geo.wantFollow = follow;
@@ -126,26 +141,43 @@ function geoStart({ follow = null } = {}) {
   geo.searching = true; geo.error = null;
   // A quick coarse fix first (Safari answers it in a second or two from Wi‑Fi), then a high-accuracy watch
   // without a timeout: on the water GPS may need a minute.
-  navigator.geolocation.getCurrentPosition(onFix, onGeoError, { enableHighAccuracy: false, maximumAge: 120000, timeout: 15000 });
-  geo.watchId = navigator.geolocation.watchPosition(onFix, onGeoError, { enableHighAccuracy: true, maximumAge: 1000 });
-  if (!geo.me) toast('Определяю, где вы… Если телефон спросит — разрешите геопозицию', 4000);
+  gps.once(onFix, onGeoError, { enableHighAccuracy: false, maximumAge: 120000, timeout: 15000 });
+  geo.watchId = gps.watch(onFix, onGeoError, { enableHighAccuracy: true, maximumAge: 1000 });
+  store.set('ladoga-geo-on', true);
+  if (!geo.me) toast(isIOS() ? 'Определяю, где вы… iPhone спросит — выберите «При использовании приложения», тогда он не будет спрашивать каждый раз' : 'Определяю, где вы… Если телефон спросит — разрешите геопозицию', 5000);
   updateLocateBtn();
+  logEvent('geo_start');
   return true;
 }
 function restartWatch() {
   if (geo.watchId == null || geo.watchId === 'demo') return;
-  navigator.geolocation.clearWatch(geo.watchId);
-  geo.watchId = navigator.geolocation.watchPosition(onFix, onGeoError, { enableHighAccuracy: true, maximumAge: 1000 });
+  gps.clear(geo.watchId);
+  geo.watchId = gps.watch(onFix, onGeoError, { enableHighAccuracy: true, maximumAge: 1000 });
+  geo.restartT = Date.now();
+}
+const isIOS = () => /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+// At launch: GPS comes on by itself only if the phone already allows it for good (no question on the screen), and
+// only for someone who used it last time. An iPhone that asks on every launch was given «Разрешить один раз»:
+// say once how to make it «При использовании приложения».
+async function geoAutoStart() {
+  let st = '';
+  try { st = (await navigator.permissions?.query({ name: 'geolocation' }))?.state || ''; } catch { /* old Safari */ }
+  logEvent('geo_permission', { state: st || 'unknown' });
+  if (st === 'granted' && store.get('ladoga-geo-on', false) && geo.watchId == null) geoStart({});
+  else if (st === 'prompt' && isIOS() && store.get('ladoga-geo-on', false) && Date.now() - store.get('ladoga-ios-geo-tip', 0) > 3 * 86400000) {
+    store.set('ladoga-ios-geo-tip', Date.now());
+    setTimeout(() => showLocationHelp('ios-once'), 1500);
+  }
 }
 function geoRestart() {
   if (DEMO.on) stopDemo();
-  if (geo.watchId != null && geo.watchId !== 'demo') navigator.geolocation.clearWatch(geo.watchId);
+  if (geo.watchId != null && geo.watchId !== 'demo') gps.clear(geo.watchId);
   geo.watchId = null;
   geoStart({ follow: geo.follow !== 'free' ? geo.follow : 'north' });
 }
 function geoStop() {
   if (DEMO.on) stopDemo();
-  if (geo.watchId != null && geo.watchId !== 'demo') navigator.geolocation.clearWatch(geo.watchId);
+  if (geo.watchId != null && geo.watchId !== 'demo') gps.clear(geo.watchId);
   geo.watchId = null; geo.me = null; geo.searching = false; geo.sog = null; geo.cog = null; geo.hist = [];
   layers.me.clearLayers();
   setFollow('free');
@@ -155,33 +187,42 @@ function onFix(pos) {
   const c = pos.coords;
   const t = Date.now();
   const acc = c.accuracy || 9999;
+  // The same fix once more (a saved copy handed out again): nothing new, and no zero speed out of it.
+  if (geo.me && c.latitude === geo.me.lat && c.longitude === geo.me.lon && pos.timestamp && pos.timestamp === geo.me.ts) return;
   // A coarse Wi‑Fi fix must not overwrite a good GPS one that arrived a moment earlier.
   if (geo.me && acc > Math.max(50, geo.me.acc * 2) && t - geo.me.t < 10000) return;
-  const p = { lat: c.latitude, lon: c.longitude, acc, t };
+  const p = { lat: c.latitude, lon: c.longitude, acc, t, ts: pos.timestamp || 0 };
   const first = !geo.me;
   geo.searching = false; geo.error = null;
-  if (acc <= 50) motion(p, c);
+  if (acc <= 100) motion(p, c);
   geo.me = { ...p, sog: geo.sog, cog: geo.cog };
   geo.hist.push(p);
   while (geo.hist.length > 2 && t - geo.hist[0].t > 30000) geo.hist.shift();
+  logFix(p, c);
+  // Turn the picture first, then move the boat: its glide to the new fix then runs in the new picture.
+  if (geo.follow !== 'free' && !geo.pressed && !saver.on) applyRotation();
   drawMe();
   if (geo.wantFollow) applyWantFollow();
   else if (first && !nav.on && geo.follow === 'free') updateLocateBtn();
   if (nav.on) navOnFix(); else followMe();
   if (typeof trackOnFix === 'function') trackOnFix(geo.me);
+  guardOnFix(geo.me);
+  if (geo.mobWait) { geo.mobWait = false; manOverboard(); }
   updateCardLive();
   updateLocateBtn();
   renderChips();
 }
-// Speed over ground and course over ground, filtered (§8.4).
+// Speed over ground and course over ground (§8.4). The speed is the phone's own (GPS Doppler), as it is: it is
+// right at 5 and at 150 km/h. An iPhone says −1 when it does not know — that is «no value», not a speed (mixed into
+// an average it pulled the figure down, worst at high speed). Without it: the way made over the last 4 s.
 function motion(p, c) {
   let v = null;
-  if (c.speed != null && !Number.isNaN(c.speed) && p.acc <= 30) v = c.speed;
+  if (Number.isFinite(c.speed) && c.speed >= 0) v = c.speed;
   else {
-    const ref = findHist(p.t, 5000);
-    if (ref) v = distM(ref, p) / ((p.t - ref.t) / 1000);
+    const ref = findHist(p.t, 4000);
+    if (ref) v = distM(ref, p) < Math.max(ref.acc, p.acc) / 2 ? 0 : distM(ref, p) / ((p.t - ref.t) / 1000);
   }
-  if (v != null) geo.sog = geo.sog == null ? v : geo.sog + 0.4 * (v - geo.sog);
+  if (v != null) geo.sog = v;
   // Standing still: the wander of the fix is not speed.
   const ref5 = findHist(p.t, 5000);
   if (geo.sog != null && geo.sog * 3.6 < 1 && ref5 && distM(ref5, p) < p.acc) geo.sog = 0;
@@ -190,7 +231,8 @@ function motion(p, c) {
   if (kmh >= 5) { if (!geo.fastSince) geo.fastSince = p.t; if (p.t - geo.fastSince >= 3000) geo.courseRot = true; } else geo.fastSince = 0;
   if (kmh < 3) geo.courseRot = false;
   let h = null;
-  if (geo.sog != null && geo.sog * 3.6 >= 3 && c.heading != null && !Number.isNaN(c.heading)) h = c.heading;
+  // The phone's course is −1 or NaN when unknown (iPhone), the same as no value.
+  if (geo.sog != null && geo.sog * 3.6 >= 3 && Number.isFinite(c.heading) && c.heading >= 0) h = c.heading;
   else {
     const ref10 = findHist(p.t, 10000);
     if (ref10 && distM(ref10, p) > 2 * p.acc && geo.sog != null && geo.sog * 3.6 >= 1) h = bearing(ref10, p);
@@ -264,7 +306,7 @@ function onOrientation(e) {
   orientFrame = requestAnimationFrame(() => {
     orientFrame = 0;
     refreshMeIcon();
-    if (geo.follow === 'compass' || (geo.follow === 'course' && !geo.courseRot)) { applyRotation(); placeBoat(null); }
+    if (!geo.pressed && (geo.follow === 'compass' || (geo.follow === 'course' && !geo.courseRot))) { applyRotation(); placeBoat(null, false); }
     if (nav.on) updateNavArrow();
   });
 }
@@ -275,16 +317,19 @@ window.addEventListener('deviceorientation', onOrientation);
 // Made with its own icon: the default one would first ask for vendor/images/marker-icon.png (there is none).
 const meMarker = L.marker([0, 0], { icon: meIcon('dot'), interactive: false, keyboard: false, rotateWithView: true, rotation: 0, zIndexOffset: 1000 });
 const meCircle = L.circle([0, 0], { radius: 1, color: '#1c7ed6', weight: 1, fillOpacity: 0.14, interactive: false });
+// `glide`: the icon moves to a new fix in 0.9 s (CSS), in step with the map that glides under it (placeBoat).
 function meIcon(kind, stale, cone) {
-  if (kind === 'boat') return L.divIcon({ className: `boat${stale ? ' stale' : ''}`, html: '<svg viewBox="0 0 100 100"><path d="M50 6 82 90 50 71 18 90Z"/></svg>', iconSize: [32, 32], iconAnchor: [16, 16] });
-  return L.divIcon({ className: '', html: `<div class="me-wrap${stale ? ' stale' : ''}">${cone ? '<div class="me-cone"></div>' : ''}<div class="me-dot"></div></div>`, iconSize: [60, 60], iconAnchor: [30, 30] });
+  if (kind === 'boat') return L.divIcon({ className: `boat glide${stale ? ' stale' : ''}`, html: '<svg viewBox="0 0 100 100"><path d="M50 6 82 90 50 71 18 90Z"/></svg>', iconSize: [32, 32], iconAnchor: [16, 16] });
+  return L.divIcon({ className: 'glide', html: `<div class="me-wrap${stale ? ' stale' : ''}">${cone ? '<div class="me-cone"></div>' : ''}<div class="me-dot"></div></div>`, iconSize: [60, 60], iconAnchor: [30, 30] });
 }
 function drawMe() {
   const me = geo.me;
   if (!me) return;
   if (!layers.me.hasLayer(meMarker)) { geo.iconKey = ''; meCircle.addTo(layers.me); meMarker.addTo(layers.me); }
   meMarker.setLatLng([me.lat, me.lon]);
-  meCircle.setLatLng([me.lat, me.lon]).setRadius(me.acc || 1);
+  // The error circle cannot glide with the boat; while the map follows and the fix is good it is not needed.
+  const hideCircle = geo.follow !== 'free' && me.acc <= 25;
+  meCircle.setLatLng([me.lat, me.lon]).setRadius(me.acc || 1).setStyle({ opacity: hideCircle ? 0 : 1, fillOpacity: hideCircle ? 0 : 0.14 });
   refreshMeIcon();
 }
 function refreshMeIcon() {
@@ -302,13 +347,9 @@ function refreshMeIcon() {
 function setFollow(mode) {
   geo.follow = mode;
   const f = mode !== 'free';
-  // While the map holds on to the boat, pinch, wheel and double tap zoom around the centre and keep holding.
-  map.options.touchZoom = f ? 'center' : true;
-  map.options.scrollWheelZoom = f ? 'center' : true;
-  map.options.doubleClickZoom = f ? 'center' : true;
   if (mode === 'north' && map.getBearing() !== 0) map.setBearing(0);
-  if (f && geo.me) { applyRotation(true); placeBoat(null); }
-  updateLocateBtn(); updateCompassBtn(); refreshMeIcon();
+  if (f && geo.me) { applyRotation(true); placeBoat(null, true); }
+  updateLocateBtn(); updateCompassBtn(); refreshMeIcon(); drawMe();
   if (nav.on) updateRecenter();
 }
 function setFollowFree() { if (!nav.on && geo.follow !== 'free') setFollow('free'); }
@@ -398,27 +439,37 @@ function applyRotation(force = false) {
     if (Math.abs(diff) > maxStep) diff = Math.sign(diff) * maxStep;
   }
   geo.rotT = now;
+  // leaflet-rotate puts every marker in its new place on a turn: the boat must jump with the picture, not glide
+  // after it (the glide is for a new fix only).
+  const box = map.getContainer();
+  box.classList.add('no-glide');
   map.setBearing((cur + diff + 360) % 360);
+  void box.offsetWidth;
+  box.classList.remove('no-glide');
 }
 
 /* ---------- keep the boat where it belongs on screen ---------- */
 // Boat in the middle of the free area (north up) or at 72 % of its height (course up); z = zoom to step to.
-function placeBoat(z) {
+// On a new fix the map glides there in 0.9 s, straight and even, and the boat icon glides with it (.glide in CSS):
+// the boat stays put on the screen and the water moves under it — the way the «СПб Топливо» navigator does it.
+function placeBoat(z, glide = true) {
   const me = geo.me;
-  if (!me || geo.follow === 'free') return;
+  if (!me || geo.follow === 'free' || geo.pressed) return;
   const fr = mapFreeRect();
   const rotated = Math.abs(angleDiff(0, map.getBearing())) > 0.5 && (geo.follow === 'course' || geo.follow === 'compass');
   const yShare = rotated ? 0.72 : 0.5;
   const want = L.point((fr.left + fr.right) / 2, fr.top + yShare * (fr.bottom - fr.top));
   const boat = map.latLngToContainerPoint([me.lat, me.lon]);
-  // A screen-space shift (the map pane itself never rotates), cheaper than a new view on every fix — but never
-  // past the edge of the area: Leaflet would pull the map straight back, and the two fought on every fix
+  // Never past the edge of the area: Leaflet would pull the map straight back, and the two fought on every fix
   // (the map jerked once a second when someone was near the edge, e.g. in Saint Petersburg).
-  if (boat.distanceTo(want) >= 3) {
+  if (boat.distanceTo(want) >= 1 && (z == null || z === map.getZoom())) {
     const mid = map.getSize().divideBy(2);
     const to = map._limitCenter(map.containerPointToLatLng(mid.add(boat.subtract(want))), map.getZoom(), map.options.maxBounds);
     const shift = map.latLngToContainerPoint(to).subtract(mid);
-    if (Math.abs(shift.x) >= 1 || Math.abs(shift.y) >= 1) map.panBy(shift, { animate: false });
+    const far = Math.abs(shift.x) > map.getSize().x || Math.abs(shift.y) > map.getSize().y;
+    if (Math.abs(shift.x) >= 1 || Math.abs(shift.y) >= 1) {
+      map.panBy(shift, glide && !far ? { animate: true, duration: 0.9, easeLinearity: 1, noMoveStart: true } : { animate: false });
+    }
   }
   if (!geo.outsideSaid && !MAX_BOUNDS.contains([me.lat, me.lon])) {
     geo.outsideSaid = true;
@@ -431,17 +482,33 @@ function placeBoat(z) {
     map.setZoomAround([me.lat, me.lon], z, { animate: true });
   }
 }
-map.on('zoomend', () => { geo.progZoom = false; geo.zoomTarget = null; updateZoomAuto(); });
-map.on('dragstart', () => {
-  if (nav.on) {
-    if (geo.follow !== 'free') { nav.followBefore = geo.follow; setFollow('free'); }
-    nav.lastTouch = Date.now();
-    updateRecenter();
-  } else if (geo.follow !== 'free') setFollow('free');
-});
-// Only a zoom by the user's own fingers or wheel pauses the auto-zoom (+/− buttons go through userZoom).
+map.on('zoomend', () => { geo.progZoom = false; geo.zoomTarget = null; updateZoomAuto(); if (geo.follow !== 'free' && !geo.pressed) placeBoat(null, false); });
+// A finger on the map lets go of the boat at once — a drag, a pinch, a double tap or the wheel — and the map stays
+// where the hand put it: no fix moves it. It comes back to the boat by the «К лодке» button, or by itself
+// (Настройки → «Возвращать к лодке»), counted from the moment the finger is lifted and never under a finger
+// or with a card open.
+function letGo() {
+  geo.userTouchT = Date.now();
+  if (nav.on) nav.lastTouch = Date.now();
+  if (geo.follow === 'free') return;
+  if (nav.on) nav.followBefore = geo.follow;
+  map.stop?.();
+  setFollow('free');
+  logEvent('map_free');
+}
 geo.userTouchT = 0;
-for (const ev of ['pointerdown', 'wheel', 'touchstart']) map.getContainer().addEventListener(ev, () => { geo.userTouchT = Date.now(); }, { passive: true });
+{
+  const box = map.getContainer();
+  box.addEventListener('pointerdown', () => { geo.pressed = true; geo.userTouchT = Date.now(); if (nav.on) nav.lastTouch = Date.now(); }, { capture: true, passive: true });
+  const up = () => { if (!geo.pressed) return; geo.pressed = false; geo.userTouchT = Date.now(); if (nav.on) { nav.lastTouch = Date.now(); updateRecenter(); } };
+  window.addEventListener('pointerup', up, { passive: true });
+  window.addEventListener('pointercancel', up, { passive: true });
+  box.addEventListener('touchstart', (e) => { if (e.touches.length > 1) letGo(); }, { capture: true, passive: true });
+  box.addEventListener('wheel', letGo, { capture: true, passive: true });
+  box.addEventListener('dblclick', letGo, { capture: true, passive: true });
+}
+map.on('dragstart', letGo);
+// A zoom by the user's own fingers or wheel: the zoom stays theirs until «Авто» is pressed again.
 map.on('zoomstart', () => {
   if (geo.progZoom || !nav.on || Date.now() - geo.userTouchT > 1500) return;
   nav.autoZoomPaused = true; nav.lastTouch = Date.now();
@@ -451,7 +518,7 @@ map.on('zoomstart', () => {
 // a press then counts from where the animation is going and waits for its end, so every press is a step.
 geo.zoomWant = null;
 function userZoom(dir) {
-  if (nav.on) { nav.autoZoomPaused = true; nav.lastTouch = Date.now(); updateRecenter(); }
+  if (nav.on) { nav.autoZoomPaused = true; nav.lastTouch = Date.now(); updateRecenter(); updateZoomAuto(); }
   const pending = geo.zoomTarget != null && Date.now() - geo.zoomTargetT < 1000 ? geo.zoomTarget : null;
   const from = geo.zoomWant ?? pending ?? (map._animatingZoom ? map._animateToZoom : map.getZoom());
   const z = Math.max(map.getMinZoom(), Math.min(map.getMaxZoom(), from + dir));
@@ -472,7 +539,9 @@ function applyUserZoom() {
 }
 function updateZoomAuto() {
   const el = $('#zoomAuto');
-  if (el) el.hidden = !(nav.on && state.settings.autoZoom && !nav.autoZoomPaused);
+  if (!el) return;
+  el.hidden = !nav.on;
+  el.classList.toggle('on', !!(state.settings.autoZoom && !nav.autoZoomPaused));
 }
 
 /* ---------- navigation to a point ---------- */
@@ -488,6 +557,7 @@ function startNav(target) {
     on: true, target: { lat: +target.lat, lon: +target.lon, title: target.title || 'Точка' }, start: null, d: null, arrived: false, hold: false,
     zSpeed: 17, zoomCand: null, autoZoomPaused: false, firstPlace: true, lastTouch: 0, followBefore: null,
     offSince: 0, offCourse: null, hazard: null, banner: '', depth: null, depthT: 0, left: null, retrace: null,
+    trail: [], said: {},
   });
   store.set('ladoga-nav', { ...nav.target, t: Date.now() });
   if (!again) openLayer({ kind: 'nav', guard: navGuard, onClose: stopNav }, { replace });
@@ -502,6 +572,8 @@ function startNav(target) {
   updateNavFields(true);
   updateZoomAuto(); updateCompassBtn(); refreshMeIcon();
   if (!store.get('ladoga-nav-hint', false)) { store.set('ladoga-nav-hint', true); toast('Экран не будет гаснуть — навигатор расходует заряд, возьмите пауэрбанк', 6000); }
+  say(geo.me ? `Ведём к точке ${nav.target.title}. ${sayDist(distM(geo.me, nav.target))}` : `Ведём к точке ${nav.target.title}`, { force: true });
+  logEvent('nav_start', { d: geo.me ? Math.round(distM(geo.me, nav.target)) : null });
 }
 function stopNavState() {
   layers.nav.clearLayers(); layers.navHazards.clearLayers();
@@ -543,9 +615,11 @@ function confirmEndNav(detached = false) {
 }
 const navTargetIcon = L.divIcon({ className: '', html: '<div class="target-ring"></div>', iconSize: [34, 34], iconAnchor: [17, 17] });
 const navLine = L.polyline([], { color: '#b00020', weight: 3, dashArray: '9 7', interactive: false });
+const navTrail = L.polyline([], { color: '#1c7ed6', weight: 3, opacity: 0.85, interactive: false });
 const navArrive = L.circle([0, 0], { radius: 30, color: '#2b8a3e', weight: 2, dashArray: '4 6', fill: false, interactive: false });
 function drawNavTarget() {
   layers.nav.clearLayers();
+  navTrail.setLatLngs([]).addTo(layers.nav);
   navLine.setLatLngs([]).addTo(layers.nav);
   L.marker([nav.target.lat, nav.target.lon], { interactive: false, keyboard: false, icon: navTargetIcon }).addTo(layers.nav);
   L.marker([nav.target.lat, nav.target.lon], { interactive: false, keyboard: false, icon: L.divIcon({ className: '', html: `<svg class="i" style="width:28px;height:28px;color:#b00020;filter:drop-shadow(0 0 2px #fff)"><use href="#i-flag"/></svg>`, iconSize: [28, 28], iconAnchor: [4, 26] }) }).addTo(layers.nav);
@@ -592,6 +666,62 @@ function hazardAhead(me) {
   }
   return best;
 }
+/* ---------- shallow water ahead: the depth model along the course, like a plotter's «safety depth» alarm ----------
+   Every 3 s while moving: points along the course up to about 2 minutes of travel (300 m – 1,5 km), straight and
+   10° to each side (the boat drifts and turns); the nearest place shallower than «Предупреждать о глубине меньше»
+   with today's level is the shoal ahead. Where the water under the boat is already that shallow, only a clearly
+   shallower place ahead counts (no nagging in a shallow bay). On the ice depth warnings are off. */
+const onIceNow = () => {
+  const m = new Date().getMonth() + 1;
+  if (!(m >= 11 || m <= 4)) return false;
+  return Object.values(state.live?.ice_season?.sectors || {}).some((x) => x.state === 'ice');
+};
+function shoalAhead(me) {
+  if (!courseValid() || geo.sog * 3.6 < 3 || !chartState.gridIndex || onIceNow()) return null;
+  const lv = levelNow(), lim = +state.settings.shallow || 2;
+  const here = gridDepth(me);
+  const hereNow = here != null && here >= 0 ? here + lv : null;
+  const range = Math.min(1500, Math.max(300, geo.sog * 120));
+  let best = null;
+  for (const off of [0, -10, 10]) {
+    for (let d = 30; d <= range; d += d < 200 ? 30 : d < 600 ? 60 : 120) {
+      const p = destPoint(me, (geo.cog + off + 360) % 360, d);
+      const g = gridDepth(p);
+      if (g == null || g < 0) continue;
+      const now = g + lv;
+      const counts = now <= lim && (hereNow == null || hereNow > lim || now <= hereNow - 0.5 || now < 1);
+      if (counts) { if (!best || d < best.d) best = { d, depth: Math.max(0, now), lat: p.lat, lon: p.lon }; break; }
+    }
+  }
+  return best;
+}
+// «Где вы»: a ban area of the fishing rules; in the ice months a place in «Опасный лёд». Said once per place and trip.
+function pointInPoly(p, poly) {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const [ya, xa] = poly[i], [yb, xb] = poly[j];
+    if ((ya > p.lat) !== (yb > p.lat) && p.lon < ((xb - xa) * (p.lat - ya)) / (yb - ya) + xa) inside = !inside;
+  }
+  return inside;
+}
+function placeNotes(me) {
+  const out = [];
+  for (const a of state.ctx.regulations?.prohibited_areas || []) {
+    if (/^\[Промысел\]|справочно/i.test(`${a.name} ${a.applies_to}`)) continue;
+    let inside = Array.isArray(a.polygon) && a.polygon.length > 2 && pointInPoly(me, a.polygon);
+    for (const z of a.zones || []) if (z.lat != null && distM(me, { lat: +z.lat, lon: +z.lon }) <= (z.radius_m || 1000)) inside = true;
+    if (inside) out.push({ key: `ban:${a.name}`, text: `Запретный район: ${a.name}${a.period ? ` — ${a.period}` : ''}`, say: `Вы в запретном районе: ${a.name}` });
+  }
+  const m = new Date().getMonth() + 1;
+  if (m >= 11 || m <= 4) {
+    for (const z of state.ctx.ice_zones || []) {
+      if (distM(me, z) > z.r) continue;
+      const what = Object.keys(z.causes || {}).map((k) => ICE_CAUSE[k]).filter(Boolean).join(', ');
+      out.push({ key: `icez:${z.id}`, text: `Опасный лёд: ${z.name} — ${what}`, say: `Осторожно, опасный лёд. ${z.name}: ${what}` });
+    }
+  }
+  return out;
+}
 let hazardsDrawnAt = 0;
 function navOnFix() {
   if (!nav.on) return;
@@ -610,6 +740,7 @@ function navOnFix() {
     else if (layers.nav.hasLayer(navArrive)) layers.nav.removeLayer(navArrive);
     if (fresh && !nav.arrived && nav.d <= R) {
       nav.arrived = true; nav.arriveT = Date.now(); nav.hold = false; nav.left = null;
+      logEvent('nav_arrived', { acc: Math.round(me.acc) });
       navigator.vibrate?.([200, 100, 200]);
       beep('arrive');
     } else if (nav.arrived && nav.d > 2 * R) {
@@ -631,6 +762,21 @@ function navOnFix() {
     }
     nav.hazard = hz;
     if (Date.now() - hazardsDrawnAt > 5000) { hazardsDrawnAt = Date.now(); drawNavHazards(); }
+    if (Date.now() - (nav.shoalT || 0) > 3000) {
+      nav.shoalT = Date.now();
+      nav.shoal = fresh ? shoalAhead(me) : null;
+      if (nav.shoal && !nav.said[`shl${Math.round(nav.shoal.lat * 500)},${Math.round(nav.shoal.lon * 500)}`]) logEvent('shoal_ahead', { d: nav.shoal.d, depth: Math.round(nav.shoal.depth * 10) / 10 });
+      const notes = fresh ? placeNotes(me) : [];
+      nav.place = notes.find((n) => !nav.said[n.key]) || (nav.place && notes.some((n) => n.key === nav.place.key) ? nav.place : null);
+    }
+    // The way already made, drawn behind the boat (a recorded track draws itself).
+    const last = nav.trail[nav.trail.length - 1];
+    if (fresh && me.acc <= 50 && (!last || distM({ lat: last[0], lon: last[1] }, me) >= 10)) {
+      nav.trail.push([me.lat, me.lon]);
+      if (nav.trail.length > 4000) nav.trail.splice(0, nav.trail.length - 4000);
+      navTrail.setLatLngs(trk.cur?.state === 'rec' ? [] : nav.trail);
+    }
+    navVoice();
   }
   if (saver.on && ((nav.hazard && nav.hazard.d < 300) || (nav.arrived && Date.now() - nav.arriveT < 3000))) hideSaver();
   if (geo.follow !== 'free' && me && !saver.on) {
@@ -662,22 +808,32 @@ function autoZoom() {
   nav.zoomCandT = Date.now();
   return cur + Math.sign(z - cur);
 }
-function recenter() {
-  nav.autoZoomPaused = false;
-  nav.firstPlace = true;
+// Back to the boat. The zoom the user chose with fingers or ± stays (the «Авто» chip gives it back to the navigator).
+function recenter(auto) {
+  nav.firstPlace = !nav.autoZoomPaused;
   setFollow(nav.followBefore || (state.settings.orient === 'course' ? 'course' : 'north'));
   nav.followBefore = null;
   updateRecenter(); updateZoomAuto();
   navOnFix();
+  logEvent('recenter', { auto: auto === true });
 }
+// The map may go back by itself only when nobody touches it and nothing is open over it (a card, a sheet).
+const navCalm = () => !geo.pressed && topLayer()?.kind === 'nav';
 function updateRecenter() {
   const el = $('#recenter');
-  const show = nav.on && (geo.follow === 'free' || nav.autoZoomPaused);
+  const show = nav.on && geo.follow === 'free';
   el.hidden = !show;
   if (!show) return;
   const ar = +state.settings.autoReturn;
-  const left = ar ? ar * 1000 - (Date.now() - nav.lastTouch) : Infinity;
-  $('#recenterText').textContent = left <= 3000 ? `Вернуться ко мне · ${Math.max(1, Math.ceil(left / 1000))}` : 'Вернуться ко мне';
+  const left = ar && navCalm() ? ar * 1000 - (Date.now() - nav.lastTouch) : Infinity;
+  $('#recenterText').textContent = left <= 5000 ? `Ко мне · ${Math.max(1, Math.ceil(left / 1000))}` : 'Ко мне';
+}
+function toggleAutoZoom() {
+  if (!state.settings.autoZoom) { setSetting('autoZoom', true); nav.autoZoomPaused = false; }
+  else nav.autoZoomPaused = !nav.autoZoomPaused;
+  if (!nav.autoZoomPaused) { nav.firstPlace = true; navOnFix(); }
+  updateZoomAuto();
+  toast(nav.autoZoomPaused ? 'Масштаб ваш — навигатор его не меняет' : 'Автомасштаб: по скорости и расстоянию до точки');
 }
 function wholeRoute() {
   if (!nav.on) return;
@@ -808,10 +964,15 @@ function navBanner() {
   let b = null;
   const age = me ? Date.now() - me.t : 0;
   if (me && age > 60000) b = { cls: 'danger', key: `gps${Math.floor(age / 1000)}`, html: `Нет сигнала GPS ${fmtClock(age)}. Выйдите на открытое место, не закрывайте приложение.` };
-  else if (nav.hazard) {
+  else if (nav.hazard && !(nav.shoal && nav.shoal.d < nav.hazard.d)) {
     const h = nav.hazard;
     const where = courseValid() ? 'впереди' : 'рядом';
     b = { cls: h.d < 150 ? 'danger' : '', key: `hz${h.lat}${Math.round(h.d / 10)}`, html: `${ic('warning')} ${esc(h.name)} — ${fmtDist(h.d)} ${where}` };
+  } else if (nav.shoal) {
+    const s = nav.shoal;
+    b = { cls: s.d < 150 || s.depth < 1 ? 'danger' : '', key: `sh${Math.round(s.d / 30)}${Math.round(s.depth * 10)}`, html: `${ic('warning')} Мелко впереди: ${s.depth < 0.5 ? 'меньше 0,5' : fmtM(s.depth)} м через ${fmtDist(s.d)}` };
+  } else if (nav.place && !nav.arrived) {
+    b = { cls: '', key: `pl${nav.place.key}`, html: `${ic('warning')} ${esc(nav.place.text)}` };
   } else if (nav.arrived) {
     b = { cls: 'ok', key: `arr${nav.hold}`, html: `<span>${ic('check-circle')} ${nav.hold ? 'Держу точку' : 'Вы на месте'} · ${esc(nav.target.title)}</span><span class="nbb"><button type="button" data-act="nav-end-ask">Завершить</button><button type="button" data-act="nav-mark">Отметить</button>${nav.hold ? '' : '<button type="button" data-act="nav-hold">Держать точку</button>'}</span>` };
   } else if (nav.left != null && Date.now() - nav.leftT < 10000) {
@@ -854,6 +1015,12 @@ function handleNavAction(act, el) {
     case 'nav-mark': quickMark(); break;
     case 'nav-whole': closeTop(); wholeRoute(); break;
     case 'saver': showSaver(); break;
+    case 'nav-layers': closeTop(); openLayersSheet('layers'); break;
+    case 'guard-on': closeTop(); guardStart(); break;
+    case 'mob': manOverboard(); break;
+    case 'guard-sheet': closeTop(); openGuardSheet(); break;
+    case 'guard-off': closeTop(); guardStop(); break;
+    case 'guard-reset': closeTop(); Object.assign(guard, { anchor: null, pts: [], overT: 0, moveT: 0 }); toast('Сторож: запоминаю новое место'); break;
     case 'demo': startDemo(); break;
     case 'nav-orient': {
       const v = el.dataset.val;
@@ -874,13 +1041,18 @@ function openNavMore() {
       ${listRow({ icon: 'route', title: 'Весь путь', sub: 'я и точка на одном экране', attrs: 'data-act="nav-whole"' })}
       ${state.car && nav.target?.title !== 'Машина' ? listRow({ icon: 'directions-car', title: 'К машине', sub: geo.me ? `${fmtDist(distM(geo.me, state.car))} по прямой` : 'отмеченная машина', attrs: 'data-act="car-go"' }) : ''}
       ${trk.cur && trk.cur.segs.flat().length > 1 && !nav.retrace ? listRow({ icon: 'restart-alt', title: 'Назад по своему треку', sub: 'та же дорога, что пришли: в туман и в пургу', attrs: 'data-act="retrace"' }) : ''}
-      ${listRow({ icon: 'restart-alt', title: 'Погасить экран', sub: 'навигация идёт, чёрный экран бережёт заряд; двойное касание — назад', attrs: 'data-act="saver"' })}
+      ${listRow({ icon: 'dark-mode', title: 'Тёмный экран', sub: 'навигация, трек и голос идут, заряд почти не тратится; двойное касание — назад. Не блокируйте телефон кнопкой: тогда iPhone останавливает приложение', attrs: 'data-act="saver"' })}
+      ${listRow({ icon: 'layers', title: 'Карта', sub: 'спутник, карты глубин, схема', attrs: 'data-act="nav-layers"' })}
+      ${listRow({ icon: 'warning', title: 'Человек за бортом', sub: 'отметить место и сразу вести к нему', attrs: 'data-act="mob"' })}
+      ${guard.on ? listRow({ icon: 'warning', title: 'Сторож места включён', sub: 'настроить или выключить', attrs: 'data-act="guard-sheet"' }) : listRow({ icon: 'warning', title: 'Сторож места', sub: 'скажу, если место относит: льдина, якорь', attrs: 'data-act="guard-on"' })}
+      ${listRow({ icon: 'warning', title: 'Сообщить о проблеме', sub: 'что работает не так — с журналом за 40 минут', attrs: 'data-act="report-problem"' })}
       <h3>Карта</h3>
       <div class="seg">${[['north', 'Север'], ['course', 'По курсу'], ['compass', 'По компасу']].map(([k, t]) => `<button type="button" data-act="nav-orient" data-val="${k}" class="${cur === k ? 'on' : ''}">${t}</button>`).join('')}</div>
       ${sw('autoZoom', 'Автомасштаб', 'по скорости и расстоянию до точки')}
       ${sw('navShowPoints', 'Показать точки рыбаков')}
       <label class="check switch"><span>Ночная палитра</span><input type="checkbox" data-night ${document.documentElement.dataset.theme === 'night' ? 'checked' : ''}></label>
       ${sw('sound', 'Звук прибытия и опасности')}
+      ${sw('voice', 'Голосовые подсказки', 'до точки, правее/левее, мель, прибытие')}
       ${sw('keepAwake', 'Не гасить экран и после навигации')}
       <div class="small muted" style="margin-top:8px">Радиус прибытия</div>
       ${seg('arrivalR', [[15, '15 м'], [30, '30 м'], [50, '50 м'], [100, '100 м']], state.settings.arrivalR)}
@@ -894,6 +1066,7 @@ function onSettingChange(key) {
   if (key === 'units') updateNavFields(true);
   if (key === 'autoZoom') { updateZoomAuto(); if (nav.on) { nav.firstPlace = true; navOnFix(); } }
   if (key === 'orient' && nav.on && geo.follow !== 'free') setFollow(state.settings.orient === 'course' ? 'course' : 'north');
+  if (key === 'guardR') { guard.r = +state.settings.guardR || 50; renderChips(); }
 }
 
 /* ---------- sound, wake lock, the page going to the background ---------- */
@@ -921,9 +1094,191 @@ function beep(kind) {
     }
   } catch { /* no sound */ }
 }
+/* ---------- voice: short Russian phrases, so the phone can stay in the holder or under the dark screen ----------
+   The browser's own speech (speechSynthesis): the first phrase is said inside the tap on «Вести» — iPhone lets a
+   page speak only after that. A phrase is not repeated within a minute. */
+const voiceState = { last: '', lastT: 0 };
+function say(text, { force = false } = {}) {
+  if (!state.settings.voice || !('speechSynthesis' in window) || !text) return;
+  const now = Date.now();
+  if (!force && text === voiceState.last && now - voiceState.lastT < 60000) return;
+  voiceState.last = text; voiceState.lastT = now;
+  try {
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = 'ru-RU'; u.rate = 1.05;
+    const v = speechSynthesis.getVoices().find((x) => /^ru/i.test(x.lang));
+    if (v) u.voice = v;
+    speechSynthesis.cancel();
+    speechSynthesis.speak(u);
+    logEvent('voice', { text });
+  } catch { /* no speech on this phone */ }
+}
+// «1 километр 200 метров» reads better than «1,2 км»; metres rounded the way a person would say them.
+function sayDist(m) {
+  if (m >= 10000) return `${Math.round(m / 1000)} километр${plural(Math.round(m / 1000), '', 'а', 'ов')}`;
+  if (m >= 1000) { const all = Math.round(m / 100) * 100, km = Math.floor(all / 1000), r = all % 1000; return `${km} километр${plural(km, '', 'а', 'ов')}${r ? ` ${r} метров` : ''}`; }
+  const r = m >= 200 ? Math.round(m / 50) * 50 : Math.round(m / 10) * 10;
+  return `${r} метров`;
+}
+function sayDepth(d) {
+  if (d < 0.4) return 'меньше полуметра';
+  const h = Math.round(d * 2) / 2;
+  if (h === 0.5) return 'полметра';
+  if (h === 1.5) return 'полтора метра';
+  return Number.isInteger(h) ? `${h} метр${plural(h, '', 'а', 'ов')}` : `${Math.floor(h)} с половиной метра`;
+}
+// Where the point is from the bow: «прямо», «правее», «левее», «сзади».
+function sayWhere(diff) {
+  const a = Math.abs(diff);
+  if (a < 20) return 'прямо по курсу';
+  if (a < 60) return diff > 0 ? 'чуть правее' : 'чуть левее';
+  if (a < 135) return diff > 0 ? 'правее' : 'левее';
+  return 'сзади, разворачивайтесь';
+}
+const SAY_MARKS = [5000, 2000, 1000, 500, 200, 100];
+function navVoice() {
+  if (!nav.on || !geo.me || !state.settings.voice) return;
+  const said = nav.said;
+  const d = nav.retrace ? nav.retrace.left : nav.d;
+  if (d == null) return;
+  const moving = courseValid();
+  const diff = moving ? angleDiff(geo.cog, nav.brg) : null;
+  if (nav.arrived) { if (!said.arrived) { said.arrived = true; say(`Вы на месте. ${nav.target.title}`, { force: true }); } return; }
+  said.arrived = false;
+  // Distance marks: once each, on the way in.
+  for (const mark of SAY_MARKS) {
+    if (d <= mark && d > mark * 0.6 && !said[`d${mark}`]) {
+      SAY_MARKS.forEach((m2) => { if (m2 >= mark) said[`d${m2}`] = true; });
+      say(`До точки ${sayDist(d)}${diff != null ? `, ${sayWhere(diff)}` : ''}`);
+      return;
+    }
+  }
+  if (nav.hazard && nav.hazard.d < 500 && said.hz !== nav.hazard.name) {
+    said.hz = nav.hazard.name;
+    const h = nav.hazard;
+    const least = parseFloat(String(h.depth || '').replace(',', '.'));
+    const what = String(h.title || h.name).replace(/\s*\(.*?\)\s*/g, ' ').trim();
+    say(`Внимание! Впереди ${what}${Number.isFinite(least) ? `, глубина ${sayDepth(Math.max(0, least + levelNow()))}` : ''}, ${sayDist(h.d)}`, { force: true });
+    return;
+  }
+  // One shoal ahead is one warning (and one more close to it), however the found spot shifts as the boat moves;
+  // it counts as a new one after 15 s without shallow water ahead.
+  if (nav.shoal) {
+    const s = nav.shoal, now = Date.now();
+    if (!said.shoal || now - said.shoal.seen > 15000) said.shoal = { n: 0, seen: now };
+    said.shoal.seen = now;
+    if (said.shoal.n === 0) { said.shoal.n = 1; beep('hazard'); navigator.vibrate?.([100, 60, 100]); say(`Внимание! Впереди мелко: ${sayDepth(s.depth)}, через ${sayDist(s.d)}`, { force: true }); return; }
+    if (said.shoal.n === 1 && s.d <= 120) { said.shoal.n = 2; say(`Мель! ${sayDist(s.d)}`, { force: true }); return; }
+  }
+  if (nav.place && !said[nav.place.key]) { said[nav.place.key] = true; say(nav.place.say, { force: true }); logEvent('place_note', { key: nav.place.key }); return; }
+  // The water under the boat: said when it becomes shallow while moving, again after a minute if it still is.
+  const dep = nav.depth, lv = levelNow();
+  const now = dep ? (dep.value ?? dep.max) + lv : null;
+  if (now != null && now >= 0.2 && !onIceNow() && moving && now <= (+state.settings.shallow || 2) && Date.now() - (said.shallowT || 0) > 60000) {
+    said.shallowT = Date.now();
+    say(`Под лодкой мелко: ${sayDepth(now)}`, { force: true });
+    return;
+  }
+  if (nav.offCourse != null && Date.now() - (said.offT || 0) > 30000) {
+    said.offT = Date.now();
+    const a = Math.round(Math.abs(nav.offCourse) / 10) * 10;
+    say(`Поверните ${nav.offCourse > 0 ? 'правее' : 'левее'} на ${a} градусов`);
+    return;
+  }
+  // Nothing said for 3 minutes (a long way, or on foot over the ice): how far, and where.
+  if (Date.now() - voiceState.lastT > 180000) say(`До точки ${sayDist(d)}${diff != null ? `, ${sayWhere(diff)}` : ''}`, { force: true });
+}
+
+/* ---------- «Человек за бортом»: one tap marks the place and turns the boat back to it (as on every plotter) ----------
+   The place is the last fix (a few seconds old at most); without GPS it is taken from the first fix that comes. */
+function manOverboard() {
+  unlockAudio();
+  const me = geo.me && Date.now() - geo.me.t < 30000 ? geo.me : null;
+  const go = (p) => {
+    const t = Date.now();
+    if (typeof addMine === 'function') addMine({ lat: p.lat, lon: p.lon, name: `Человек за бортом ${fmtTime(t)}`, tag: 'other' });
+    // startNav() takes the place of the SOS sheet or the menu it was called from (no loop over closing layers: they close asynchronously).
+    startNav({ lat: p.lat, lon: p.lon, title: `Человек за бортом ${fmtTime(t)}` });
+    navigator.vibrate?.([300, 100, 300]);
+    say('Человек за бортом! Место отмечено. Ведём назад', { force: true });
+    logEvent('mob', { acc: Math.round(p.acc || 0) });
+  };
+  if (me) { go(me); return; }
+  geo.mobWait = true;
+  geoStart({});
+  toast('Человек за бортом: жду GPS, место отмечу по первой точке', 6000);
+}
+/* ---------- «Сторож места»: tells when the place you stand on moves — an ice floe breaking off, an anchor dragging ----------
+   None of the navigators anglers use does this from GPS (research/marine_nav_ru_cn.md), and floes with anglers
+   on them break off at Ладога every spring. The place is the average of the first fixes; walking or going on at
+   more than 3 km/h is you, not the ice — the place is taken again where you stop. An alarm: more than the set
+   distance from the place for 20 s with a fix good enough to tell. */
+const guard = { on: false, anchor: null, pts: [], r: 50, overT: 0, alarmT: 0, d: 0, t0: 0, moveT: 0 };
+function guardStart() {
+  unlockAudio();
+  if (geo.watchId == null) geoStart({});
+  Object.assign(guard, { on: true, anchor: null, pts: [], overT: 0, alarmT: 0, d: 0, t0: Date.now(), moveT: 0, r: +state.settings.guardR || 50 });
+  say('Сторож включён. Если место начнёт относить, я предупрежу', { force: true });
+  toast(`Сторож: запоминаю место. Тревога — если оно сдвинется больше чем на ${guard.r} м. Экран можно погасить кнопкой с луной`, 7000);
+  wakeUpdate(); renderChips();
+  logEvent('guard_on', { r: guard.r });
+}
+function guardStop() {
+  guard.on = false;
+  wakeUpdate(); renderChips();
+  logEvent('guard_off');
+  toast('Сторож выключен');
+}
+function guardOnFix(me) {
+  if (!guard.on || me.acc > 35) return;
+  // Going somewhere (on foot, on a snowmobile, the boat under way): the place is taken again where you stop.
+  if (geo.sog != null && geo.sog * 3.6 > 3) { guard.moveT = Date.now(); guard.anchor = null; guard.pts = []; guard.overT = 0; return; }
+  if (!guard.anchor) {
+    if (guard.moveT && Date.now() - guard.moveT < 10000) return;
+    guard.pts.push({ lat: me.lat, lon: me.lon });
+    if (guard.pts.length >= 8) {
+      const n = guard.pts.length;
+      guard.anchor = { lat: guard.pts.reduce((a, p) => a + p.lat, 0) / n, lon: guard.pts.reduce((a, p) => a + p.lon, 0) / n };
+      logEvent('guard_anchor');
+    }
+    return;
+  }
+  guard.d = distM(guard.anchor, me);
+  if (guard.d > guard.r + me.acc / 2) {
+    if (!guard.overT) guard.overT = Date.now();
+    if (Date.now() - guard.overT > 20000 && Date.now() - guard.alarmT > 60000) { guard.alarmT = Date.now(); guardAlarm(); }
+  } else guard.overT = 0;
+}
+function guardAlarm() {
+  const me = geo.me, d = guard.d;
+  hideSaver();
+  navigator.vibrate?.([500, 200, 500, 200, 500]);
+  beep('hazard'); setTimeout(() => beep('hazard'), 900);
+  const drift = guard.anchor ? rumb(bearing(guard.anchor, me)) : '';
+  say(`Внимание! Место сдвинулось на ${sayDist(d)}${drift ? ` к ${drift}` : ''}. Если вы на льду, возможно, льдину относит. Звоните 112.`, { force: true });
+  logEvent('guard_alarm', { d: Math.round(d), acc: Math.round(me.acc) });
+  openModal({
+    key: 'guard-alarm', title: `Место сдвинулось на ${fmtDist(d)}`,
+    body: () => `<p><b>Если вы на льду — возможно, льдину относит.</b> Не прыгайте через трещину и не идите по воде: звоните 112 и ждите спасателей на льдине.</p>
+      <p>Ваши координаты для 112:<br><b class="coord">${fmtDM(me.lat, me.lon)}</b><br><span class="coord small">${fmtDec(me.lat, me.lon)}</span></p>
+      <p class="small muted">Относит ${drift ? `на ${drift}` : ''}, ${fmtDist(d)} за ${fmtDur(Date.now() - guard.overT + 20000)}. Точность GPS ±${Math.round(me.acc)} м.</p>`,
+    foot: () => `<a class="btn danger" href="tel:112">Позвонить 112</a><button type="button" class="btn ghost" data-act="guard-reset">Это я сам — новое место</button><button type="button" class="btn ghost" data-act="guard-off">Выключить сторож</button>`,
+  });
+}
+function openGuardSheet() {
+  openModal({
+    key: 'guard', title: 'Сторож места',
+    body: () => `<p>${guard.anchor ? `От места <b>${Math.round(guard.d || 0)} м</b>, тревога — после ${guard.r} м.` : 'Запоминаю место: постойте полминуты.'}</p>
+      <p class="small">Работает, пока приложение открыто: экран можно погасить кнопкой с луной, но не блокируйте телефон кнопкой.</p>
+      <div class="small muted">Тревога, если место сдвинулось больше чем на</div>
+      ${seg('guardR', [[30, '30 м'], [50, '50 м'], [100, '100 м']], state.settings.guardR || 50)}`,
+    foot: () => `<button type="button" class="btn ghost" data-act="guard-reset">Запомнить место заново</button><button type="button" class="btn danger" data-act="guard-off">Выключить</button>`,
+  });
+}
+
 let wakeLock = null;
 async function wakeUpdate() {
-  const want = nav.on || trk.cur?.state === 'rec' || state.settings.keepAwake;
+  const want = nav.on || trk.cur?.state === 'rec' || guard.on || state.settings.keepAwake;
   if (want && !wakeLock && document.visibilityState === 'visible' && navigator.wakeLock) {
     try {
       wakeLock = await navigator.wakeLock.request('screen');
@@ -938,13 +1293,13 @@ async function wakeUpdate() {
   }
 }
 document.addEventListener('visibilitychange', () => {
-  const busy = nav.on || trk.cur?.state === 'rec';
+  const busy = nav.on || trk.cur?.state === 'rec' || guard.on;
   if (document.visibilityState === 'hidden') {
     geo.hiddenAt = Date.now();
     if (typeof saveCurTrack === 'function') saveCurTrack(true);
     // Not navigating, not recording: GPS off while the app is away (battery; and an iPhone asks again for every
     // new watch). ◎ turns it back on.
-    if (!busy && geo.watchId != null && geo.watchId !== 'demo') { navigator.geolocation.clearWatch(geo.watchId); geo.watchId = null; geo.searching = false; updateLocateBtn(); }
+    if (!busy && geo.watchId != null && geo.watchId !== 'demo') { gps.clear(geo.watchId); geo.watchId = null; geo.searching = false; updateLocateBtn(); }
     return;
   }
   const gap = geo.hiddenAt ? Date.now() - geo.hiddenAt : 0;
@@ -954,19 +1309,24 @@ document.addEventListener('visibilitychange', () => {
   if (busy && geo.watchId != null) restartWatch();
   if (!busy && geo.follow !== 'free') setFollow('free');
   if (gap > 30000 && (nav.on || trk.cur?.state === 'rec')) {
-    toast(`Пока приложение было свёрнуто, навигация и трек не работали (${fmtDur(gap)}).`, 6000);
+    toast(`${fmtDur(gap)} телефон был заблокирован или приложение свёрнуто — трек в это время не писался. Чтобы писать с погашенным экраном, включайте «Тёмный экран» (кнопка с луной), а не блокировку.`, 9000);
+    logEvent('gap', { ms: gap, nav: nav.on, rec: trk.cur?.state === 'rec' });
     if (typeof trackOnResume === 'function') trackOnResume(gap);
   }
 });
 // Once a second: stale fixes turn grey, timers run, the recenter countdown ticks.
 setInterval(() => {
   if (document.hidden) return;
+  const dark = $('#btnDark'), wantDark = nav.on || trk.cur?.state === 'rec' || guard.on;
+  if (dark && dark.hidden === wantDark) dark.hidden = !wantDark;
   if (geo.me) refreshMeIcon();
   if (nav.on) {
     updateNavFields();
     const ar = +state.settings.autoReturn;
-    if (ar && (geo.follow === 'free' || nav.autoZoomPaused) && Date.now() - nav.lastTouch > ar * 1000) recenter();
-  }
+    if (ar && geo.follow === 'free' && navCalm() && Date.now() - nav.lastTouch > ar * 1000) recenter(true);
+    // A watch that went quiet (it happens after the phone slept, or on a weak fix): start it again.
+    if (geo.watchId != null && geo.watchId !== 'demo' && geo.me && Date.now() - geo.me.t > 20000 && Date.now() - geo.restartT > 30000) restartWatch();
+  } else if (trk.cur?.state === 'rec' && geo.watchId != null && geo.watchId !== 'demo' && geo.me && Date.now() - geo.me.t > 20000 && Date.now() - geo.restartT > 30000) restartWatch();
   if (typeof updateTrackUi === 'function') updateTrackUi();
   updateSaver();
 }, 1000);

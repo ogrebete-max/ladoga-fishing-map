@@ -1,0 +1,101 @@
+{
+  "v": 1,
+  "targets": [
+    {
+      "id": "pravo_rules",
+      "name": "Официальное опубликование (pravo.gov.ru): приказы Минсельхоза о рыболовстве — Западный бассейн, Ладога, Ленобласть",
+      "url": "http://publication.pravo.gov.ru/documents/block/federal_authorities?SignatoryAuthorityId=9cfe6042-6bc2-449a-8190-779123113d73&Name=%D1%80%D1%8B%D0%B1%D0%BE%D0%BB%D0%BE%D0%B2%D1%81%D1%82%D0%B2%D0%B0&pageSize=30",
+      "type": "html",
+      "item": "(?s)<a href=\"(?P<url>/document/\\d+)\" class=\"documents-item-name\">(?P<title>.*?)</a>(?:(?!documents-item-name).)*?Дата опубликования:\\s*</span>\\s*<span class=\"info-data\">(?P<date>\\d{2}\\.\\d{2}\\.\\d{4})</span>",
+      "base": "http://publication.pravo.gov.ru/",
+      "include": "Западного рыбохозяйственного|Ладожск|Ленинградской области|Санкт-Петербург|Финского залива",
+      "exclude": "",
+      "topic": "rules",
+      "every_days": 7
+    },
+    {
+      "id": "regulation_western",
+      "name": "regulation.gov.ru: проекты приказов о правилах рыболовства Западного бассейна",
+      "url": "https://regulation.gov.ru/api/npalist?limit=10&search=%D0%97%D0%B0%D0%BF%D0%B0%D0%B4%D0%BD%D0%BE%D0%B3%D0%BE+%D1%80%D1%8B%D0%B1%D0%BE%D1%85%D0%BE%D0%B7%D1%8F%D0%B9%D1%81%D1%82%D0%B2%D0%B5%D0%BD%D0%BD%D0%BE%D0%B3%D0%BE+%D0%B1%D0%B0%D1%81%D1%81%D0%B5%D0%B9%D0%BD%D0%B0&sort=desc",
+      "type": "html",
+      "item": "(?s)<project id=\"(?P<url>\\d+)\">\\s*<title>(?P<title>.*?)</title>(?:(?!</project>).)*?<date>(?P<date>\\d{4}-\\d{2}-\\d{2})",
+      "base": "https://regulation.gov.ru/projects/",
+      "include": "Западного рыбохозяйственного|Ладож|Ленинградск|любительск",
+      "exclude": "",
+      "topic": "rules",
+      "every_days": 7
+    },
+    {
+      "id": "sztu",
+      "name": "Росрыболовство, Северо-Западное ТУ — региональные новости",
+      "url": "https://sztu.fish.gov.ru/press/regionalnye-novosti/rss/",
+      "type": "rss",
+      "item": "(?s)<item>\\s*<title>(?P<title>.*?)</title>\\s*<link>(?P<url>.*?)</link>(?:(?!</item>).)*?<pubDate>(?P<date>[^<]+)</pubDate>",
+      "base": "https://sztu.fish.gov.ru/",
+      "include": "правил\\w* рыболовства|нерест|запрет|ограничени|любительск|рыболов\\w*-любител|рыбак\\w*-любител|корюшк|Ладож|Ленинградск|Волхов|Свир|Сяс|(?<![а-яёë])Нев[аеуы](?![а-яёë])|(?<![а-яёë])л[еёë]д(?![а-яёë])|(?<![а-яёë])льд",
+      "exclude": "(?i)^(?!.*(?:Ленинградск|Ладож|Санкт-Петербург|(?<![а-яёë])Нев[аеуы](?![а-яёë]))).*(?:Карели|Новгородск|Псковск|Мурманск|Коми|Архангельск|Вологодск|Калининградск|Чудск|Ильмен)|колледж|СПбМРК|кадров|конкурс|целев\\w* обучени|аукцион|поздравл|Кубк",
+      "topic": "rules",
+      "every_days": 7
+    },
+    {
+      "id": "npa47_water",
+      "name": "Правительство и Губернатор ЛО (npa47.ru): акты о водных объектах, навигации маломерных судов, льде",
+      "url": "https://npa47.ru/docs/governor/?title=%D0%B2%D0%BE%D0%B4%D0%BD",
+      "type": "html",
+      "item": "(?s)<a href=\"(?P<url>/docs/governor/view/\\d+/)\">\\s*<p class=\"name\">(?P<title>(?:(?!</p>).)*?от (?P<date>\\d{2}\\.\\d{2}\\.\\d{4})(?:(?!</p>).)*)</p>",
+      "base": "https://npa47.ru/",
+      "include": "маломерн|навигаци|охраны жизни людей|(?<![а-яёë])л[еёë]д(?![а-яёë])|(?<![а-яёë])льд|(?<![а-яёë])ледов",
+      "exclude": "",
+      "topic": "navigation",
+      "every_days": 3
+    },
+    {
+      "id": "volgobalt_announce",
+      "name": "ФБУ «Администрация «Волго-Балт» — оперативная информация судоводителям",
+      "url": "https://volgo-balt.ru/press-center/announce/",
+      "type": "html",
+      "item": "(?s)<i class=\"far fa-calendar-alt[^\"]*\"></i>\\s*(?P<date>\\d{1,2} [а-яё]+ \\d{4})[^<]*</p>\\s*<h3[^>]*>\\s*<a href=\"(?P<url>/press-center/announce/[^\"]+)\"[^>]*>(?P<title>.*?)</a>",
+      "base": "https://volgo-balt.ru/",
+      "include": "Ладож|Ладог|Свир|Сяс|Новоладож|Староладож|Шлиссельбург|Петрокрепост|Кошкинск|ледостав|ледоход|(?<![а-яёë])льд|навигаци[яиюей]|извещени\\w* судоводител|Вниманию судоводител|опасн\\w* для плавания",
+      "exclude": "мост|разводк|регат|гребл|заплыв|триатлон|Валаам|Ильмен|Новгород|Санкт-Петербург|(?<![а-яёë])Нев[аеуы](?![а-яёë])|Мойк|Фонтанк|Калининград|Псков|Великой",
+      "topic": "navigation",
+      "every_days": 1
+    },
+    {
+      "id": "volgobalt_nets",
+      "name": "ФБУ «Администрация «Волго-Балт» — районы установки орудий лова корюшки (устья Волхова, Свири, Сяси)",
+      "url": "https://volgo-balt.ru/activity/putevaya-informatsiya/rayony-ustanovki-orudiy-lova/",
+      "type": "html",
+      "item": "(?s)(?P<title>Районы(?:\\s|&nbsp;)+установки(?:\\s|&nbsp;)+орудий(?:\\s|&nbsp;)+лова[^<]{10,400}?\\d{4}[^<]*)</p>.*?<a[^>]+href=\"(?P<url>[^\"]*/upload/[^\"]+\\.pdf)\"",
+      "base": "https://volgo-balt.ru/",
+      "include": "орудий лова|мереж|корюшк",
+      "exclude": "",
+      "topic": "navigation",
+      "every_days": 7
+    },
+    {
+      "id": "kpb_lenobl",
+      "name": "Комитет правопорядка и безопасности Ленинградской области — новости",
+      "url": "https://kpb.lenobl.ru/ru/news/",
+      "type": "html",
+      "item": "(?s)<a class=\"item\" href=\"(?P<url>/ru/news/\\d+/)\">(?:(?!</a>).)*?<h3[^>]*>(?P<title>.*?)</h3>(?:(?!</a>).)*?<div class=\"meta\">(?P<date>\\d{1,2} [а-яё]+ \\d{4})</div>",
+      "base": "https://kpb.lenobl.ru/",
+      "include": "(?<![а-яёë])л[еёë]д(?![а-яёë])|(?<![а-яёë])льд|(?<![а-яёë])ледо[вх]|навигаци[яиюей]|маломерн|Ладож|Ладог|нерест|рыбал|рыболов|на воде|водо[еёë]м|паводк|половод|ГИМС",
+      "exclude": "купан|купал",
+      "topic": "ice",
+      "every_days": 3
+    },
+    {
+      "id": "volkhov_gochs",
+      "name": "Администрация Волховского района — информация отдела ГО и ЧС (запреты выхода на лёд)",
+      "url": "https://www.volkhov-raion.ru/blog-kategorii/86-informatsiya-otdela-go-i-chs?format=feed&type=rss",
+      "type": "rss",
+      "item": "(?s)<item>\\s*<title>(?P<title>.*?)</title>\\s*<link>(?P<url>.*?)</link>(?:(?!</item>).)*?<pubDate>(?P<date>[^<]+)</pubDate>",
+      "base": "https://www.volkhov-raion.ru/",
+      "include": "(?<![а-яёë])л[еёë]д(?![а-яёë])|(?<![а-яёë])льд|(?<![а-яёë])ледо[вх]|водн\\w* объект|водо[еёë]м|навигаци|маломерн|Ладож|паводк|половод",
+      "exclude": "купан|купал",
+      "topic": "ice",
+      "every_days": 3
+    }
+  ]
+}

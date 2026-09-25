@@ -1,0 +1,29 @@
+{
+  "v": 1,
+  "targets": [
+    {
+      "id": "sztu",
+      "name": "Росрыболовство, Северо-Западное ТУ — новости (тест)",
+      "url": "https://sztu.example.test/news/",
+      "type": "html",
+      "item": "<a class=\"news-item\" href=\"(?P<url>[^\"]+)\">\\s*<span class=\"date\">(?P<date>[^<]+)</span>\\s*<span class=\"title\">(?P<title>[^<]+)</span>",
+      "base": "https://sztu.example.test/",
+      "include": "ладож|рыболов|запрет|нерест",
+      "exclude": "ваканси|конкурс",
+      "topic": "rules",
+      "every_days": 7
+    },
+    {
+      "id": "vb",
+      "name": "Волго-Балт — путевая информация (тест)",
+      "url": "https://vb.example.test/rss/",
+      "type": "rss",
+      "item": "",
+      "base": "",
+      "include": "навигац|ладож",
+      "exclude": "",
+      "topic": "navigation",
+      "every_days": 3
+    }
+  ]
+}

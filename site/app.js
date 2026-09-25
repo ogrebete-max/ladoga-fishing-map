@@ -26,7 +26,7 @@ const KINDS = {
   hazard: { label: 'Мели, камни, опасности', short: 'Опасность' },
   landmark: { label: 'Ориентиры: маяки, мысы, острова', short: 'Ориентир' },
   launch: { label: 'Спуски лодок, гавани, базы', short: 'Спуск / гавань' },
-  ice_incident: { label: 'Происшествия на льду (МЧС)', short: 'Происшествие на льду' },
+  ice_incident: { label: 'Свежие происшествия на льду и воде', short: 'Происшествие' },
   service: { label: 'Базы, магазины, заправки, больницы, спасатели', short: 'Сервис' },
 };
 const SERVICE_GLYPH = { base: '⌂', shop: '🎣', fuel: '⛽', hospital: '✚', rescue: '⛑', parking: 'P' };
@@ -65,11 +65,11 @@ const state = {
   fav: new Set(store.get('ladoga-fav', [])),
   mine: store.get('ladoga-mine', []),
   base: store.get('ladoga-base', 'sat'),
-  overlays: Object.assign({ seamarks: false, heat: false, cluster: true, radius: false, seasonZones: false, rules: false, lines: true, mine: true, tracks: false, genshtab: false, isobaths: false, charts: false, chartIso: false, shade: true, gridIso: true, community: false, myDepth: true, satDay: false, vvp: false }, store.get('ladoga-overlays', {})),
+  overlays: Object.assign({ seamarks: false, heat: false, cluster: true, radius: false, seasonZones: false, rules: false, lines: true, mine: true, tracks: false, genshtab: false, isobaths: false, charts: true, chartIso: false, shade: false, gridIso: false, community: false, myDepth: true, satDay: false, vvp: false, iceZones: false }, store.get('ladoga-overlays', {})),
   chartOpacity: store.get('ladoga-chart-opacity', 1),
   genshtabOpacity: store.get('ladoga-genshtab-opacity', 0.8),
   overlayOpacity: store.get('ladoga-overlay-opacity', 0.7),
-  settings: Object.assign({ theme: 'system', units: 'kmh', autoZoom: true, navShowPoints: false, keepAwake: false, sound: true, arrivalR: 30, orient: 'course', autoReturn: 15, shallow: 2 }, store.get('ladoga-settings', {})),
+  settings: Object.assign({ theme: 'system', units: 'kmh', autoZoom: true, navShowPoints: true, keepAwake: false, sound: true, voice: true, sendLog: true, guardR: 50, arrivalR: 30, orient: 'course', autoReturn: 20, shallow: 2 }, store.get('ladoga-settings', {})),
   home: store.get('ladoga-home', null) || HOME_DEFAULT,
   car: store.get('ladoga-car', null), // {lat, lon, t}: «К машине»
   navHide: false,
@@ -77,6 +77,14 @@ const state = {
 };
 function saveSettings() { store.set('ladoga-settings', state.settings); }
 state.overlays.isobaths = false;
+// 24.09.2026, the navigator after the owner's test: points stay on the map in navigation, and the map goes back to
+// the boat 20 s after the finger is lifted (it was 15 s after the finger touched — the map jumped away under it).
+if (!store.get('ladoga-nav-v2', false)) {
+  store.set('ladoga-nav-v2', true);
+  if (state.settings.autoReturn === 15 || state.settings.autoReturn === 5) state.settings.autoReturn = 20;
+  state.settings.navShowPoints = true;
+  saveSettings();
+}
 // 24.09.2026: the map opens the way anglers need it — satellite with the depths on it (the owner's wish, «как в
 // Навиониксе»). Turned on once for those who had them off; any later choice in «Слои» is kept.
 if (!store.get('ladoga-depth-default-v1', false)) {
@@ -84,10 +92,37 @@ if (!store.get('ladoga-depth-default-v1', false)) {
   Object.assign(state.overlays, { shade: true, gridIso: true, lines: true });
   if (!store.get('ladoga-base', null)) state.base = 'sat';
 }
-
-function defaultFilters() {
-  return { fish: new Set(), months: new Set(), season: 'all', cls: new Set(['A', 'B', 'C']), kinds: new Set(Object.keys(KINDS).filter((k) => k !== 'service' && k !== 'ice_incident')), sources: new Set(), core: false, yearMin: 0, fav: false, depthOnly: false };
+// Round 5 (the same day): first the official navigation charts (ГУНиО) — depths, shoals, rocks, «самые точные, самые
+// гарантированные»; the depth colours and 1 m lines of the model are one tap away in «Слои».
+if (!store.get('ladoga-depth-default-v2', false)) {
+  store.set('ladoga-depth-default-v2', true);
+  Object.assign(state.overlays, { charts: true, shade: false, gridIso: false });
 }
+// «Опасный лёд» shows by itself in the ice months (November – April) until the switch is touched by hand.
+const iceMonths = () => { const m = new Date().getMonth() + 1; return m >= 11 || m <= 4; };
+if (!store.get('ladoga-icez-hand', false)) state.overlays.iceZones = iceMonths();
+
+// Fish observations (iNaturalist, GBIF — dead fish on a beach, a bird with a perch) and services are one tick away.
+function defaultFilters() {
+  return { fish: new Set(), months: new Set(), season: 'all', cls: new Set(['A', 'B', 'C']), kinds: new Set(Object.keys(KINDS).filter((k) => k !== 'service' && k !== 'observation')), sources: new Set(), core: false, yearMin: 0, fav: false, depthOnly: false, archive: false };
+}
+/* ---------- how long a record stays true (scripts/build_data.py lifetime(), research/freshness.md) ----------
+   A place and a catch stay for good; nets, drift logs, cracks of one winter, incidents have `until`; the smelt nets
+   of the river mouths have `months`. Past its time a record is not on the map — only in the archive of the filter. */
+const todayYmd = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+function isCurrent(r) {
+  if (r.until && r.until < todayYmd()) return false;
+  if (r.months && !r.months.includes(new Date().getMonth() + 1)) return false;
+  return true;
+}
+// «3 дня назад» for a report of the last month; older ones keep the date.
+function ageText(d) {
+  if (!d || d.length < 10) return '';
+  const days = Math.round((Date.parse(todayYmd()) - Date.parse(d.slice(0, 10))) / 86400000);
+  if (days < 0 || days > 30) return '';
+  return days === 0 ? 'сегодня' : days === 1 ? 'вчера' : `${days} ${plural(days, 'день', 'дня', 'дней')} назад`;
+}
+const isFresh = (r, days = 7) => !!r.date && r.date.length >= 10 && (Date.parse(todayYmd()) - Date.parse(r.date.slice(0, 10))) / 86400000 <= days;
 
 /* ---------- utilities ---------- */
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -318,6 +353,7 @@ function applyOverlays() {
   toggle(layers.cluster, o.cluster && !hide);
   toggle(layers.plain, !o.cluster && !hide);
   toggle(layers.radius, o.radius && !state.navHide);
+  toggle(layers.iceZones, !!o.iceZones);
   toggle(layers.seasonZones, o.seasonZones && !state.navHide);
   toggle(layers.rules, o.rules && !state.navHide);
   toggle(layers.lines, o.lines);
@@ -392,6 +428,7 @@ function poiLabel(r) {
 
 function passes(r) {
   const f = state.f;
+  if (!f.archive && !isCurrent(r)) return false;
   if (!f.kinds.has(r.kind)) return false;
   if (!f.cls.has(r.cls)) return false;
   if (f.sources.size && !f.sources.has(r.src)) return false;
@@ -427,7 +464,8 @@ function markerIcon(m, rs) {
   const obs = rs.every((i) => state.R[i].kind === 'observation');
   const fav = state.fav.has(pointKey(m.lat, m.lon));
   const n = rs.length;
-  const cls = ['pin', exact ? 'A' : '', obs ? 'obs' : '', n > 1 ? 'multi' : '', fav ? 'fav' : ''].join(' ');
+  const fresh = rs.some((i) => isFresh(state.R[i]));
+  const cls = ['pin', exact ? 'A' : '', obs ? 'obs' : '', n > 1 ? 'multi' : '', fav ? 'fav' : '', fresh ? 'fresh' : ''].join(' ');
   const style = obs ? `border-color:${color}` : `background:${color}`;
   return L.divIcon({ className: 'hit', html: `<div class="${cls}" style="${style}">${n > 1 ? n : ''}</div>`, iconSize: [44, 44], iconAnchor: [22, 22] });
 }
@@ -470,6 +508,7 @@ function activeFilters() {
   if (f.yearMin) chips.push(['yearMin', `с ${f.yearMin} г.`]);
   if (f.fav) chips.push(['fav', 'избранное']);
   if (f.depthOnly) chips.push(['depthOnly', 'с глубиной']);
+  if (f.archive) chips.push(['archive', 'с архивом']);
   const dk = defaultFilters().kinds;
   if (f.kinds.size !== dk.size || [...f.kinds].some((k) => !dk.has(k))) chips.push(['kinds', `слоёв ${f.kinds.size} из ${Object.keys(KINDS).length}`]);
   return chips;
@@ -495,15 +534,26 @@ async function loadChartTiles(attempt = 0) {
       : await fetch('tiles/index.json', { cache: 'no-cache' }).then((r) => (r.ok ? r.json() : null));
     if (!idx || !Array.isArray(idx.layers)) throw new Error('no tile index');
     chartState.index = idx;
-    const mk = (l, extra = {}) => L.tileLayer(l.url, {
-      pane: 'charts', minZoom: 8, maxZoom: 18, minNativeZoom: +l.minZoom || 9, maxNativeZoom: +l.maxNativeZoom || 15,
-      bounds: l.bounds ? L.latLngBounds(l.bounds) : undefined, errorTileUrl: CLEAR_TILE, keepBuffer: 3, ...extra,
-    });
+    // Only the tiles that exist are asked for (tiles/<layer>_cover.json): the charts default to on since 25.09.2026,
+    // and around the sheets every other z9–z12 tile used to be a 404.
+    const covers = {};
+    const mk = (l, extra = {}) => {
+      const t = new CoveredTiles(l.url, {
+        pane: 'charts', minZoom: 8, maxZoom: 18, minNativeZoom: +l.minZoom || 9, maxNativeZoom: +l.maxNativeZoom || 15,
+        bounds: l.bounds ? L.latLngBounds(l.bounds) : undefined, errorTileUrl: CLEAR_TILE, keepBuffer: 3, ...extra,
+      });
+      if (l.cover) {
+        covers[l.cover] = covers[l.cover] || fetch(l.cover).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+        covers[l.cover].then((cover) => { if (cover) { t.options.cover = cover; if (map.hasLayer(t)) t.redraw(); } });
+      }
+      return t;
+    };
     const charts = idx.layers.find((l) => l.id === 'charts');
+    const tiles = [];
     if (charts) {
-      chartState.tiles = [{ layer: mk(charts, { zIndex: 2 }) }];
+      tiles.push({ layer: mk(charts, { zIndex: 2 }) });
       for (const r of charts.detail?.regions || []) {
-        chartState.tiles.push({ layer: mk(charts, { zIndex: 3, minZoom: 16, minNativeZoom: 16, maxNativeZoom: 16, bounds: L.latLngBounds(r.bounds) }) });
+        tiles.push({ layer: mk(charts, { zIndex: 3, minZoom: 16, minNativeZoom: 16, maxNativeZoom: 16, bounds: L.latLngBounds(r.bounds) }) });
       }
     }
     const gs = idx.layers.find((l) => l.id === 'genshtab');
@@ -511,6 +561,8 @@ async function loadChartTiles(attempt = 0) {
       layers.genshtab.clearLayers();
       mk(gs, { zIndex: 1, opacity: state.genshtabOpacity }).addTo(layers.genshtab);
     }
+    await Promise.race([Promise.all(Object.values(covers)), new Promise((res) => { setTimeout(res, 4000); })]); // the coverage first: no 404 for the first tiles
+    chartState.tiles = tiles;
     applyOverlays();
   } catch {
     // No whole-sheet pictures instead (10 megapixels each: a phone chokes on them) — just try again a bit later.
@@ -998,7 +1050,7 @@ function placeStats(z) {
         for (const f of r.fish || []) fish.set(f, (fish.get(f) || 0) + 1);
       }
     } else if (kind === 'launch' && d < 4000) access.push({ idx, d, title: state.R[m.r[0]].title || 'Спуск' });
-    else if ((kind === 'hazard' || kind === 'ice_incident') && d < 1500) hazards.push({ idx, title: state.R[m.r[0]].title || KINDS[kind].short });
+    else if ((kind === 'hazard' || kind === 'ice_incident') && d < 1500 && isCurrent(state.R[m.r[0]])) hazards.push({ idx, title: state.R[m.r[0]].title || KINDS[kind].short });
   });
   access.sort((a, b) => a.d - b.d);
   z._stats = { n, fish: [...fish.entries()].sort((a, b) => b[1] - a[1]), months, access, hazards };
@@ -1111,6 +1163,48 @@ function banLine(c) {
   return `<div class="ban-line">• <b>${esc(who)}</b>: ${esc(c.now || c.dates || '')}${!motor && c.area ? ` <span class="muted">(${esc(c.area)})</span>` : ''}</div>`;
 }
 // Prohibited areas on the map: circles for zones, lines and polygons as drawn by the rules; a label opens the card.
+/* ---------- «Опасный лёд»: where the ice itself hurt people in past winters (context.ice_zones, build_data.py) ----------
+   The case is long over; the place is what stays dangerous every winter: a floe breaking off at Чёрное, the current
+   under the ice in the canals and river mouths. Breakdowns, getting lost and injuries are not counted. */
+const ICE_CAUSE = { detach: 'отрывы льдин', fall: 'провалы под лёд', crack: 'трещины', polynya: 'промоины', weak: 'слабый лёд' };
+const ICE_ADVICE = {
+  detach: 'Припай здесь отрывает — при ветре с берега (отжимном), в оттепель и весной. Не уходите далеко и следите за полосой воды у берега.',
+  fall: 'Здесь проваливались: течение, ключи, старые трещины — лёд тоньше, чем кажется. Проверяйте пешнёй.',
+  crack: 'Трещины после подвижки льда и перепадов температуры; снег их прячет.',
+  polynya: 'Промоины от течения — обходите, особенно по первому и последнему льду.',
+  weak: 'Лёд здесь бывает слабым — проверяйте толщину.',
+};
+layers.iceZones = L.layerGroup();
+function drawIceZones() {
+  layers.iceZones.clearLayers();
+  for (const z of state.ctx.ice_zones || []) {
+    const c = L.circle([z.lat, z.lon], { radius: z.r, color: '#c92a2a', weight: 2, dashArray: '6 6', fillColor: '#fa5252', fillOpacity: 0.1 });
+    c.on('click', () => openIceZone(z));
+    c.addTo(layers.iceZones);
+    L.marker([z.lat, z.lon], { icon: L.divIcon({ className: 'icez-label', html: `<span>⚠ ${esc(z.name)}</span>`, iconSize: [0, 0] }), interactive: false, keyboard: false }).addTo(layers.iceZones);
+  }
+}
+map.on('zoomend', () => map.getContainer().classList.toggle('icez-names', map.getZoom() >= 11));
+// «2012, 2013 ×2, 2018»
+function yearsText(list) {
+  const c = new Map();
+  for (const y of list) c.set(y, (c.get(y) || 0) + 1);
+  return [...c.entries()].sort((a, b) => a[0] - b[0]).map(([y, n]) => (n > 1 ? `${y} ×${n}` : `${y}`)).join(', ');
+}
+function openIceZone(z) {
+  const causes = Object.entries(z.causes || {}).sort((a, b) => b[1].length - a[1].length);
+  openCard({
+    key: `icez:${z.id}`, title: `Опасный лёд: ${z.name}`,
+    sub: `${z.n} ${plural(z.n, 'случай', 'случая', 'случаев')} ${z.flow ? 'на реке или канале' : 'на озере'}, последний — ${fmtDate(z.last)}`,
+    focus: { lat: z.lat, lon: z.lon },
+    body: () => `${causes.map(([k, ys]) => `<p><b>${ICE_CAUSE[k] || k}:</b> ${yearsText(ys)}<br><span class="small">${ICE_ADVICE[k] || ''}</span></p>`).join('')}
+      ${z.flow ? '<p class="small">На канале и реке течение подмывает лёд снизу: он тоньше, чем на озере рядом.</p>' : ''}
+      <details><summary class="small">Все случаи (${z.cases.length})</summary>${z.cases.map((c) => `<div class="small" style="margin:6px 0">${esc(fmtDate(c.d))} — ${esc(c.t)}${safeUrl(c.u) ? ` · <a href="${esc(c.u)}" target="_blank" rel="noopener">${esc(c.s)}</a>` : ` · ${esc(c.s)}`}</div>`).join('')}</details>
+      <p class="small muted">Сами случаи давно прошли, место опасно каждую зиму. Свежую обстановку смотрите в обзоре льда МЧС: «Сегодня» → «Лёд».</p>`,
+    onShow: () => { layers.select.clearLayers(); L.circle([z.lat, z.lon], { radius: z.r, color: '#fab005', weight: 3, fill: false, interactive: false }).addTo(layers.select); },
+    onClose: () => layers.select.clearLayers(),
+  });
+}
 function drawRules() {
   layers.rules.clearLayers();
   if (!state.overlays.rules) return;
@@ -1415,6 +1509,48 @@ async function loadLive() {
   } catch { /* offline, or the copy on GitHub Pages without a collector */ }
   if (typeof onDepthReady === 'function') onDepthReady();
   if (typeof refreshPage === 'function') refreshPage('today');
+}
+
+/* ---------- fresh reports from forums and channels, incidents, official news (data/reports.json) ----------
+   scripts/live/fetch_reports.py on our server checks fisher.spb.ru and the public Telegram channels every 3–5 days
+   (Telegram through GitHub: Russian servers cannot open it), 47news for incidents every day, and the rules pages.
+   The file only grows: reports are added to the map next to the old ones (never instead of them); an incident is
+   shown EVENT_DAYS after its date and then only in the archive; the rules news go to «Правила» and «Сегодня». */
+const FRESH_EVENT_DAYS = 10;
+async function loadReports() {
+  let data = null;
+  try { data = await fetch('data/reports.json', { cache: 'no-cache' }).then((r) => (r.ok ? r.json() : null)); } catch { /* offline: the saved copy answers through the service worker */ }
+  if (!data || typeof data !== 'object' || !Array.isArray(data.reports)) return;
+  state.fresh = data;
+  mergeFresh(data);
+  if (typeof refreshPage === 'function') refreshPage();
+}
+function mergeFresh(data) {
+  const known = new Set();
+  for (const r of state.R) { if (r.url) known.add(r.url.replace(/\/$/, '').toLowerCase()); if (r.sid) known.add(`${r.src}|${r.sid}`); }
+  const family = (k) => (CATCH_KINDS.has(k) ? 'catch' : k);
+  let added = 0;
+  const items = [...data.reports, ...(data.incidents || []).map((x) => ({ ...x, kind: 'ice_incident', life: 'event',
+    until: x.until || (x.date && x.date.length >= 10 ? new Date(Date.parse(x.date) + FRESH_EVENT_DAYS * 86400000).toISOString().slice(0, 10) : undefined) }))];
+  for (const x of items) {
+    if (!Number.isFinite(+x.lat) || !Number.isFinite(+x.lon) || !KINDS[x.kind]) continue;
+    const u = (x.url || '').replace(/\/$/, '').toLowerCase();
+    if ((u && known.has(u)) || (x.sid && known.has(`${x.src}|${x.sid}`))) continue;
+    if (u) known.add(u);
+    const r = { cls: 'C', fish: [], ...x, lat: +x.lat, lon: +x.lon, fresh: true };
+    const i = state.R.push(r) - 1;
+    const m = state.M.find((mm) => family(mm.kind) === family(r.kind) && distM(mm, r) <= 30);
+    if (m) { m.r.push(i); if (r.kind === 'fishing') m.kind = 'fishing'; } else state.M.push({ lat: r.lat, lon: r.lon, kind: r.kind, r: [i] });
+    added += 1;
+  }
+  if (added) { if (typeof HAZARDS !== 'undefined') HAZARDS = null; render(); }
+  logEvent('fresh_merged', { added, total: data.reports.length });
+}
+// The last reports in the area, newest first: for «Сегодня».
+function freshReports(days = 7) {
+  const since = Date.now() - days * 86400000;
+  return state.R.filter((r) => r.kind === 'fishing' && r.date && r.date.length >= 10 && Date.parse(r.date) >= since)
+    .sort((a, b) => String(b.date).localeCompare(String(a.date)));
 }
 
 /* ---------- the satellite of the day: NASA GIBS (MODIS Terra, 250 m, every day; no key, CORS open) ----------

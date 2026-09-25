@@ -370,25 +370,30 @@ def depth_shade():
     out = {"url": f"tiles/depth/{{z}}/{{x}}/{{y}}{ext}", "minZoom": zooms[0], "maxNativeZoom": zooms[-1],
            "list": "tiles/depth_tiles.txt" if listing.exists() else ""}
     if listing.exists():
-        # Tiles exist only over water: the app asks for no tile outside these runs (no 404s over land).
-        # {z: {x: [y0, y1, y2, y3, ...]}} — inclusive runs of y in each column.
-        cols = defaultdict(set)
-        for line in listing.read_text(encoding="utf-8").split():
-            m = re.search(r"/(\d+)/(\d+)/(\d+)\.\w+$", line)
-            if m:
-                cols[(int(m[1]), int(m[2]))].add(int(m[3]))
-        cover = defaultdict(dict)
-        for (z, x), ys in sorted(cols.items()):
-            runs, ys = [], sorted(ys)
-            for y in ys:
-                if runs and y == runs[-1] + 1:
-                    runs[-1] = y
-                else:
-                    runs += [y, y]
-            cover[str(z)][str(x)] = runs
-        (ROOT / "site" / "tiles" / "depth_cover.json").write_text(json.dumps(cover, separators=(",", ":")), encoding="utf-8")
-        out["cover"] = "tiles/depth_cover.json"
+        out["cover"] = write_cover(listing, "depth_cover.json")
     return out
+
+
+def write_cover(listing, name):
+    """Tiles exist only where the layer has something (the depth shading over water, the charts inside their
+    sheets): the app asks for no tile outside these runs — no 404s, no wasted requests on a weak signal.
+    {z: {x: [y0, y1, y2, y3, ...]}} — inclusive runs of y in each column."""
+    cols = defaultdict(set)
+    for line in listing.read_text(encoding="utf-8").split():
+        m = re.search(r"/(\d+)/(\d+)/(\d+)\.\w+$", line)
+        if m:
+            cols[(int(m[1]), int(m[2]))].add(int(m[3]))
+    cover = defaultdict(dict)
+    for (z, x), ys in sorted(cols.items()):
+        runs, ys = [], sorted(ys)
+        for y in ys:
+            if runs and y == runs[-1] + 1:
+                runs[-1] = y
+            else:
+                runs += [y, y]
+        cover[str(z)][str(x)] = runs
+    (ROOT / "site" / "tiles" / name).write_text(json.dumps(cover, separators=(",", ":")), encoding="utf-8")
+    return f"tiles/{name}"
 
 
 def tile_index():
@@ -404,6 +409,9 @@ def tile_index():
         out = {k: layer[k] for k in keep if k in layer}
         if layer.get("detail"):
             out["detail"] = {"regions": [{"bounds": r["bounds"]} for r in layer["detail"].get("regions") or [] if r.get("bounds")]}
+        listing = ROOT / "site" / str(layer.get("list") or "")
+        if layer.get("list") and listing.is_file():
+            out["cover"] = write_cover(listing, f"{layer['id']}_cover.json")
         layers.append(out)
     return {"generated": idx.get("generated"), "layers": layers}
 
@@ -478,7 +486,7 @@ def lifetime(r):
     return "perm", None, None, ""
 
 
-ZONE_LINK_M = 2500
+ZONE_LINK_M = 2000
 FLOW = re.compile(r"канал|(?<![а-яё])р\.\s|реки|река|проток|устье Волхова|Свир|Сясь|Валгом", re.I)
 ZONE_ALIAS = {
     "Губа Черная Сатама": "Чёрное", "Осиновецкая гавань": "Осиновец", "Осиновецкий маяк": "Осиновец",

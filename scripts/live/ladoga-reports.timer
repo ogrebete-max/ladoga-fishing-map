@@ -1,0 +1,16 @@
+# Runs of ladoga-reports.service at 07:10 Moscow time (after the GitHub copy of the Telegram part, 06:40) and 19:10:
+# the 47news feed keeps about a day of news, so it is read twice a day; the forums are fetched only when due.
+# a run missed while the server was down is made up once after boot.
+[Unit]
+Description=Daily check of fresh angler reports for the Ladoga fishing map
+
+[Timer]
+OnCalendar=*-*-* 07:10:00 Europe/Moscow
+OnCalendar=*-*-* 19:10:00 Europe/Moscow
+RandomizedDelaySec=600
+AccuracySec=1min
+Persistent=true
+Unit=ladoga-reports.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Путевая информация (синтетическая лента для теста)</title>
+    <link>https://vb.example.test/</link>
+    <item>
+      <title>Навигация на Ладожском озере в 2026 году закрывается 15 ноября</title>
+      <link>https://vb.example.test/news/77/</link>
+      <pubDate>Tue, 22 Sep 2026 10:00:00 +0300</pubDate>
+      <description>Сроки окончания навигации на участках Волго-Балтийского водного пути.</description>
+    </item>
+    <item>
+      <title>Кадровые назначения</title>
+      <link>https://vb.example.test/news/76/</link>
+      <pubDate>Mon, 21 Sep 2026 10:00:00 +0300</pubDate>
+      <description>Назначен новый заместитель руководителя.</description>
+    </item>
+  </channel>
+</rss>

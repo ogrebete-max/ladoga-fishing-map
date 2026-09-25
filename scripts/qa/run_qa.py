@@ -617,7 +617,7 @@ JS_NAVSNAP = r"""() => {
     shallow: document.getElementById('nfDepthBox').classList.contains('shallow'),
     banner: banner.hidden ? '' : banner.textContent.replace(/\s+/g, ' ').trim(), bannerCls: banner.hidden ? '' : banner.className,
     recenter: !document.getElementById('recenter').hidden, recenterText: t('#recenterText'),
-    zoomAuto: !document.getElementById('zoomAuto').hidden, zoom: map.getZoom(), bearing: Math.round(map.getBearing()),
+    zoomAuto: !document.getElementById('zoomAuto').hidden && document.getElementById('zoomAuto').classList.contains('on'), zoom: map.getZoom(), bearing: Math.round(map.getBearing()),
     follow: geo.follow, courseRot: !!geo.courseRot, sog: geo.sog, cog: geo.cog, navD: nav.d, arrived: nav.arrived, hold: nav.hold, autoZoomPaused: nav.autoZoomPaused,
     boat, fr, boatShareY: boat ? (boat.y - fr.top) / (fr.bottom - fr.top) : null, boatShareX: boat ? (boat.x - fr.left) / (fr.right - fr.left) : null,
     hits: [...document.querySelectorAll('.leaflet-marker-icon.hit')].filter(__qa.vis).length,
@@ -1245,7 +1245,8 @@ def s5_nav(r: Run):
     r.check('HUD: пеленг и время прибытия', bool(re.search(r'на \d+° .+ · в \d\d:\d\d \(', b['line2'])), f"«{b['line2']}»")
     r.check('HUD: глубина под лодкой', b['depth'] not in ('', '—'), f"«{b['depth']} {b['depthUnit']}»{' (оранжевое: мелко)' if b['shallow'] else ''}")
     r.check('HUD: точность GPS', '±5' in b['gps'], f"«{b['gps']}»", sev='мелочь')
-    r.check('В навигации точки рыбаков спрятаны', b['hits'] == 0 and not b['clusterOn'], f"видимых точек {b['hits']}, кластеры на карте: {b['clusterOn']}, POI: {b['poisOn']}")
+    # 25.09.2026 (owner): the points stay on the map in navigation — «невозможно ни посмотреть, ни точку».
+    r.check('В навигации точки рыбаков на карте', b['clusterOn'] or b['hits'] > 0, f"видимых точек {b['hits']}, кластеры на карте: {b['clusterOn']}, POI: {b['poisOn']}")
     r.check('В навигации нет поиска, чипов и нижней панели; SOS, +/−, компас есть', not b['navBar'] and not b['search'] and not b['chips'] and b['sos'] and b['zoomIn'] and b['compass'],
             f"панель {b['navBar']}, поиск {b['search']}, чипы {b['chips']}, SOS {b['sos']}, +/− {b['zoomIn']}, компас {b['compass']}")
     rotated = b['follow'] == 'course' and b['courseRot']
@@ -1253,7 +1254,8 @@ def s5_nav(r: Run):
     r.check('Лодка в нижней трети (карта по курсу)', rotated and ys is not None and ys >= 0.62 and 0.35 <= b['boatShareX'] <= 0.65,
             f"слежение {b['follow']}, поворот {b['bearing']}°, лодка на {ys * 100 if ys is not None else 0:.0f} % высоты свободной области ({b['boat']}, область {b['fr']}), масштаб {b['zoom']}", shot=shot)
     check_overlaps(r, page, 'Навигация', 'nav', sels=NAV_SELS)
-    check_targets(r, page, 'Навигация (≥ 64 по спеке)', ['#navBottom'], min_px=64, sev='мелочь')
+    # The panels were slimmed at the owner's request (24–25.09.2026): 52 px buttons, still well above 48.
+    check_targets(r, page, 'Навигация (≥ 52 после облегчения панелей)', ['#navBottom'], min_px=52, sev='мелочь')
     check_targets(r, page, 'Навигация', ['#navTop', '#navBottom', '#mapUi', '#navBanner'], sev='серьёзно')
     # drag → «Вернуться ко мне», auto-return after 15 s
     fr = b['fr']
@@ -1278,14 +1280,15 @@ def s5_nav(r: Run):
         if not s['v'] and s['f'] != 'free':
             t_back = time.time() - t_drag
             break
-    r.check('Автовозврат к лодке ≈ через 15 с', t_back is not None and 13.5 <= t_back <= 18.5, f"вернулась через {t_back:.1f} с" if t_back else 'не вернулась за 26 с')
+    # 25.09.2026: the default is 20 s counted from the moment the finger is lifted (it was 15 s from the touch).
+    r.check('Автовозврат к лодке ≈ через 20 с после отпускания', t_back is not None and 18.5 <= t_back <= 23.5, f"вернулась через {t_back:.1f} с" if t_back else 'не вернулась за 26 с')
     r.check('Отсчёт «Вернуться ко мне · 3…» перед возвратом', seen_count, 'был' if seen_count else 'не видел', sev='мелочь')
     # +/− pauses auto-zoom
     z0 = page.evaluate('map.getZoom()')
     r.tap(page, '#zoomIn')
     r.wait(900)
     c = page.evaluate(JS_NAVSNAP)
-    r.check('«+» в навигации: масштаб +1, автомасштаб на паузе, подпись «авто» гаснет', c['zoom'] == z0 + 1 and c['autoZoomPaused'] and not c['zoomAuto'],
+    r.check('«+» в навигации: масштаб +1, автомасштаб на паузе, «Авто» не залито', c['zoom'] == z0 + 1 and c['autoZoomPaused'] and not c['zoomAuto'],
             f"z {z0}→{c['zoom']}, пауза {c['autoZoomPaused']}, «авто» {c['zoomAuto']}, пилюля {c['recenter']}", shot=r.shot(page, 'nav-zoomed'))
     r.wait(6000)
     z2 = page.evaluate('map.getZoom()')
@@ -1296,7 +1299,8 @@ def s5_nav(r: Run):
         if not page.evaluate('nav.autoZoomPaused'):
             break
     c = page.evaluate(JS_NAVSNAP)
-    r.check('После возврата автомасштаб снова включён', not c['autoZoomPaused'] and c['zoomAuto'], f"пауза {c['autoZoomPaused']}, «авто» {c['zoomAuto']} через {time.time() - t_zoom + 6.9:.0f} с после «+»", sev='мелочь')
+    # 25.09.2026: the zoom chosen by hand stays theirs until «Авто» is pressed (it came back by itself before).
+    r.check('После возврата масштаб остаётся ручным', c['autoZoomPaused'] and not c['zoomAuto'], f"пауза {c['autoZoomPaused']}, «авто» {c['zoomAuto']} через {time.time() - t_zoom + 6.9:.0f} с после «+»", sev='мелочь')
     # Back asks
     r.back(page)
     c = page.evaluate(JS_NAVSNAP)
@@ -1467,23 +1471,18 @@ def s6_demo(r: Run):
         else:
             raise PWError('чёрного экрана нет — дальше нечего проверять')
         W, H = r.p['vp']
-        how = 'касание'
-        if r.p['touch']:
-            page.touchscreen.tap(W / 2, H / 2)
-            page.wait_for_timeout(120)
-            page.touchscreen.tap(W / 2, H / 2)
-        else:
-            page.mouse.dblclick(W / 2, H / 2)
-            how = 'двойной клик'
-        r.wait(800)
+        # 25.09.2026: a double tap turned the screen on in a pocket — the map comes back on a press held ~1 s.
+        page.touchscreen.tap(W / 2, H / 2) if r.p['touch'] else page.mouse.click(W / 2, H / 2)
+        page.wait_for_timeout(120)
+        page.touchscreen.tap(W / 2, H / 2) if r.p['touch'] else page.mouse.click(W / 2, H / 2)
+        r.wait(600)
+        stays = page.evaluate('!!document.getElementById("saver")')
+        r.check('Двойное касание не будит тёмный экран (в кармане)', stays, 'экран остался тёмным' if stays else 'экран вернулся от двойного касания')
+        page.evaluate('''() => { const s = document.getElementById('saver'); if (!s) return; const o = { bubbles: true, pointerId: 1, pointerType: 'touch' };
+            s.dispatchEvent(new PointerEvent('pointerdown', o)); setTimeout(() => s.dispatchEvent(new PointerEvent('pointerup', o)), 1100); }''')
+        r.wait(1500)
         gone = page.evaluate('!document.getElementById("saver")')
-        if not gone and r.p['touch']:
-            page.mouse.dblclick(W / 2, H / 2)
-            r.wait(800)
-            gone2 = page.evaluate('!document.getElementById("saver")')
-            r.check('Двойное касание возвращает карту', False, f"двойное касание не сработало (эмуляция {r.p['engine']}); двойной клик мышью: {'сработал' if gone2 else 'нет'}", sev='серьёзно' if not gone2 else 'мелочь')
-        else:
-            r.check('Двойное касание возвращает карту', gone and page.evaluate('document.body.dataset.mode') == 'nav', f"{how}: экран {'вернулся' if gone else 'остался чёрным'}")
+        r.check('Долгое нажатие возвращает карту', gone and page.evaluate('document.body.dataset.mode') == 'nav', f"экран {'вернулся' if gone else 'остался чёрным'}")
     except (PWError, PWTimeout) as e:
         r.check('«Погасить экран»', False, f'сбой: {str(e)[:300]}', shot=r.shot(page, 'saver-error'))
     # end the demo
