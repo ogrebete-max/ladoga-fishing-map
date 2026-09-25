@@ -1,1 +1,1 @@
-{"log": false, "note": "true once Caddy passes /ladoga/api/* to ladoga-logs (scripts/logs/README.md)"}
+{"log": true, "note": "Caddy passes /ladoga/api/* to ladoga-logs since 25.09.2026 (scripts/logs/README.md)"}

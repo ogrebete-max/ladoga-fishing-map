@@ -48,7 +48,7 @@ odd = collections.Counter()
 voice = collections.Counter()
 slow = [0, 0]
 nav = collections.Counter()
-for path in sorted(out.glob("*.jsonl")):
+for path in sorted(out.rglob("*.jsonl")):  # one folder per app: ladoga/, fuel/, …
     if path.name == "reports.jsonl":
         continue
     for line in path.read_text(encoding="utf-8").splitlines():
@@ -90,9 +90,8 @@ print("\nGPS — странности:", dict(odd))
 print("\nГолос (частые фразы):", dict(voice.most_common(10)))
 print(f"\nЗависания страницы (Android): {slow[0]} шт., {slow[1] / 1000:.1f} с всего")
 print("\nЧаще всего нажимали:", dict(taps.most_common(20)))
-rep = out / "reports.jsonl"
-if rep.exists():
-    print("\nСообщения о проблемах:")
+for rep in sorted(out.rglob("reports.jsonl")):
+    print(f"\nСообщения о проблемах ({rep.parent.name}):")
     for line in rep.read_text(encoding="utf-8").splitlines()[-30:]:
         r = json.loads(line)
-        print(f"  {r['rt']}  [{r.get('app')}] {r.get('text')}  ({r.get('file')})")
+        print(f"  {r['rt']}  [{r.get('app')}] {r.get('who') or ''} {r.get('text')}  ({r.get('file')})")

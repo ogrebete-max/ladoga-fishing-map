@@ -39,7 +39,8 @@ restore() { cp -p "$CF.before-applog" "$CF"; systemctl reload caddy || true; ech
 caddy validate --config "$CF" --adapter caddyfile >/dev/null 2>&1 || restore
 systemctl reload caddy || restore
 sleep 3
-code() { curl -s -o /dev/null -w '%{http_code}' --resolve "$IP:443:127.0.0.1" "https://$IP$1" || true; }
+# Through the public address: a request to 127.0.0.1 carries no name, and Caddy has no certificate for it.
+code() { curl -s -o /dev/null -m 15 -w '%{http_code}' "https://$IP$1" || true; }
 ladoga=$(code /ladoga/) fuel=$(code /) api=$(code /ladoga/api/health) applog=$(code /applog/health)
 echo "ladoga $ladoga, fuel $fuel, ladoga api $api, applog $applog"
 [[ "$ladoga" == 200 && "$fuel" =~ ^(200|301|302|308)$ && "$api" == 200 && "$applog" == 200 ]] || restore
