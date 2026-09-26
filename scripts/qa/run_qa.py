@@ -1289,7 +1289,13 @@ def s5_nav(r: Run):
     # 25.09.2026: the default is 20 s counted from the moment the finger is lifted (it was 15 s from the touch).
     r.check('Автовозврат к лодке ≈ через 20 с после отпускания', t_back is not None and 18.5 <= t_back <= 23.5, f"вернулась через {t_back:.1f} с" if t_back else 'не вернулась за 26 с')
     r.check('Отсчёт «Вернуться ко мне · 3…» перед возвратом', seen_count, 'был' if seen_count else 'не видел', sev='мелочь')
-    # +/− pauses auto-zoom
+    # +/− pauses auto-zoom. After the return by itself the navigator sets its own zoom (animated): read the zoom
+    # once that has settled — a «+» counts from where a running zoom is going.
+    try:
+        page.wait_for_function('() => !map._animatingZoom && (geo.zoomTarget == null || Date.now() - geo.zoomTargetT > 1000)', timeout=5000)
+    except PWTimeout:
+        pass
+    r.wait(300)
     z0 = page.evaluate('map.getZoom()')
     r.tap(page, '#zoomIn')
     r.wait(900)

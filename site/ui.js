@@ -63,6 +63,10 @@ function runClose(l, info) {
 function openLayer(layer, { replace = false, detached = false } = {}) {
   layer.id = ++ui.seq;
   const top = topLayer();
+  // Where the keyboard was: back there when the layer closes (a closed sheet left the focus nowhere, and Tab started
+  // from the end of the page — the desktop keys check, 26.09.2026). A layer that replaces another takes its place.
+  const act = document.activeElement;
+  layer.returnFocus = replace && top ? top.returnFocus : act && act !== document.body ? act : null;
   if (replace && top) {
     ui.stack.pop();
     runClose(top, { replaced: true });
@@ -82,6 +86,18 @@ function popLayer(info = {}) {
   if (!l) return;
   runClose(l, info);
   if (l.confirmed && l.onConfirm) l.onConfirm(l);
+  // Once the layer is really gone from the screen (the caller redraws after this): the focus back where it was.
+  // Shown = has boxes on the page: offsetParent is null for anything position: fixed — the map itself and the
+  // buttons over it — and the focus never came back to the map after «Новая точка» (26.09.2026).
+  const back = l.returnFocus;
+  if (back) {
+    setTimeout(() => {
+      const shown = (el) => el.isConnected && el.getClientRects().length > 0;
+      const now = document.activeElement;
+      const lost = !now || now === document.body || !shown(now);
+      if (lost && shown(back)) { try { back.focus({ preventScroll: true }); } catch { /* not focusable any more */ } }
+    }, 0);
+  }
 }
 // ✕, «Готово», «Назад»: one layer. Through history, so the browser and the interface never disagree.
 function closeTop() {

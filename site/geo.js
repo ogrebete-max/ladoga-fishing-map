@@ -445,7 +445,16 @@ function applyRotation(force = false) {
   // after it (the glide is for a new fix only).
   const box = map.getContainer();
   box.classList.add('no-glide');
+  // The map turns round the boat, not round the middle of the screen: the boat stands low (72 % of the height), and a
+  // turn about the middle swung it up to 90 px sideways on every step, gliding back a second later (26.09.2026).
+  // (Not while the map glides or zooms: that animation would overwrite the shift — placeBoat sets it right then.)
+  const me = geo.me, hold = me && geo.follow !== 'free' && !geo.pressed && !map._animatingZoom && !map._panAnim?._inProgress;
+  const before = hold ? map.latLngToContainerPoint([me.lat, me.lon]) : null;
   map.setBearing((cur + diff + 360) % 360);
+  if (before) {
+    const moved = map.latLngToContainerPoint([me.lat, me.lon]).subtract(before);
+    if (Math.abs(moved.x) >= 1 || Math.abs(moved.y) >= 1) map.panBy(moved, { animate: false, noMoveStart: true });
+  }
   void box.offsetWidth;
   box.classList.remove('no-glide');
 }
@@ -458,7 +467,10 @@ function placeBoat(z, glide = true) {
   const me = geo.me;
   if (!me || geo.follow === 'free' || geo.pressed) return;
   const fr = mapFreeRect();
-  const rotated = Math.abs(angleDiff(0, map.getBearing())) > 0.5 && (geo.follow === 'course' || geo.follow === 'compass');
+  // Course (or compass) up: low on the screen whatever the bearing. It was decided by the bearing: a map not turned yet
+  // (the start, before the first course) or left exactly on north put the boat in the middle, and the next turn threw
+  // it 140 px down, gliding (26.09.2026).
+  const rotated = geo.follow === 'course' || geo.follow === 'compass';
   const yShare = rotated ? 0.72 : 0.5;
   const want = L.point((fr.left + fr.right) / 2, fr.top + yShare * (fr.bottom - fr.top));
   const boat = map.latLngToContainerPoint([me.lat, me.lon]);
@@ -866,7 +878,7 @@ function autoZoom() {
 // Pixels from the boat's place on the screen (as placeBoat keeps it) to the edge of the free area, the way the point
 // lies on the screen now — less room for the point's own mark.
 function roomToward(p, fr) {
-  const rotated = Math.abs(angleDiff(0, map.getBearing())) > 0.5 && (geo.follow === 'course' || geo.follow === 'compass');
+  const rotated = geo.follow === 'course' || geo.follow === 'compass'; // as placeBoat keeps it
   const bx = (fr.left + fr.right) / 2, by = fr.top + (rotated ? 0.72 : 0.5) * (fr.bottom - fr.top);
   const a = toRad(bearing(geo.me, p) + map.getBearing());
   const dx = Math.sin(a), dy = -Math.cos(a);
@@ -1177,10 +1189,20 @@ function navBanner() {
 }
 function setBanner(b) {
   const el = $('#navBanner');
-  if (document.body.classList.contains('nav-banner-on') !== !!b) { document.body.classList.toggle('nav-banner-on', !!b); navFit(); }
-  if (!b) { if (!el.hidden) { el.hidden = true; nav.banner = ''; } return; }
-  if (nav.banner !== b.key) { nav.banner = b.key; el.className = `nav-banner ${b.cls}`; el.innerHTML = b.html; }
-  el.hidden = false;
+  const on = !!b;
+  let changed = document.body.classList.contains('nav-banner-on') !== on;
+  if (!b) { if (!el.hidden) { el.hidden = true; nav.banner = ''; } }
+  else {
+    if (nav.banner !== b.key) { nav.banner = b.key; el.className = `nav-banner ${b.cls}`; el.innerHTML = b.html; changed = true; }
+    el.hidden = false;
+  }
+  if (!changed) return;
+  document.body.classList.toggle('nav-banner-on', on);
+  // The buttons under the banner take their places in this same frame: its height as it is now, then the fit. Left
+  // to the size observer, that came two frames later, and on a phone on its side SOS stood on «Авто» meanwhile
+  // (26.09.2026).
+  if (on && el.offsetHeight) document.body.style.setProperty('--nb-h', `${el.offsetHeight}px`);
+  navFit();
 }
 // The real heights of the navigation panel and the banner go to CSS (--nt-h, --nb-h): the banner, the compass
 // and SOS stand below them however the text wraps (a two-row arrival banner used to cover SOS).

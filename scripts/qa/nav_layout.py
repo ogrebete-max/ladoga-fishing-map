@@ -120,7 +120,8 @@ with sync_playwright() as pw:
         for case in ("plain", "banner", "free"):
             if case == "banner":
                 # the navigator redraws its banner every second: hold this one for the check
-                page.evaluate("navBanner = () => {}; document.querySelectorAll('.toast').forEach((t) => t.remove())")
+                # messages out of the way: hidden, not removed — a message shown later needs its element (26.09.2026)
+                page.evaluate("navBanner = () => {}; document.querySelectorAll('.toast').forEach((t) => { t.style.display = 'none'; })")
                 page.evaluate("setBanner({ cls: 'warn', key: 'qa', html: 'Мель впереди: 0,8 м через 240 м — возьмите правее, там глубже 2 м' })")
             if case == "free":
                 page.evaluate("setBanner(null); letGo(); updateRecenter()")
