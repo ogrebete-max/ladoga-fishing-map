@@ -1684,7 +1684,7 @@ def s9_layouts(r: Run):
     page = r.new_page(geo=(60.2, 32.2))
     lay = page.evaluate('document.body.dataset.layout')
     st = page.evaluate('''() => ({ bar: __qa.box(document.getElementById('navBar')), map: __qa.box(document.getElementById('map')), vw: innerWidth, vh: innerHeight })''')
-    railw = {'land': 72, 'medium': 80, 'expanded': 80}.get(lay)
+    railw = {'land': 56, 'medium': 80, 'expanded': 80}.get(lay)  # a phone on its side: 56 px since the owner's 24.09.2026 slimming
     if lay != 'compact':
         r.check('Рейка слева нужной ширины, карта справа от неё', abs(st['bar']['w'] - railw) <= 1 and st['bar']['x'] <= 0.5 and abs(st['map']['x'] - st['bar']['r']) <= 1,
                 f"рейка {fmt_box(st['bar'])} (ожидалось {railw}), карта {fmt_box(st['map'])}")
