@@ -55,12 +55,17 @@ const shown = { page: '', pageLayer: null, card: 0, cardLayer: null, modal: 0 };
 const topLayer = () => ui.stack[ui.stack.length - 1] || null;
 const attachedCount = () => ui.stack.filter((l) => l.attached).length;
 const baseUrl = () => location.pathname + location.search;
+// A close handler that fails must not leave the interface half-closed (26.09.2026: the month show stayed on after ✕,
+// its handler had thrown): the rest of the closing goes on, and the error still reaches the work log a moment later.
+function runClose(l, info) {
+  try { l.onClose?.(l, info); } catch (e) { setTimeout(() => { throw e; }); }
+}
 function openLayer(layer, { replace = false, detached = false } = {}) {
   layer.id = ++ui.seq;
   const top = topLayer();
   if (replace && top) {
     ui.stack.pop();
-    top.onClose?.(top, { replaced: true });
+    runClose(top, { replaced: true });
     layer.attached = top.attached;
     ui.stack.push(layer);
     if (layer.attached) history.replaceState({ l: attachedCount() }, '', layer.url || baseUrl());
@@ -75,7 +80,7 @@ function openLayer(layer, { replace = false, detached = false } = {}) {
 function popLayer(info = {}) {
   const l = ui.stack.pop();
   if (!l) return;
-  l.onClose?.(l, info);
+  runClose(l, info);
   if (l.confirmed && l.onConfirm) l.onConfirm(l);
 }
 // ✕, «Готово», «Назад»: one layer. Through history, so the browser and the interface never disagree.
@@ -501,6 +506,7 @@ $('#navMore').addEventListener('click', openNavMore);
 $('#recenter').addEventListener('click', () => recenter(false));
 $('#nfDepthBox').addEventListener('click', openDepthInfo);
 $('#zoomAuto').addEventListener('click', toggleAutoZoom);
+$('#zoomRoute').addEventListener('click', () => wholeRoute());
 $('#btnDark').addEventListener('click', showSaver);
 $('#mbPrev').addEventListener('click', () => { setAutoplay(false); showSeasonMonth((state.seasonMonth + 10) % 12 + 1); });
 $('#mbNext').addEventListener('click', () => { setAutoplay(false); showSeasonMonth(state.seasonMonth % 12 + 1); });

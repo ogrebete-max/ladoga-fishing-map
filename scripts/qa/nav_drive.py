@@ -8,7 +8,8 @@ second the way a phone gives them (speed from GPS, and an iPhone's −1 «unknow
   2. following: the boat stays in its place on screen, the map glides (no jumps back and forth);
   3. a drag lets the map go at once; fixes do not move it; «Ко мне» shows; it comes back only
      `autoReturn` s after the finger is lifted, never while the finger is down or a card is open;
-  4. a two-finger pinch (Chromium, CDP touch) lets go too, and the chosen zoom stays after the return;
+  4. a two-finger pinch (Chromium, CDP touch) lets go too; the chosen zoom stays after the return by itself, and
+     «Ко мне» gives back the navigator's own zoom (owner, 26.09.2026: «не могу вернуться к виду маршрута»);
   5. the layers button and the dark screen button are there in navigation; no page errors.
 
   python -m http.server 8794 --directory site      # another terminal
@@ -144,12 +145,17 @@ with sync_playwright() as pw:
         page.wait_for_timeout(800)
         z1 = page.evaluate('map.getZoom()')
         f1 = page.evaluate('geo.follow')
-        page.evaluate("recenter(false)")
+        page.evaluate("recenter(true)")  # the return by itself (Настройки → «Возвращать к лодке»)
         for _ in range(3):
             fix(60); page.wait_for_timeout(1000)
-        z2 = page.evaluate('map.getZoom()')
-        results['pinch'] = {'zoom_before': z0, 'zoom_after_pinch': z1, 'follow_after_pinch': f1, 'zoom_after_return': z2, 'auto_zoom_paused': page.evaluate('nav.autoZoomPaused')}
-        results['pinch_ok'] = z1 != z0 and f1 == 'free' and z2 == z1
+        z2, p2 = page.evaluate('[map.getZoom(), nav.autoZoomPaused]')
+        page.evaluate("letGo(); recenter(false)")  # «Ко мне»
+        for _ in range(3):
+            fix(60); page.wait_for_timeout(1000)
+        z3, p3 = page.evaluate('[map.getZoom(), nav.autoZoomPaused]')
+        results['pinch'] = {'zoom_before': z0, 'zoom_after_pinch': z1, 'follow_after_pinch': f1, 'zoom_after_return': z2, 'paused_after_return': p2,
+                            'zoom_after_button': z3, 'paused_after_button': p3}
+        results['pinch_ok'] = z1 != z0 and f1 == 'free' and z2 == z1 and p2 and not p3 and z3 != z1
 
     # 6. Buttons in navigation; the log caught the navigator's events.
     results['layers_btn_visible'] = page.evaluate("getComputedStyle(document.getElementById('btnLayers')).display !== 'none'")

@@ -541,6 +541,8 @@ function updateZoomAuto() {
   const el = $('#zoomAuto');
   if (!el) return;
   el.hidden = !nav.on;
+  const route = $('#zoomRoute');
+  if (route) route.hidden = !nav.on;
   el.classList.toggle('on', !!(state.settings.autoZoom && !nav.autoZoomPaused));
 }
 
@@ -817,11 +819,15 @@ function autoZoom() {
   const aheadPx = rotated ? 0.72 * freeH : 0.45 * Math.min(freeW, freeH);
   const k = 156543.03 * Math.cos(toRad(me.lat));
   const sog = geo.sog || 0;
-  if (sog * 3.6 >= 3) nav.zSpeed = Math.floor(Math.log2(k * aheadPx / Math.max(150, sog * 120)));
   const d = nav.d ?? Infinity;
   const zd = d < 2000 ? Math.floor(Math.log2(k * 0.8 * aheadPx / Math.max(d, 15))) : -Infinity;
-  let z = nav.hold ? 18 : Math.max(nav.zSpeed, zd);
-  z = Math.max(12, Math.min(18, z));
+  // Standing (or drifting): the boat and the point together, so the way is seen — not 100 m of water around the boat
+  // (owner, 26.09.2026: «увеличил и не могу вернуться к виду маршрута»).
+  const moving = sog * 3.6 >= 3;
+  if (moving) nav.zSpeed = Math.floor(Math.log2(k * aheadPx / Math.max(150, sog * 120)));
+  else if (Number.isFinite(d) && nav.target) nav.zSpeed = Math.floor(Math.log2(k * roomToward(nav.target, fr) / Math.max(d, 60)));
+  let z = nav.hold ? 18 : moving ? Math.max(nav.zSpeed, zd) : nav.zSpeed;
+  z = Math.max(9, Math.min(18, z));
   const cur = map.getZoom();
   if (nav.firstPlace) { nav.firstPlace = false; nav.zoomCand = null; return z; }
   if (z === cur) { nav.zoomCand = null; return null; }
@@ -830,8 +836,21 @@ function autoZoom() {
   nav.zoomCandT = Date.now();
   return cur + Math.sign(z - cur);
 }
-// Back to the boat. The zoom the user chose with fingers or ± stays (the «Авто» chip gives it back to the navigator).
+// Pixels from the boat's place on the screen (as placeBoat keeps it) to the edge of the free area, the way the point
+// lies on the screen now — less room for the point's own mark.
+function roomToward(p, fr) {
+  const rotated = Math.abs(angleDiff(0, map.getBearing())) > 0.5 && (geo.follow === 'course' || geo.follow === 'compass');
+  const bx = (fr.left + fr.right) / 2, by = fr.top + (rotated ? 0.72 : 0.5) * (fr.bottom - fr.top);
+  const a = toRad(bearing(geo.me, p) + map.getBearing());
+  const dx = Math.sin(a), dy = -Math.cos(a);
+  const tx = dx > 1e-6 ? (fr.right - bx) / dx : dx < -1e-6 ? (fr.left - bx) / dx : Infinity;
+  const ty = dy > 1e-6 ? (fr.bottom - by) / dy : dy < -1e-6 ? (fr.top - by) / dy : Infinity;
+  return Math.max(40, Math.min(tx, ty) - 28);
+}
+// Back to the boat. By the button — the navigator's own view again (its zoom too: «Ко мне» should give back the way);
+// by itself after the finger was lifted — the zoom the user chose stays.
 function recenter(auto) {
+  if (auto !== true && state.settings.autoZoom) nav.autoZoomPaused = false;
   nav.firstPlace = !nav.autoZoomPaused;
   setFollow(nav.followBefore || (state.settings.orient === 'course' ? 'course' : 'north'));
   nav.followBefore = null;
@@ -853,7 +872,9 @@ function updateRecenter() {
 function toggleAutoZoom() {
   if (!state.settings.autoZoom) { setSetting('autoZoom', true); nav.autoZoomPaused = false; }
   else nav.autoZoomPaused = !nav.autoZoomPaused;
-  if (!nav.autoZoomPaused) { nav.firstPlace = true; navOnFix(); }
+  // On again after fingers had moved the map: the navigator takes the whole view back — the boat too, not only the
+  // zoom (26.09.2026: «Авто» did nothing while the map was let go).
+  if (!nav.autoZoomPaused) { nav.firstPlace = true; if (nav.on && geo.follow === 'free') recenter(); else navOnFix(); }
   updateZoomAuto();
   toast(nav.autoZoomPaused ? 'Масштаб ваш — навигатор его не меняет' : 'Автомасштаб: по скорости и расстоянию до точки');
 }
@@ -1007,7 +1028,7 @@ function navBanner() {
 }
 function setBanner(b) {
   const el = $('#navBanner');
-  document.body.classList.toggle('nav-banner-on', !!b);
+  if (document.body.classList.contains('nav-banner-on') !== !!b) { document.body.classList.toggle('nav-banner-on', !!b); navFit(); }
   if (!b) { if (!el.hidden) { el.hidden = true; nav.banner = ''; } return; }
   if (nav.banner !== b.key) { nav.banner = b.key; el.className = `nav-banner ${b.cls}`; el.innerHTML = b.html; }
   el.hidden = false;
@@ -1019,8 +1040,24 @@ const navSizes = new ResizeObserver(() => {
     const el = document.getElementById(id);
     if (!el.hidden && el.offsetHeight) document.body.style.setProperty(prop, `${el.offsetHeight}px`);
   }
+  requestAnimationFrame(navFit); // the next frame: a change of the layout inside the observer would call it again at once
 });
-navSizes.observe($('#navTop')); navSizes.observe($('#navBanner'));
+// The column grows when «Тёмный экран» shows up, «Авто» appears with the navigator: both count for navFit.
+for (const id of ['navTop', 'navBanner', 'zoomAuto']) navSizes.observe(document.getElementById(id));
+navSizes.observe($('.mu-right'));
+// The right column (Слои, Тёмный экран, SOS) must not touch «+ − Авто»: where the height is short — iPhone SE in
+// Safari, or any phone once a banner pushes the column down — it becomes a row along the top (26.09.2026: «+» covered
+// SOS). Measured with the column in place, each time the sizes change.
+function navFit() {
+  const body = document.body;
+  body.classList.remove('nav-row');
+  if (body.dataset.mode !== 'nav') return;
+  const rects = (sel) => [...document.querySelectorAll(sel)].filter((el) => !el.hidden && el.offsetParent).map((el) => el.getBoundingClientRect());
+  const col = rects('.mu-right > .fab'), zoom = rects('#zoomGroup, #zoomAuto');
+  const near = (a, b) => a.left < b.right + 8 && b.left < a.right + 8 && a.top < b.bottom + 8 && b.top < a.bottom + 8;
+  if (col.some((a) => zoom.some((b) => near(a, b)))) body.classList.add('nav-row');
+}
+addEventListener('resize', () => requestAnimationFrame(navFit));
 // «Завершить»: the confirmation and the navigation leave together.
 function endNav() {
   const i = ui.stack.findIndex((l) => l.kind === 'nav');

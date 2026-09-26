@@ -530,7 +530,12 @@ function waterIceHtml(ice) {
 function weatherBlock() {
   const wx = state.wx;
   const place = wxPlace();
-  const chips = `<div class="chips" style="margin:6px 0">${WX_PLACES.map((p) => `<button type="button" class="chip ${p.id === place.id ? 'on' : ''}" data-wxplace="${p.id}">${p.here ? ic('my-location') : ''}${esc(p.name)}</button>`).join('')}</div>`;
+  // The forecast below may be another place's: while the picked one loads, or when it could not load (no signal).
+  const other = wx?.fc?.current && wx.place !== place.id;
+  const wxNote = !other ? '' : state.wxLoading ? 'Загружаю погоду…'
+    : `Нет связи: прогноз для «${esc(place.name)}» не загрузился, ниже — для «${esc(wx.at_place?.name || '')}».`;
+  const chips = `<div class="chips" style="margin:6px 0">${WX_PLACES.map((p) => `<button type="button" class="chip ${p.id === place.id ? 'on' : ''}" data-wxplace="${p.id}">${p.here ? ic('my-location') : ''}${esc(p.name)}</button>`).join('')}</div>
+    <p class="small muted" id="wxLoading" ${wxNote ? '' : 'hidden'}>${wxNote}</p>`;
   if (!wx?.fc?.current) return `<h3 id="wx">Погода</h3>${chips}<p class="muted">${navigator.onLine ? 'Загружаю прогноз…' : 'Прогноз загрузится, когда появится интернет.'}</p>`;
   const fc = wx.fc, h = fc.hourly, i0 = wxNowIndex(fc);
   const age = Math.round((Date.now() - wx.at) / 60000);
@@ -1569,7 +1574,14 @@ function onContentClick(e) {
   if (d.sheetTab) { const l = topLayer(); if (l) { l.tab = d.sheetTab; renderModalBody(l); } return; }
   if (d.pointsFilter) { state.pointsFilter = d.pointsFilter; refreshPage('me'); return; }
   if (d.set) { setSetting(d.set, d.val); $$(`[data-set="${d.set}"]`).forEach((b) => b.classList.toggle('on', b === t)); return; }
-  if (d.wxplace) { store.set('ladoga-wx-place', d.wxplace); loadWeather(true); return; }
+  if (d.wxplace) {
+    store.set('ladoga-wx-place', d.wxplace);
+    state.wxLoading = d.wxplace;
+    $$('[data-wxplace]').forEach((b) => b.classList.toggle('on', b === t));
+    const note = $('#wxLoading'); if (note) { note.textContent = 'Загружаю погоду…'; note.hidden = false; }
+    loadWeather(false);
+    return;
+  }
   if (d.cond) { store.set('ladoga-cond-fish', d.cond); refreshPage('today'); return; }
   if (d.search) { pickSearch(t); return; }
   if (d.tseason) { state.tackleSeason = d.tseason; refreshPage(); return; }

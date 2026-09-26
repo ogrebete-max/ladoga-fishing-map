@@ -497,7 +497,8 @@ function render() {
   pois.forEach((mk) => layers.pois.addLayer(mk));
   updatePoiVisibility();
   if (state.overlays.cluster) layers.cluster.addLayers(markers); else markers.forEach((mk) => layers.plain.addLayer(mk));
-  layers.heat.setLatLngs(heat);
+  // Off the map the heat layer keeps the points for later (its redraw needs the map: 26.09.2026 «✕ не закрывает»).
+  if (map.hasLayer(layers.heat)) layers.heat.setLatLngs(heat); else layers.heat._latlngs = heat;
   state.shown = { markers: nM, reports: nR };
   if (typeof onFilterChange === 'function') onFilterChange();
 }
@@ -1157,9 +1158,8 @@ function seasonModeOff() {
   const saved = state.season;
   state.season = null;
   if (saved) { state.f.months = saved.months; state.overlays.heat = saved.heat; state.overlays.seasonZones = saved.zones; }
-  applyOverlays();
-  render();
-  drawSeasonZones();
+  // Whatever goes wrong in a redraw, the show must end: the ✕ must close it.
+  try { applyOverlays(); render(); } finally { drawSeasonZones(); }
 }
 
 /* ---------- rules: which closed seasons are in force today ---------- */
@@ -1445,23 +1445,33 @@ function wxPlace() {
   const c = me || { lat: map.getCenter().lat, lon: map.getCenter().lng };
   return { ...p, lat: +c.lat.toFixed(3), lon: +c.lon.toFixed(3), name: me ? 'Здесь (где я)' : `Здесь (центр карты, ${placeName(c)})`, fromMe: !!me };
 }
+// Each place keeps its own saved forecast (a tap on another place used to wait for the network every time and the
+// buttons looked dead — owner, 26.09.2026): a place seen in the last 30 min shows at once.
+const wxKeyOf = (place) => `${WX_KEY}:${place.id}`;
 async function loadWeather(force = false) {
   const place = wxPlace();
-  const cached = store.get(WX_KEY, null);
+  const cached = store.get(wxKeyOf(place), null) || store.get(WX_KEY, null);
   const same = cached && cached.place === place.id && (!place.here || distM(cached.at_place || place, place) < 5000);
-  if (!force && same && Date.now() - cached.at < 30 * 60000) { state.wx = cached; onWeather(); return cached; }
+  if (same && !force && Date.now() - cached.at < 30 * 60000) { state.wx = cached; state.wxLoading = null; onWeather(); return cached; }
+  if (same) { state.wx = cached; onWeather(); } // the saved one for this place meanwhile, the fresh one follows
   const q = `latitude=${place.lat}&longitude=${place.lon}&timezone=Europe%2FMoscow`;
+  // A weak signal on the water can hang a request for minutes: after 20 s the saved forecast stays on screen.
+  const ctl = new AbortController(), tm = setTimeout(() => ctl.abort(), 20000);
+  let data = null;
   try {
     const [fc, sea] = await Promise.all([
-      fetch(`https://api.open-meteo.com/v1/forecast?${q}&cell_selection=sea&forecast_days=3&past_days=3&wind_speed_unit=ms&current=temperature_2m,wind_speed_10m,wind_direction_10m,wind_gusts_10m,pressure_msl,cloud_cover,precipitation,weather_code&hourly=temperature_2m,wind_speed_10m,wind_direction_10m,wind_gusts_10m,pressure_msl,precipitation_probability,precipitation,rain,snowfall,visibility,weather_code,cape&daily=sunrise,sunset`).then((r) => r.json()),
-      fetch(`https://marine-api.open-meteo.com/v1/marine?${q}&forecast_days=3&past_days=3&hourly=wave_height,wave_period`).then((r) => r.json()).catch(() => null),
+      fetch(`https://api.open-meteo.com/v1/forecast?${q}&cell_selection=sea&forecast_days=3&past_days=3&wind_speed_unit=ms&current=temperature_2m,wind_speed_10m,wind_direction_10m,wind_gusts_10m,pressure_msl,cloud_cover,precipitation,weather_code&hourly=temperature_2m,wind_speed_10m,wind_direction_10m,wind_gusts_10m,pressure_msl,precipitation_probability,precipitation,rain,snowfall,visibility,weather_code,cape&daily=sunrise,sunset`, { signal: ctl.signal }).then((r) => r.json()),
+      fetch(`https://marine-api.open-meteo.com/v1/marine?${q}&forecast_days=3&past_days=3&hourly=wave_height,wave_period`, { signal: ctl.signal }).then((r) => r.json()).catch(() => null),
     ]);
     if (!fc || !fc.current) throw new Error('no data');
-    state.wx = { at: Date.now(), place: place.id, at_place: { lat: place.lat, lon: place.lon, name: place.name }, fc, sea };
-    store.set(WX_KEY, state.wx);
-  } catch {
-    if (cached) state.wx = cached;
-  }
+    data = { at: Date.now(), place: place.id, at_place: { lat: place.lat, lon: place.lon, name: place.name }, fc, sea };
+    store.set(wxKeyOf(place), data);
+  } catch { /* no network: the saved forecast stays */ }
+  clearTimeout(tm);
+  // Another place was picked while this one loaded: that place's own load shows it — a late answer must not cover it.
+  if (wxPlace().id !== place.id) return state.wx;
+  if (data) { state.wx = data; store.set(WX_KEY, data); } else if (cached) state.wx = cached;
+  state.wxLoading = null;
   onWeather();
   return state.wx;
 }

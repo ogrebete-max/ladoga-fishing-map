@@ -405,7 +405,7 @@ class Run:
                 pass
             self.browser = None
 
-    def new_page(self, geo=None, route=True, sw='block', url=None, ready=True):
+    def new_page(self, geo=None, route=True, sw='block', url=None, ready=True, first_run=False):
         self.launch()
         w, h = self.p['vp']
         opts = dict(viewport={'width': w, 'height': h}, screen={'width': w, 'height': h}, device_scale_factor=self.p['dsf'],
@@ -419,8 +419,14 @@ class Run:
         self.ctx.add_init_script(QA_JS)
         if self.p['ios']:
             self.ctx.add_init_script(IOS_JS)
+        if not first_run:
+            # The one-time «Нажмите на точку…» toast belongs to the start scenario; elsewhere it would cover buttons
+            # for its 6 s and every check of «ничем не закрыты» would trip on it.
+            self.ctx.add_init_script("try { localStorage.setItem('ladoga-hint-v2', 'true'); } catch (e) {}")
         if route:
             self.ctx.route(re.compile(r'^https?://(?!localhost|127\.0\.0\.1)'), net_cache_handler)
+            # The work log goes to the receiver on the VPS (api/log, api/report); a static test server has none.
+            self.ctx.route(re.compile(r'/api/(log|report)(\?|$)'), lambda rt: rt.fulfill(status=204, body=''))
         page = self.ctx.new_page()
         page.set_default_timeout(15000)
         log = self.log = []
@@ -704,7 +710,7 @@ def check_targets(r, page, where, roots, min_px=44, sev='мелочь', data_all
 
 # ---------------------------------------------------------------------------------------------------------------
 def s1_start(r: Run):
-    page = r.new_page()
+    page = r.new_page(first_run=True)
     try:
         page.wait_for_selector('#statusChips .schip', timeout=8000)
     except PWTimeout:

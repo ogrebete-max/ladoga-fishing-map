@@ -111,9 +111,9 @@ body[data-layout="land"] .mu-zoom button + button { border-top: 0; border-left: 
 /* «авто» hangs under +/−: room for it above the bottom edge. */
 body[data-layout="land"][data-mode="nav"] .mu-zoom { right: calc(12px + var(--safe-r)); bottom: calc(26px + var(--safe-b)); }
 /* «Авто» under ± in navigation: filled — the navigator sets the zoom; outlined — the zoom is yours. */
-.zoom-auto { position: absolute; top: calc(100% + 8px); left: 0; width: 48px; height: 32px; border-radius: 16px; border: 1px solid var(--fab-line); background: var(--fab-bg); color: var(--muted); font: 800 12px/1 var(--font); box-shadow: var(--fab-shadow); padding: 0; }
-.zoom-auto.on { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
-body[data-layout="land"] .zoom-auto { top: auto; bottom: calc(100% + 8px); }
+.mu-zoom .zoom-auto { position: absolute; top: calc(100% + 8px); left: 0; width: 48px; height: 44px; border-radius: 22px; border: 1px solid var(--fab-line); background: var(--fab-bg); color: var(--ink); font: 800 13px/1 var(--font); box-shadow: var(--fab-shadow); padding: 0; }
+.mu-zoom .zoom-auto.on { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+body[data-layout="land"] .mu-zoom .zoom-auto { top: auto; bottom: calc(100% + 8px); }
 .mu-br { position: absolute; right: calc(12px + var(--safe-r)); bottom: 16px; display: flex; flex-direction: column; gap: 12px; align-items: center; }
 body:not([data-layout="compact"]) .mu-br { right: calc(16px + var(--safe-r)); bottom: calc(24px + var(--safe-b)); }
 .fab.locate { width: 56px; height: 56px; border-radius: 28px; }
@@ -140,6 +140,14 @@ body[data-mode="full"] .fab.compass { left: calc(12px + var(--safe-l)); }
 .fab.compass span { font-size: 10px; font-weight: 700; line-height: 1; }
 /* --nt-h: the real height of the navigation panel (geo.js), safe area included. */
 body[data-mode="nav"] .fab.compass { top: calc(var(--nt-h, calc(124px + var(--safe-t))) + 16px); display: flex; }
+/* «Путь» under «Курс» (both are how the map is looked at): the boat and the point on one screen. Only the navigator. */
+body[data-mode="nav"] .fab.compass.route { top: calc(var(--nt-h, calc(124px + var(--safe-t))) + 84px); }
+body[data-mode="nav"]:not([data-layout="compact"]) .fab.compass.route { top: calc(136px + var(--safe-t)); }
+body.nav-banner-on[data-mode="nav"][data-layout="compact"] .fab.compass.route { top: calc(var(--nt-h, calc(124px + var(--safe-t))) + 12px + var(--nb-h, 64px) + 78px); }
+body.nav-banner-on[data-mode="nav"]:not([data-layout="compact"]) .fab.compass.route { top: max(calc(136px + var(--safe-t)), calc(86px + var(--safe-t) + var(--nb-h, 56px))); }
+/* No height for the column above «+ −» (a small phone; a banner pushes it down): Слои, Тёмный экран and SOS stand
+   in a row along the top, left of the «+ −» column, so «+» never covers SOS whatever the banner (geo.js navFit). */
+body.nav-row[data-mode="nav"] .map-ui .mu-right { flex-direction: row-reverse; right: calc(72px + var(--safe-r)); }
 .fab.fullexit { position: absolute; right: calc(12px + var(--safe-r)); top: calc(8px + var(--safe-t)); width: auto; padding: 0 14px; display: inline-flex; gap: 6px; font-weight: 700; }
 .leaflet-control-scale-line { background: rgba(255, 255, 255, .85); border-color: #333; font-size: 11px; }
 .hint-card { position: absolute; left: max(12px, var(--safe-l)); right: 72px; bottom: 104px; margin: 0 auto; max-width: 400px; font-size: 14px; background: var(--bg); color: var(--ink); border-radius: 16px; box-shadow: var(--fab-shadow);
@@ -160,7 +168,7 @@ body[data-mode="nav"] .map-ui { bottom: 0; }
 body[data-mode="nav"] .map-ui .mu-right { top: calc(var(--nt-h, calc(124px + var(--safe-t))) + 16px); }
 body[data-mode="nav"] .map-ui .mu-right > :not(.sos):not(#btnLayers):not(#btnDark) { display: none; }
 .fab.dark { background: #10151b; color: #ffd43b; border-color: #10151b; }
-body[data-mode="nav"][data-layout="compact"] .map-ui .mu-zoom { top: auto; bottom: calc(196px + var(--safe-b)); transform: none; }
+body[data-mode="nav"][data-layout="compact"] .map-ui .mu-zoom { top: auto; bottom: calc(200px + var(--safe-b)); transform: none; }
 body[data-mode="full"] .mu-top, body[data-mode="full"] #btnLayers, body[data-mode="full"] #btnFull, body[data-mode="full"] .hint-card { display: none; }
 body[data-mode="full"] .map-ui { left: 0 !important; bottom: 0 !important; }
 body[data-mode="full"] .mu-right { top: calc(68px + var(--safe-t)); }
@@ -309,6 +317,8 @@ body[data-mode="nav"]:not([data-layout="compact"]) .nb-buttons { grid-template-c
 body[data-mode="nav"]:not([data-layout="compact"]) #map, body[data-mode="nav"]:not([data-layout="compact"]) .map-ui { left: calc(var(--navw) + var(--safe-l)) !important; }
 body[data-mode="nav"]:not([data-layout="compact"]) .nav-banner { left: calc(var(--navw) + 12px + var(--safe-l)); top: calc(8px + var(--safe-t)); }
 body[data-mode="nav"]:not([data-layout="compact"]) .recenter { left: calc(50% + var(--navw) / 2); bottom: 24px; }
+/* A phone on its side: «+ −» stand at the bottom right too — «Ко мне» keeps to the room left of them. */
+body[data-mode="nav"][data-layout="land"] .recenter { left: calc((var(--navw) + 100vw - 106px - var(--safe-r)) / 2); min-width: min(196px, calc(100vw - var(--navw) - 136px - var(--safe-r))); max-width: calc(100vw - var(--navw) - 136px - var(--safe-r)); }
 body[data-mode="nav"]:not([data-layout="compact"]) .map-ui .mu-right { top: calc(8px + var(--safe-t)); }
 body[data-mode="nav"]:not([data-layout="compact"]) .fab.compass { top: calc(68px + var(--safe-t)); }
 body[data-mode="nav"][data-layout="land"] .nt-dist { font-size: 36px; }

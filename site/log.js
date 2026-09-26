@@ -143,12 +143,18 @@ window.addEventListener('error', (e) => {
 window.addEventListener('unhandledrejection', (e) => {
   logEvent('error', { msg: `promise: ${String(e.reason?.message || e.reason || '').slice(0, 200)}`, stack: String(e.reason?.stack || '').slice(0, 400) });
 });
-// What was pressed: the button's action or id, never the text in fields.
+// What was pressed: the button's action or id, never the text in fields. A button without either says what it
+// chooses — a weather place, a chip, a preset (26.09.2026: 70 of 182 taps came as a bare «button»); only these keys,
+// never names, coordinates or search text.
+const TAP_KEYS = ['wxplace', 'chip', 'preset', 'set', 'cond', 'tseason', 'tfish', 'sheetTab', 'pointsFilter', 'pageLink', 'notice',
+  'month', 'smonth', 'season', 'tag', 'pack', 'theme', 'size', 'iceKind', 'openMarker', 'zone'];
 document.addEventListener('click', (e) => {
   const el = e.target.closest?.('button, a, [data-act], [data-page], label, .leaflet-marker-icon');
   if (!el) return;
   const d = el.dataset || {};
-  const what = d.act || d.page || d.overlay || d.base || d.kind || d.setting || el.id || (el.classList.contains('leaflet-marker-icon') ? 'marker' : '') || el.getAttribute('aria-label') || el.tagName.toLowerCase();
+  const k = TAP_KEYS.find((x) => d[x] != null && d[x] !== '');
+  const what = d.act || d.page || d.overlay || d.base || d.kind || d.setting || el.id || (k ? `${k}:${String(d[k]).slice(0, 40)}` : '')
+    || (el.classList.contains('leaflet-marker-icon') ? 'marker' : '') || el.getAttribute('aria-label') || el.tagName.toLowerCase();
   logEvent('tap', { what: String(what).slice(0, 60), v: d.val || d.base || undefined });
 }, { capture: true, passive: true });
 document.addEventListener('visibilitychange', () => {

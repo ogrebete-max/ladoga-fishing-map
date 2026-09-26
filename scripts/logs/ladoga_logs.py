@@ -60,7 +60,16 @@ LABELS = {
     "base-set": "смена подложки", "preset": "быстрые слои", "filter-fish": "рыба на карте", "month-filter": "отчёты за месяц",
     "depth-help": "глубины и эхолот", "install": "установить приложение", "locate-retry": "повтор геопозиции", "demo": "демо навигатора",
     "car-go": "к машине", "retrace": "назад по треку", "icez-show": "опасный лёд", "zone-open": "район", "sat-prev": "снимок дня",
+    "zoomRoute": "«Путь» в навигации", "mbClose": "закрыть показ «По месяцам»", "mbPlay": "«По месяцам»: пуск / пауза",
+    "mbPrev": "«По месяцам»: назад", "mbNext": "«По месяцам»: вперёд", "filters-reset": "сбросить фильтр", "modalClose": "закрыть окно",
+    "wx-refresh": "обновить погоду", "filterBtn": "фильтр",
 }
+# Buttons named by what they choose (site/log.js TAP_KEYS): «wxplace:kobona» → «погода: Кобона».
+TAP_KINDS = {"wxplace": "погода", "chip": "чип", "preset": "быстрые слои", "set": "настройка", "cond": "условия дня", "tseason": "снасти: сезон",
+             "tfish": "снасти: рыба", "sheetTab": "вкладка", "pointsFilter": "мои точки", "pageLink": "переход", "notice": "подсказка",
+             "month": "месяц", "smonth": "месяц сезона", "season": "сезон", "tag": "отметка", "pack": "скачать район", "theme": "тема",
+             "size": "размер", "iceKind": "лёд", "openMarker": "точка из списка", "zone": "район"}
+WX_PLACE_NAMES = {"here": "Здесь", "volkhov": "Волховская губа", "kobona": "Кобона", "shlis": "Шлиссельбург", "svir": "Свирская губа"}
 FEATURES = ["today", "map", "guide", "rules", "me", "btnLocate", "nav", "btnTrack", "btnLayers", "base-set", "marker", "fav", "share",
             "btnDark", "guard-on", "mob", "btnSos", "report-problem", "car-go", "retrace", "demo", "install", "depth-help", "icez-show"]
 # The navigator's and the track's own events, as the page names them.
@@ -314,7 +323,12 @@ def render_stats(root, days):
         names = APP_LABELS.get(app, {})
 
         def label(k, names=names):
-            return names.get(k, k)
+            if k in names:
+                return names[k]
+            kind, _, val = k.partition(":")
+            if val and kind in TAP_KINDS:
+                return f"{TAP_KINDS[kind]}: {WX_PLACE_NAMES.get(val, val) if kind == 'wxplace' else val}"
+            return k
         sessions = sum(len(p["sessions"]) for p in people.values())
         out.append(f"<h2>{e(APP_NAMES.get(app, app))}</h2>")
         out.append(f"<div class=kpi><b>{len(people)}</b> телефонов <b>{sessions}</b> запусков <b>{nav.get('nav_start', 0)}</b> навигаций "
