@@ -65,11 +65,12 @@ const state = {
   fav: new Set(store.get('ladoga-fav', [])),
   mine: store.get('ladoga-mine', []),
   base: store.get('ladoga-base', 'sat'),
-  overlays: Object.assign({ seamarks: false, heat: false, cluster: true, radius: false, seasonZones: false, rules: false, lines: true, mine: true, tracks: false, genshtab: false, isobaths: false, charts: true, chartIso: false, shade: false, gridIso: false, community: false, myDepth: true, satDay: false, vvp: false, iceZones: false }, store.get('ladoga-overlays', {})),
+  wbYear: +store.get('ladoga-wb-year', 2024),
+  overlays: Object.assign({ reeds: true, seamarks: false, heat: false, cluster: true, radius: false, seasonZones: false, rules: false, lines: true, mine: true, tracks: false, genshtab: false, isobaths: false, charts: true, chartIso: false, shade: false, gridIso: false, community: false, myDepth: true, satDay: false, vvp: false, iceZones: false }, store.get('ladoga-overlays', {})),
   chartOpacity: store.get('ladoga-chart-opacity', 1),
   genshtabOpacity: store.get('ladoga-genshtab-opacity', 0.8),
   overlayOpacity: store.get('ladoga-overlay-opacity', 0.7),
-  settings: Object.assign({ theme: 'system', units: 'kmh', autoZoom: true, navShowPoints: true, keepAwake: false, sound: true, voice: true, sendLog: true, guardR: 50, arrivalR: 30, orient: 'course', autoReturn: 20, shallow: 1.5 }, store.get('ladoga-settings', {})),
+  settings: Object.assign({ theme: 'system', units: 'kmh', autoZoom: true, navShowPoints: true, keepAwake: false, sound: true, voice: true, voiceName: '', voiceRate: 1, autoTrack: true, sendLog: true, guardR: 50, arrivalR: 30, orient: 'course', autoReturn: 20, shallow: 1.5 }, store.get('ladoga-settings', {})),
   home: store.get('ladoga-home', null) || HOME_DEFAULT,
   car: store.get('ladoga-car', null), // {lat, lon, t}: «К машине»
   navHide: false,
@@ -277,7 +278,17 @@ map.on('moveend', () => {
 
 // Outside the downloaded area without internet the map shows a light hatch rather than a grey void.
 const NO_TILE = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256"><rect width="256" height="256" fill="#d7dee3"/><path d="M0 256L256 0M-64 64L64-64M192 320L320 192M0 128L128 0M128 256L256 128" stroke="#b8c3ca" stroke-width="6"/></svg>')}`;
-const ESRI_ATTR = 'Снимки © Esri, Maxar, Earthstar Geographics';
+const ESRI_ATTR = 'Снимки: Esri, Vantor, Earthstar Geographics, сообщество GIS · Powered by Esri';
+// «Снимки прошлых лет»: Esri's own archive (World Imagery Wayback). Three releases give 2–3 other, mostly summer
+// pictures of each reed bed: where today's is spring (dry reeds, Шлиссельбургская губа) or hazy (Кобона), a
+// summer one shows the channels better (research/maps_more.md). Not for the offline packs — Esri says so.
+const WAYBACK = 'https://wayback.maptiles.arcgis.com/arcgis/rest/services/World_Imagery/WMTS/1.0.0/default028mm/MapServer/tile/{r}/{z}/{y}/{x}';
+const WB_YEARS = {
+  2024: { r: 52930, zmax: 18, src: 'Esri, Vantor, Earthstar Geographics' },
+  2021: { r: 9812, zmax: 17, src: 'Esri, Vantor, Earthstar Geographics, CNES/Airbus DS' },
+  2017: { r: 9486, zmax: 17, src: 'Esri, DigitalGlobe, Earthstar Geographics, CNES/Airbus DS' },
+};
+const wbYear = () => (WB_YEARS[state.wbYear] ? state.wbYear : 2024);
 const OSM_ATTR = '© участники OpenStreetMap';
 const SAT_URL = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
 const LABELS_URL = 'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}';
@@ -288,6 +299,18 @@ const BASES = {
       L.tileLayer(SAT_URL, { maxZoom: 18, maxNativeZoom: 18, crossOrigin: 'anonymous', errorTileUrl: NO_TILE }),
       L.tileLayer(LABELS_URL, { maxZoom: 18, maxNativeZoom: 18, crossOrigin: 'anonymous' }),
     ]),
+  },
+  arch: {
+    name: 'Снимки прошлых лет', full: 'Архив снимков Esri: летние снимки прошлых лет — протоки в тростнике бывают видны лучше, чем на свежем', water: '#1d3a47',
+    get attr() { return `Снимки прошлых лет: Esri World Imagery Wayback, выпуск ${wbYear()} — ${WB_YEARS[wbYear()].src} · Powered by Esri`; },
+    thumb: WAYBACK.replace('{r}', 52930),
+    make: () => {
+      const y = WB_YEARS[wbYear()];
+      return L.layerGroup([
+        L.tileLayer(WAYBACK.replace('{r}', y.r), { maxZoom: 18, maxNativeZoom: y.zmax, crossOrigin: 'anonymous', errorTileUrl: NO_TILE }),
+        L.tileLayer(LABELS_URL, { maxZoom: 18, maxNativeZoom: 18, crossOrigin: 'anonymous' }),
+      ]);
+    },
   },
   osm: {
     name: 'Схема', attr: OSM_ATTR, thumb: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', water: '#aad3df',
@@ -311,9 +334,33 @@ function setBase(key) {
   // Water between the tiles: the ГосГисЦентр maps leave open water transparent — under a light map it must be
   // light water, not the dark sea of the satellite view (it showed as dark squares on the lake).
   map.getContainer().style.setProperty('--map-bg', BASES[key].water || (key === 'sat' ? '#1d3a47' : '#a6dcf5'));
-  const a = $('#attrLine');
-  if (a) a.textContent = `${BASES[key].attr || ''}${state.overlays.charts ? ' · ГУНиО' : ''}`;
+  updateAttr();
 }
+function updateAttr() {
+  const a = $('#attrLine');
+  if (a) a.textContent = `${state.base === 'sat' && SAT_DATE.text ? `${SAT_DATE.text} · ` : ''}${BASES[state.base]?.attr || ''}${state.overlays.charts ? ' · ГУНиО' : ''}${state.overlays.reeds && map.getZoom() >= 12 ? ' · протоки © участники OpenStreetMap' : ''}`;
+}
+// The date of the satellite picture under the middle of the map (Esri tells it free): a spring picture shows the reed
+// channels poorly — then «Снимки прошлых лет» may help (research/maps_more.md). Not in navigation (no traffic spent
+// on it while the map moves every second), at most one question in 5 s.
+const SAT_DATE = { key: '', text: '', t: 0 };
+function satDateCheck() {
+  const off = state.base !== 'sat' || map.getZoom() < 14 || !navigator.onLine || (typeof nav !== 'undefined' && nav.on);
+  if (off) { if (SAT_DATE.text) { SAT_DATE.text = ''; SAT_DATE.key = ''; updateAttr(); } return; }
+  const c = map.getCenter(), z = map.getZoom(), lyr = z >= 18 ? 10 : z >= 17 ? 11 : 12;
+  const key = `${lyr}:${c.lat.toFixed(3)},${c.lng.toFixed(3)}`;
+  if (key === SAT_DATE.key || Date.now() - SAT_DATE.t < 5000) return;
+  SAT_DATE.key = key; SAT_DATE.t = Date.now();
+  fetch(`https://services.arcgisonline.com/arcgis/rest/services/World_Imagery/MapServer/${lyr}/query?where=1%3D1&geometry=${c.lng.toFixed(5)},${c.lat.toFixed(5)}&geometryType=esriGeometryPoint&inSR=4326&outFields=SRC_DATE2&returnGeometry=false&f=json`)
+    .then((r) => r.json()).then((j) => {
+      if (SAT_DATE.key !== key) return;
+      const ms = j?.features?.[0]?.attributes?.SRC_DATE2;
+      SAT_DATE.text = Number.isFinite(ms) ? `снимок ${new Date(ms).toLocaleDateString('ru-RU')}` : '';
+      updateAttr();
+    }).catch(() => { /* no answer: no date */ });
+}
+let satDateTimer;
+map.on('moveend', () => { clearTimeout(satDateTimer); satDateTimer = setTimeout(satDateCheck, 1500); });
 // A z10 tile over the Volkhov bay: the preview of each base map in the layers sheet.
 function baseThumb(key) {
   const b = BASES[key], t = b?.thumb;
@@ -326,6 +373,9 @@ function baseThumb(key) {
 map.createPane('charts', map.getPane('rotatePane'));
 map.getPane('charts').style.zIndex = 250;
 map.getPane('charts').style.pointerEvents = 'none';
+// «Протоки и тростник» above the charts, below points: turns with the map.
+map.createPane('reeds', map.getPane('rotatePane'));
+map.getPane('reeds').style.zIndex = 260;
 
 const layers = {
   seamarks: L.tileLayer('https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png', { maxZoom: 18, maxNativeZoom: 18, zIndex: 5 }),
@@ -340,6 +390,7 @@ const layers = {
   mine: L.layerGroup(),
   tracks: L.layerGroup(),
   genshtab: L.layerGroup(),
+  reeds: L.layerGroup(),
   isobaths: L.layerGroup(),
   navHazards: L.layerGroup(),
   trackCur: L.layerGroup(),
@@ -366,6 +417,7 @@ function applyOverlays() {
   toggle(layers.mine, o.mine && !hide);
   toggle(layers.tracks, o.tracks && !state.navHide);
   toggle(layers.genshtab, o.genshtab);
+  applyReeds();
   // The satellite of the day: live tiles online, the saved picture of the area offline.
   const satOnline = o.satDay && navigator.onLine;
   if (satOnline) toggle(satDayLayer(), true); else if (SAT_DAY.layer) toggle(SAT_DAY.layer, false);
@@ -390,9 +442,46 @@ function applyOverlays() {
   }
   updatePoiVisibility();
   store.set('ladoga-overlays', o);
-  const a = $('#attrLine');
-  if (a) a.textContent = `${BASES[state.base]?.attr || ''}${o.charts ? ' · ГУНиО' : ''}`;
+  updateAttr();
 }
+/* «Протоки и тростник»: reed beds and the channels through them, from OpenStreetMap (research/maps_more.md: the reeds
+   are mapped well, the channels only in part — Дубненская, Лисья right, «7 км» off by tens of metres). 260 KB, in the
+   offline set: in the reeds the satellite of z16–17, where a channel shows, is often not saved. From z12. */
+const REEDS = { loaded: false, loading: false, polys: [] };
+function loadReeds() {
+  if (REEDS.loaded || REEDS.loading) return;
+  REEDS.loading = true;
+  fetch('data/reeds.json').then((r) => r.json()).then((g) => {
+    // the reed beds for the navigator's «in the reeds» (geo.js updateReeds): outer rings with their boxes
+    for (const f of g.features) {
+      if (f.properties.k !== 'reed' && f.properties.k !== 'wet') continue;
+      const polys = f.geometry.type === 'Polygon' ? [f.geometry.coordinates] : f.geometry.type === 'MultiPolygon' ? f.geometry.coordinates : [];
+      for (const pg of polys) {
+        const ring = pg[0];
+        let s = 90, n = -90, w = 180, e = -180;
+        for (const [x, y] of ring) { s = Math.min(s, y); n = Math.max(n, y); w = Math.min(w, x); e = Math.max(e, x); }
+        REEDS.polys.push({ ring, s, n, w, e });
+      }
+    }
+    L.geoJSON(g, {
+      pane: 'reeds',
+      style: (f) => (/Polygon/.test(f.geometry.type)
+        ? { stroke: false, fill: true, fillColor: f.properties.k === 'reed' ? '#a3c93a' : '#5fa3c9', fillOpacity: f.properties.k === 'reed' ? 0.22 : 0.14, interactive: false }
+        : { color: '#1c7ed6', weight: f.properties.k === 'ditch' ? 2 : 3, opacity: 0.95, interactive: !!f.properties.n }),
+      onEachFeature: (f, l) => {
+        if (f.properties.n) l.on('click', () => toast(`${f.properties.n} — по OpenStreetMap; линия бывает смещена, сверяйтесь со снимком и своим треком`, 5000));
+      },
+    }).addTo(layers.reeds);
+    REEDS.loaded = true;
+  }).catch(() => { /* offline and never saved: try again next time */ }).finally(() => { REEDS.loading = false; });
+}
+function applyReeds() {
+  const on = !!state.overlays.reeds && map.getZoom() >= 12;
+  if (on) loadReeds();
+  if (on && !map.hasLayer(layers.reeds)) layers.reeds.addTo(map);
+  if (!on && map.hasLayer(layers.reeds)) map.removeLayer(layers.reeds);
+}
+map.on('zoomend', () => { applyReeds(); updateAttr(); });
 
 /* ---------- filtering & rendering ---------- */
 // Points of interest show from zoom 11 (or at once when the filter asks only for them); names from 13.
@@ -1275,7 +1364,11 @@ function drawRules() {
     if (!shapes.length) for (const r of a.reference_points || []) if (r.lat != null) shapes.push(L.circle([r.lat, r.lon], { ...style, radius: 500 }));
     if (!shapes.length) continue;
     shapes.forEach((s) => s.addTo(layers.rules));
-    const c = L.featureGroup(shapes).getBounds().getCenter();
+    // The bounds without the map: a circle's own getBounds() asks the map, and the layer is drawn before it is put on
+    // the map when «Запретные районы» is switched on — it threw and nothing was drawn (26.09.2026, the toggle audit).
+    const bounds = L.latLngBounds([]);
+    for (const s of shapes) bounds.extend(s instanceof L.Circle ? s.getLatLng().toBounds(2 * s.getRadius()) : s.getBounds());
+    const c = bounds.getCenter();
     const tag = L.marker(c, { icon: L.divIcon({ className: 'zone-tag-wrap', html: `<button type="button" class="zone-tag" style="--zc:${color}">Запрет: ${esc(label.slice(0, 34))}</button>`, iconSize: null }), zIndexOffset: -400 });
     tag.on('click', () => openRuleCard(a, label));
     tag.addTo(layers.rules);

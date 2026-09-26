@@ -886,7 +886,7 @@ def s2_card(r: Run):
 
 SECTIONS = [('today', None, 'Сегодня'), ('guide', 'places', 'Клёв › Места'), ('guide', 'season', 'Клёв › Сезон'), ('guide', 'fish', 'Клёв › Рыба'),
             ('guide', 'tackle', 'Клёв › Снасти'), ('rules', None, 'Правила'), ('me', 'tracks', 'Моё › Треки'), ('me', 'points', 'Моё › Точки'),
-            ('me', 'offline', 'Моё › Без сети'), ('me', 'more', 'Моё › Ещё')]
+            ('me', 'offline', 'Моё › Без сети'), ('me', 'more', 'Моё › Настройки')]  # «Ещё» renamed «Настройки» 26.09.2026
 
 
 def s3_sections(r: Run):

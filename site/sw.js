@@ -1,10 +1,10 @@
 // Offline support: the app shell and data come from the cache when the lake has no signal; map tiles that
 // were viewed once are kept for later (up to TILE_MAX). On a weak signal — a request that hangs rather than
 // fails — the saved copy answers after NET_WAIT and the network one still refreshes the cache behind it.
-const VERSION = 'ladoga-v36';
-const SHELL = ['./', 'index.html', 'log.js', 'app.js', 'wave.js', 'content.js', 'tracks.js', 'geo.js', 'ui.js', 'styles.css', 'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png',
+const VERSION = 'ladoga-v37';
+const SHELL = ['./', 'index.html', 'log.js', 'app.js', 'wave.js', 'content.js', 'tracks.js', 'retrace.js', 'geo.js', 'ui.js', 'styles.css', 'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png',
   'vendor/leaflet.js', 'vendor/leaflet.css', 'vendor/leaflet-rotate.js', 'vendor/leaflet.markercluster.js', 'vendor/MarkerCluster.css', 'vendor/leaflet-heat.js',
-  'data/points.json', 'data/context.json', 'tiles/depth_cover.json', 'tiles/charts_cover.json', 'data/depth_dangers.json'];
+  'data/points.json', 'data/context.json', 'data/reeds.json', 'tiles/depth_cover.json', 'tiles/charts_cover.json', 'data/depth_dangers.json'];
 const TILE_CACHE = 'ladoga-tiles-v1';
 const TILE_MAX = 9000;
 const NET_WAIT = 3500;

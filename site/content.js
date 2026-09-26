@@ -46,6 +46,14 @@ function openPoint(idx, opts = {}) {
     onClose: () => { if (state.selected === idx) state.selected = null; layers.select.clearLayers(); },
   }, opts);
 }
+// How well the place is known, in words, next to «Вести» (a third of the reports — 413 of 1362 — are known only to about
+// a kilometre, and that stood only in «Подробнее» as a letter «C»).
+function pointAccuracyHtml(rs) {
+  const best = ['A', 'B', 'C'].find((c) => rs.some(({ r }) => r.cls === c));
+  if (best === 'C') return '<p class="small" style="margin:6px 0 0">📍 <b>Место примерное, ±1 км:</b> известно по описанию, а не по GPS. На месте ищите по глубине и приметам.</p>';
+  if (best === 'A') return '<p class="small muted" style="margin:6px 0 0">📍 Точные координаты рыбака (GPS).</p>';
+  return '';
+}
 function pointBodyHtml(idx) {
   const m = state.M[idx];
   const rs = m.r.map((i) => ({ r: state.R[i], ok: state.pass[i] }))
@@ -59,6 +67,7 @@ function pointBodyHtml(idx) {
       <button type="button" class="tile-btn" data-act="share">${ic('share')}<span>Поделиться</span></button>
       <button type="button" class="tile-btn" data-act="point-more">${ic('more-horiz')}<span>Ещё</span></button>
     </div>
+    ${pointAccuracyHtml(rs)}
     <div class="card">
       <div class="coord">${fmtDec(m.lat, m.lon)}</div>
       <div class="coord">${fmtDM(m.lat, m.lon)}</div>
@@ -372,6 +381,24 @@ function bansTodayCard(bans) {
     ${alwaysLine}
     <div style="margin-top:6px"><button type="button" class="btn small ghost" data-page-link="rules">Размеры, нормы и все правила</button></div></div>`;
 }
+// «Коротко»: the day in three lines at the top of «Сегодня» — going out, what is closed, what bites (26.09.2026: the
+// verdict «Выход» was 1,4 screens down and the weather 2). The details stay below, as they were.
+function todaySummaryHtml(bans) {
+  const mo = new Date().getMonth() + 1, rows = [];
+  const o = wxOver(Date.now(), Date.now() + 3 * 3600000);
+  if (o) {
+    const boat = state.settings.boat, place = wxPlace();
+    const wave = boat && typeof shoreWave === 'function' ? shoreWave(place.lat, place.lon, o.dir, o.wind, o.k) : null;
+    const v = boat ? boatVerdict(boat, o.wind, o.gust, wave?.hs) : null;
+    rows.push(`<div><b>Ветер</b> ${rumb(o.dir)} ${o.wind} м/с, порывы ${o.gust}${v ? ` — <b class="${['v-ok', 'v-warn', 'v-bad'][v.level]}">${BOATS[boat].of} ${v.word}</b>` : ' <span class="muted">(лодку — в «Условиях дня»)</span>'}</div>`);
+  } else rows.push(`<div class="muted">${navigator.onLine ? 'Прогноз загружается…' : 'Прогноз загрузится, когда появится интернет'}</div>`);
+  const fish = [...new Set(bans.filter((b) => !isMotorBan(b)).map((b) => String(b.species || 'все виды').replace(/\s*\(.*?\)\s*/g, ' ').trim().toLowerCase()).filter(Boolean))];
+  const motor = motorBanParts(bans.filter(isMotorBan)).seasonal.size > 0;
+  rows.push(`<div><b>Запреты</b> ${fish.length ? `<span class="v-bad">${esc(fish.slice(0, 3).join(', '))}${fish.length > 3 ? '…' : ''}</span>` : 'на любительский лов нет'}${motor ? '; моторы — в части районов' : ''}</div>`);
+  const bite = condSpecies(mo).filter((c) => c.act >= 2).sort((x, y) => y.act - x.act).slice(0, 4).map((c) => c.key.toLowerCase());
+  if (bite.length) rows.push(`<div><b>Клюёт</b> ${esc(bite.join(', '))}</div>`);
+  return `<div class="card today-sum">${rows.join('')}</div>`;
+}
 function todayHtml() {
   const mo = new Date().getMonth() + 1;
   const ice = isIceMonth(mo);
@@ -389,6 +416,7 @@ function todayHtml() {
     ${!navigator.onLine ? `<div class="card small warn-card">Нет сети${state.wx?.at ? ` · прогноз от ${fmtTime(state.wx.at)} ${fmtDay(state.wx.at)}` : ''}. Карта, точки, справочники и навигатор работают${regionSaved() ? '' : ' там, где карта уже была открыта'}.</div>` : ''}
     ${warnings.map((w) => `<div class="card small wx-${w.level}">${w.level === 'danger' ? `${ic('warning')} <b>Опасно.</b> ` : `${ic('warning')} `}${esc(w.text)}</div>`).join('')}
     ${officialWarnings().map((w) => `<details class="card small wx-${w.emergency ? 'danger' : 'warn'}"><summary>${ic('warning')} <b>МЧС: ${esc(w.title)}</b></summary><p>${esc(w.text)}</p>${safeUrl(w.url) ? `<a href="${esc(w.url)}" target="_blank" rel="noopener">источник</a>` : ''}</details>`).join('')}
+    ${todaySummaryHtml(bans)}
     ${bansTodayCard(bans)}
     ${conditionsHtml()}
     ${weatherBlock()}
@@ -680,7 +708,7 @@ function timeseriesHtml(mo) {
   return `<h3>Что ловили в ${MONTHS_IN[mo - 1]} — по ${ts.total.toLocaleString('ru-RU')} ${plural(ts.total, 'датированному отчёту', 'датированным отчётам', 'датированным отчётам')}</h3>
     <div class="bars">${bm.map((n, i) => `<div class="${i + 1 === mo ? 'cur' : ''}" style="height:${Math.round((n / max) * 100)}%" title="${MONTHS_FULL[i]}: ${n}"></div>`).join('')}</div>
     <div class="bars-labels">${MONTHS.map((m) => `<span>${m}</span>`).join('')}</div>
-    ${fish.length ? `<div class="chips" style="margin-top:8px">${fish.map(([f, n]) => `<button type="button" class="chip" data-act="filter-fish" data-name="${esc(f)}"><span class="dot" style="background:${FISH_COLORS[f] || OTHER_COLOR}"></span>${esc(f)} <span class="n">${n}</span></button>`).join('')}</div>` : ''}
+    ${fish.length ? `<div class="chips" style="margin-top:8px">${fish.map(([f, n]) => `<button type="button" class="chip ${state.f.fish.size === 1 && state.f.fish.has(f) ? 'on' : ''}" aria-pressed="${state.f.fish.size === 1 && state.f.fish.has(f)}" data-act="filter-fish" data-name="${esc(f)}"><span class="dot" style="background:${FISH_COLORS[f] || OTHER_COLOR}"></span>${esc(f)} <span class="n">${n}</span></button>`).join('')}</div>` : ''}
     ${areas.length ? `<p class="small" style="margin-bottom:0"><b>Где чаще всего рыбачили:</b></p>${areas.map(([k, n]) => `<div class="small">• ${esc(k)} — ${n} ${plural(n, 'отчёт', 'отчёта', 'отчётов')}</div>`).join('')}` : ''}
     <p class="small muted">Источники: ${(ts.by_source || []).slice(0, 5).map(([s2, n]) => `${esc(s2)} (${n})`).join(', ')}. Это то, о чём пишут рыбаки, а не учёт рыбы.</p>`;
 }
@@ -819,7 +847,7 @@ function rulesHtml() {
     <h3 id="r-ice">Лёд</h3>
     ${(state.ctx.practical?.ice_rules_general || []).map((b) => `<details class="card small"><summary>${esc(b.title)}</summary><p>${esc(b.text)}</p>${safeUrl(b.source_url) ? `<a href="${esc(b.source_url)}" target="_blank" rel="noopener">источник</a>` : ''}</details>`).join('')}
     ${ice.map((b) => `<details class="card small"><summary>${esc(b.title || b.type || '')}</summary><p>${esc(b.description || b.summary || '')}</p>${safeUrl(b.source_url) ? `<a href="${esc(b.source_url)}" target="_blank" rel="noopener">источник</a>` : ''}</details>`).join('')}
-    ${(state.ctx.ice_zones || []).length ? `<p class="small">${state.ctx.ice_zones.length} ${plural(state.ctx.ice_zones.length, 'место', 'места', 'мест')}, где за 2005–2026 проваливались под лёд и отрывало льдины (сводки МЧС, спасателей, рыбаков), — на карте слоем «Опасный лёд»: <button type="button" class="chip" data-act="icez-show">показать</button></p>` : ''}`;
+    ${(state.ctx.ice_zones || []).length ? `<p class="small">${state.ctx.ice_zones.length} ${plural(state.ctx.ice_zones.length, 'место', 'места', 'мест')}, где за 2005–2026 проваливались под лёд и отрывало льдины (сводки МЧС, спасателей, рыбаков), — на карте слоем «Опасный лёд»: <button type="button" class="btn small ghost" data-act="icez-show">${ic('map')}показать на карте</button></p>` : ''}`;
 }
 
 /* ---------- Моё › Точки, Без сети, Ещё ---------- */
@@ -869,7 +897,7 @@ function offlineHtml() {
       <b>Чтобы всё работало без интернета</b>
       <div class="checklist">
         <div class="step ${installed ? 'done' : ''}"><span class="num">${installed ? '✓' : 1}</span><span class="txt">Установить приложение${installed ? ' — установлено' : ' на телефон (или компьютер)'}</span>${installed ? '' : '<button type="button" class="btn small" data-act="install">Как</button>'}</div>
-        <div class="step ${saved ? 'done' : ''}"><span class="num">${saved ? '✓' : 2}</span><span class="txt">Скачать район${saved ? ' — скачан' : ' — кнопка ниже, лучше по Wi‑Fi'}</span></div>
+        <div class="step ${saved ? 'done' : ''}"><span class="num">${saved ? '✓' : 2}</span><span class="txt">Скачать район${saved ? ' — скачан' : ` — ~${mainMB} МБ, лучше по Wi‑Fi`}</span>${saved || running ? '' : '<button type="button" class="btn small" data-act="region-download">Скачать</button>'}</div>
       </div>
       <p class="small muted" style="margin-bottom:0">Сохраняется всё: само приложение, точки, справочники, правила, карта района, навигационные карты и глубины. Дальше оно открывается с иконки и работает без сети — на iPhone, Android и компьютере. Без сети не будет только свежей погоды.</p>
     </div>
@@ -926,6 +954,26 @@ async function storageLine() {
 }
 const seg = (key, options, value) => `<div class="seg">${options.map(([v, t]) => `<button type="button" data-set="${key}" data-val="${v}" class="${String(value) === String(v) ? 'on' : ''}">${t}</button>`).join('')}</div>`;
 const sw = (key, label, sub = '') => `<label class="check switch"><span>${label}${sub ? `<br><span class="small muted">${sub}</span>` : ''}</span><input type="checkbox" data-setting="${key}" ${state.settings[key] ? 'checked' : ''}></label>`;
+// The voice: which of the phone's Russian voices, how fast, and a sample to hear (owner, 26.09.2026: «голос очень
+// противный… хороший, приятный женский»). How to get a better voice where the phone has only a poor one.
+function voiceSettingsHtml() {
+  if (!('speechSynthesis' in window)) return '<p class="small muted">Этот браузер не умеет говорить — подсказки только на экране.</p>';
+  const s = state.settings, list = ruVoices(), cur = s.voiceName || '';
+  const best = !cur ? pickVoice() : null;
+  const opts = [`<option value=""${cur ? '' : ' selected'}>Лучший женский голос телефона${best ? ` (сейчас: ${esc(voiceLabel(best).split(' · ')[0])})` : ''}</option>`]
+    .concat(list.map((v) => `<option value="${esc(v.name)}"${v.name === cur ? ' selected' : ''}>${esc(voiceLabel(v))}</option>`));
+  const { iOS, android } = platformInfo();
+  const tip = iOS ? 'Самый приятный голос на iPhone — «Милена» улучшенная или премиум. Скачать: Настройки → Универсальный доступ → Устный контент → Голоса → Русский → Милена. Потом откройте карту заново — голос выберется сам.'
+    : android ? 'Голос звучит лучше, если скачать русский голос Google: Настройки → Специальные возможности → Синтез речи → Google → Установить голосовые данные → Русский.'
+      : 'На компьютере хорошо звучат голоса «Светлана» и «Дарья» (браузер Edge, нужен интернет).';
+  return `<div class="small muted" style="margin-top:8px">Голос</div>
+    <select id="voiceSel" aria-label="Голос подсказок">${opts.join('')}</select>
+    ${list.length ? '' : '<p class="small muted" style="margin:4px 0 0">Голоса телефона ещё загружаются…</p>'}
+    <div class="small muted" style="margin-top:8px">Скорость речи</div>
+    ${seg('voiceRate', [[0.9, 'Медленнее'], [1, 'Обычно'], [1.15, 'Быстрее']], s.voiceRate ?? 1)}
+    <button type="button" class="btn small ghost" data-act="voice-test" style="margin-top:8px">${ic('volume-up')}Прослушать</button>
+    <p class="small muted">${tip}</p>`;
+}
 function moreHtml() {
   const s = state.settings;
   const st = state.meta.stats || {};
@@ -956,7 +1004,9 @@ function moreHtml() {
     ${seg('shallow', [[1, '1 м'], [1.5, '1,5 м'], [2, '2 м'], [3, '3 м']], s.shallow)}
     ${sw('autoZoom', 'Автомасштаб', 'Масштаб по скорости и расстоянию до точки')}
     ${sw('sound', 'Звук прибытия и опасности')}
-    ${sw('voice', 'Голосовые подсказки', 'Сколько до точки, «правее/левее», мель впереди, «вы на месте» — можно не смотреть на экран')}
+    ${sw('voice', 'Голосовые подсказки', 'Сколько до точки, «правее/левее», повороты на обратном пути, мель впереди, «вы на месте» — можно не смотреть на экран. В навигации — кнопка «Голос» справа вверху')}
+    ${voiceSettingsHtml()}
+    ${sw('autoTrack', 'Писать трек при навигации', 'Нажали «Вести» — путь записывается сам, и по нему всегда можно вернуться теми же протоками: «Ещё» → «Назад по своему треку»')}
     ${sw('navShowPoints', 'Точки рыбаков в навигации', 'Места ловли и ваши метки остаются на карте')}
     <h3>Мой район</h3>
     <p class="small">${esc(state.home.name)} — кнопка ${ic('home')} на карте показывает его целиком. Сделать своим можно любой район в его карточке.</p>
@@ -1045,13 +1095,16 @@ function layersTabHtml() {
   const hasCharts = chartState.items.length || chartState.tiles.length;
   return `
     <div class="chips" style="margin:2px 0 4px">
-      <button type="button" class="chip" data-act="preset" data-preset="depth">${ic('water')}Глубины</button>
-      <button type="button" class="chip" data-act="preset" data-preset="chart">${ic('anchor')}Карта ГУНиО</button>
-      <button type="button" class="chip" data-act="preset" data-preset="now">${ic('set-meal')}Рыбалка сейчас</button>
-      <button type="button" class="chip" data-act="preset" data-preset="clean">${ic('map')}Чистая карта</button>
+      <button type="button" class="btn small ghost" data-act="preset" data-preset="depth">${ic('water')}Глубины</button>
+      <button type="button" class="btn small ghost" data-act="preset" data-preset="chart">${ic('anchor')}Карта ГУНиО</button>
+      <button type="button" class="btn small ghost" data-act="preset" data-preset="now">${ic('set-meal')}Рыбалка сейчас</button>
+      <button type="button" class="btn small ghost" data-act="preset" data-preset="clean">${ic('map')}Чистая карта</button>
     </div>
     <h3 style="margin-top:4px">Подложка</h3>
     <div class="base-tiles">${Object.entries(BASES).map(([k, b]) => `<button type="button" class="base-tile ${state.base === k ? 'on' : ''}" data-act="base-set" data-base="${k}" style="${baseThumb(k) ? `background-image:url('${baseThumb(k)}')` : ''}" title="${esc(b.full || b.name)}">${esc(b.name)}</button>`).join('')}</div>
+    ${state.base === 'arch' ? `<div class="small muted" style="margin-top:6px">Снимки какого выпуска</div>
+      <div class="seg">${Object.keys(WB_YEARS).sort().reverse().map((y) => `<button type="button" data-act="wb-year" data-val="${y}" class="${wbYear() === +y ? 'on' : ''}">${y}</button>`).join('')}</div>
+      <p class="small muted" style="margin:4px 0 0">Снимки выпуска сделаны в разные годы, чаще летом: где на свежем снимке весна или дымка, протоки в тростнике на летнем видны яснее. Протоки со временем зарастают — верьте свежему снимку и своим трекам. Только с интернетом.</p>` : ''}
     <h3>Глубины</h3>
     ${hasCharts ? `<label class="check switch"><span><b>Навигационные карты ГУНиО</b><br><span class="small muted">цифры глубин, изобаты, камни, створы; цифры читаются при приближении</span></span><input type="checkbox" data-overlay="charts" ${o.charts ? 'checked' : ''}></label>
       <div class="small muted">Прозрачность карт</div>
@@ -1069,6 +1122,7 @@ function layersTabHtml() {
     <label class="check switch"><span><b>Снимок дня (NASA)</b><br><span class="small muted">вчерашний или сегодняшний снимок 250 м: кромка льда, разводья, отрыв; облака закрывают — листайте дни</span></span><input type="checkbox" data-overlay="satDay" ${o.satDay ? 'checked' : ''}></label>
     ${o.satDay ? satControlsHtml() : ''}
     <h3>На карте</h3>
+    <label class="check switch"><span><b>Протоки и тростник</b><br><span class="small muted">из OpenStreetMap, с приближения: тростник светло-зелёным, протоки и каналы синим. Нарисованы не все протоки — сверяйтесь со снимком. Работает без интернета</span></span><input type="checkbox" data-overlay="reeds" ${o.reeds ? 'checked' : ''}></label>
     <label class="check switch"><span>Группировать близкие точки</span><input type="checkbox" data-overlay="cluster" ${o.cluster ? 'checked' : ''}></label>
     <label class="check switch"><span>Сезонные зоны рыбы<br><span class="small muted">месяц: ${MONTHS_FULL[state.seasonMonth - 1]}</span></span><input type="checkbox" data-overlay="seasonZones" ${o.seasonZones ? 'checked' : ''}></label>
     ${(state.ctx.ice_zones || []).length ? `<label class="check switch"><span><b>Опасный лёд</b><br><span class="small muted">${state.ctx.ice_zones.length} мест, где проваливались и отрывало льдины за 2005–2026; с ноября по апрель включается сам</span></span><input type="checkbox" data-overlay="iceZones" ${o.iceZones ? 'checked' : ''}></label>` : ''}
@@ -1128,7 +1182,7 @@ function filterTabHtml() {
     <div class="months">${MONTHS.map((m, i) => `<button type="button" class="chip ${f.months.has(i + 1) ? 'on' : ''}" data-month="${i + 1}">${m}<span class="n">${monthCounts[i + 1]}</span></button>`).join('')}</div>
     <div class="row" style="margin-top:8px">
       <div class="seg" id="seasonSeg">${[['all', 'Круглый год'], ['ice', '❄ Лёд'], ['open_water', '🌊 Вода']].map(([k, t]) => `<button type="button" data-season="${k}" class="${f.season === k ? 'on' : ''}">${t}</button>`).join('')}</div>
-      <button type="button" class="chip" data-act="this-month">Этот месяц</button>
+      <button type="button" class="btn small ghost" data-act="this-month">Этот месяц</button>
     </div>
     <h3>Что показывать</h3>
     ${Object.entries(KINDS).map(([k, v]) => `<label class="check"><input type="checkbox" data-kind="${k}" ${f.kinds.has(k) ? 'checked' : ''}> ${kindSwatch(k)} ${esc(v.label)} <span class="muted small">${kindCounts.get(k) || 0}</span></label>`).join('')}
@@ -1473,7 +1527,8 @@ function handleAction(act, el) {
       setTimeout(() => map.fitBounds(b, fitPadding()), 50);
       break;
     }
-    case 'base-set': setBase(d.base); $$('.base-tile').forEach((b) => b.classList.toggle('on', b.dataset.base === d.base)); break;
+    case 'base-set': setBase(d.base); $$('.base-tile').forEach((b) => b.classList.toggle('on', b.dataset.base === d.base)); if (topLayer()?.key === 'layers') renderModalBody(topLayer(), true); break;
+    case 'wb-year': state.wbYear = +d.val; store.set('ladoga-wb-year', state.wbYear); BASES.arch.layer = null; if (state.base === 'arch') setBase('arch'); if (topLayer()?.key === 'layers') renderModalBody(topLayer(), true); break;
     case 'pack-clear': store.set(`ladoga-pack-${d.season}`, []); refreshPage(); break;
     case 'sos': openSos(); break;
     case 'sos-copy': if (geo.me) copy(`${fmtDM(geo.me.lat, geo.me.lon)} (${fmtDec(geo.me.lat, geo.me.lon)})`, 'Координаты'); break;
@@ -1516,6 +1571,7 @@ function handleAction(act, el) {
     case 'locate-retry': closeTop(); geoRestart(); break;
     case 'geo-off': geoStop(); store.set('ladoga-geo-on', false); toast('Геопозиция выключена'); break;
     case 'ios-geo-help': showLocationHelp('ios-once'); break;
+    case 'voice-test': unlockAudio(); say('Через 60 метров налево. Впереди мелко: полтора метра. Вы на месте', { force: true, test: true }); break;
     case 'icez-show': {
       state.overlays.iceZones = true; store.set('ladoga-icez-hand', true); applyOverlays();
       const zs = state.ctx.ice_zones || [];
@@ -1534,6 +1590,9 @@ function handleAction(act, el) {
       break;
     }
     case 'filter-fish': {
+      if (el.classList.contains('chip') && state.f.fish.size === 1 && state.f.fish.has(d.name)) {
+        state.f.fish = new Set(); render(); drawSeasonZones(); refreshPage(); toast('Фильтр по рыбе снят'); break;
+      }
       state.f.fish = new Set([d.name]);
       render(); drawSeasonZones();
       revealMap();
@@ -1573,7 +1632,7 @@ function onContentClick(e) {
   if (d.anchor) { document.getElementById(d.anchor)?.scrollIntoView({ block: 'start', behavior: 'smooth' }); return; }
   if (d.sheetTab) { const l = topLayer(); if (l) { l.tab = d.sheetTab; renderModalBody(l); } return; }
   if (d.pointsFilter) { state.pointsFilter = d.pointsFilter; refreshPage('me'); return; }
-  if (d.set) { setSetting(d.set, d.val); $$(`[data-set="${d.set}"]`).forEach((b) => b.classList.toggle('on', b === t)); return; }
+  if (d.set) { setSetting(d.set, d.val); $$(`[data-set="${d.set}"]`).forEach((b) => { const on = b.dataset.val === String(d.val); b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); }); return; }
   if (d.wxplace) {
     store.set('ladoga-wx-place', d.wxplace);
     state.wxLoading = d.wxplace;
@@ -1604,6 +1663,7 @@ function onContentChange(e) {
   else if (t.id === 'favOnly') { f.fav = t.checked; render(); }
   else if (t.id === 'depthOnly') { f.depthOnly = t.checked; render(); }
   else if (t.id === 'archiveOn') { f.archive = t.checked; render(); refreshLayersSheet(); }
+  else if (t.id === 'voiceSel') { unlockAudio(); setSetting('voiceName', t.value); }
   else if (t.dataset.pack) {
     const [season, i] = t.dataset.pack.split(':');
     const set = new Set(store.get(`ladoga-pack-${season}`, []));

@@ -178,7 +178,7 @@ const PAGES = {
   today: { title: 'Сегодня', html: () => todayHtml() },
   guide: { title: 'Клёв', tabs: [['places', 'Места'], ['season', 'Сезон'], ['fish', 'Рыба'], ['tackle', 'Снасти']], html: (s) => ({ places: placesHtml, season: seasonHtml, fish: fishHtml, tackle: tackleHtml }[s] || placesHtml)() },
   rules: { title: 'Правила', html: () => rulesHtml() },
-  me: { title: 'Моё', tabs: [['tracks', 'Треки'], ['points', 'Точки'], ['offline', 'Без сети'], ['more', 'Ещё']], html: (s) => ({ tracks: tracksPageHtml, points: mePointsHtml, offline: offlineHtml, more: moreHtml }[s] || tracksPageHtml)() },
+  me: { title: 'Моё', tabs: [['tracks', 'Треки'], ['points', 'Точки'], ['offline', 'Без сети'], ['more', 'Настройки']], html: (s) => ({ tracks: tracksPageHtml, points: mePointsHtml, offline: offlineHtml, more: moreHtml }[s] || tracksPageHtml)() },
 };
 function showPage(page, sub) {
   if (page === 'map') { closeAll(); return; }
@@ -391,10 +391,15 @@ function renderChips() {
     if (danger || warn) chips.push(`<button type="button" class="schip ${danger ? 'danger' : 'warn'}" data-chip="wx">${ic('warning')}${esc((danger || warn).short)}${aged}</button>`);
     else chips.push(`<button type="button" class="schip" data-chip="wx" aria-label="Погода">${windArrow(c.wind_direction_10m, 14)} ${Math.round(c.wind_speed_10m)} м/с · ${Math.round(c.temperature_2m)}°${aged || (old ? ` · ${fmtTime(wx.at)}` : '')}</button>`);
   }
-  // The car: «К машине» one tap away, with the distance, while away from it.
-  if (state.car && !nav.on) {
-    const dc = geo.me && Date.now() - geo.me.t < 60000 ? distM(geo.me, state.car) : null;
-    if (dc == null || dc > 150) chips.push(`<button type="button" class="schip" data-chip="car">🚗 К машине${dc != null ? ` · ${fmtDist(dc)}` : ''}</button>`);
+  // The car: «К машине» one tap away, with the distance, while away from it. Not marked — or yesterday's mark far from
+  // here — and the GPS on: «Отметить машину», the angler's first step at the launch (26.09.2026: it could be marked
+  // only by starting a track).
+  if (!nav.on) {
+    const me = geo.me && Date.now() - geo.me.t < 60000 ? geo.me : null;
+    const dc = state.car && me ? distM(me, state.car) : null;
+    const old = state.car && Date.now() - state.car.t > 12 * 3600000 && dc != null && dc > 5000;
+    if (state.car && !old) { if (dc == null || dc > 150) chips.push(`<button type="button" class="schip" data-chip="car">🚗 К машине${dc != null ? ` · ${fmtDist(dc)}` : ''}</button>`); }
+    else if (me) chips.push('<button type="button" class="schip" data-chip="car-mark">🚗 Отметить машину</button>');
   }
   if (!navigator.onLine) chips.push(`<button type="button" class="schip offline ${regionSaved() ? '' : 'warn'}" data-chip="offline">${ic('cloud-off')}${regionSaved() ? 'Без сети' : 'Без сети · район не скачан'}</button>`);
   if (geo.me && geo.me.acc > 50 && Date.now() - geo.me.t < 15000) chips.push(`<button type="button" class="schip gps" data-chip="gps">GPS ±${Math.round(geo.me.acc / 10) * 10} м</button>`);
@@ -402,7 +407,7 @@ function renderChips() {
   // With a depth layer on but the map too far out for the digits: one tap brings them.
   const o = state.overlays;
   // Only for the paper charts, whose figures need z14: the shading and isolines on by default speak at any zoom.
-  if (o.charts && map.getZoom() < 14 && !nav.on) chips.push(`<button type="button" class="schip" data-chip="zoom-depth">${ic('add')}Приблизить: цифры глубин</button>`);
+  if (o.charts && map.getZoom() >= 11 && map.getZoom() < 14 && !nav.on) chips.push(`<button type="button" class="schip" data-chip="zoom-depth">${ic('add')}Приблизить: цифры глубин</button>`);
   const af = activeFilters();
   if (af.length && !ui.stack.some((l) => l.kind === 'months')) chips.push(`<button type="button" class="schip" data-chip="filter">${ic('tune')}${esc(af.map((x) => x[1]).join(' · ').slice(0, 42))}<span class="x" data-chip="filter-clear" role="button" aria-label="Сбросить фильтр">✕</span></button>`);
   const html = chips.join('');
@@ -507,6 +512,7 @@ $('#recenter').addEventListener('click', () => recenter(false));
 $('#nfDepthBox').addEventListener('click', openDepthInfo);
 $('#zoomAuto').addEventListener('click', toggleAutoZoom);
 $('#zoomRoute').addEventListener('click', () => wholeRoute());
+$('#ntVoice').addEventListener('click', toggleVoice);
 $('#btnDark').addEventListener('click', showSaver);
 $('#mbPrev').addEventListener('click', () => { setAutoplay(false); showSeasonMonth((state.seasonMonth + 10) % 12 + 1); });
 $('#mbNext').addEventListener('click', () => { setAutoplay(false); showSeasonMonth(state.seasonMonth % 12 + 1); });
@@ -516,13 +522,14 @@ $('#statusChips').addEventListener('click', (e) => {
   const c = e.target.closest('[data-chip]');
   if (!c) return;
   const k = c.dataset.chip;
-  if (k === 'wx') showPage('today');
+  if (k === 'wx') { showPage('today'); if (!c.classList.contains('danger') && !c.classList.contains('warn')) setTimeout(() => document.getElementById('wx')?.scrollIntoView({ block: 'start' }), 80); }
   else if (k === 'offline') showPage('me', 'offline');
   else if (k === 'gps') toast(`Точность GPS ±${Math.round(geo.me?.acc || 0)} м. На открытом месте, подальше от стен и мостов, будет точнее`, 5000);
   else if (k === 'filter-clear') { resetFilters(); toast('Фильтр сброшен'); }
   else if (k === 'filter') openLayersSheet('filter');
   else if (k === 'zoom-depth') { setFollowFree(); map.setZoom(14); }
   else if (k === 'car') { if (geo.me) goToCar(); else openCarCard(); }
+  else if (k === 'car-mark') markCarHere();
   else if (k === 'guard') openGuardSheet();
 });
 map.on('zoomend', () => renderChips());

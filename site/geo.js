@@ -399,6 +399,8 @@ function updateCompassBtn() {
   b.querySelector('svg').style.transform = `rotate(${bear}deg)`;
   const label = nav.on ? ({ north: 'Север', course: 'Курс', compass: 'Компас' }[geo.follow === 'free' ? (nav.followBefore || 'north') : geo.follow] || 'Север') : 'Север';
   $('#compassLabel').textContent = label;
+  const turning = nav.on && label !== 'Север';
+  b.classList.toggle('on', turning); b.setAttribute('aria-pressed', String(turning));
   b.setAttribute('aria-label', nav.on ? `Ориентация карты: ${label.toLowerCase()}` : 'Север вверх');
 }
 map.on('rotate', () => updateCompassBtn());
@@ -489,6 +491,7 @@ map.on('zoomend', () => { geo.progZoom = false; geo.zoomTarget = null; updateZoo
 // or with a card open.
 function letGo() {
   geo.userTouchT = Date.now();
+  if (nav.wholeView) { nav.wholeView = false; setTimeout(updateZoomAuto, 0); }
   if (nav.on) nav.lastTouch = Date.now();
   if (geo.follow === 'free') return;
   if (nav.on) nav.followBefore = geo.follow;
@@ -542,12 +545,16 @@ function updateZoomAuto() {
   if (!el) return;
   el.hidden = !nav.on;
   const route = $('#zoomRoute');
-  if (route) route.hidden = !nav.on;
+  if (route) {
+    route.hidden = !nav.on;
+    const on = !!(nav.on && nav.wholeView && geo.follow === 'free');
+    route.classList.toggle('on', on); route.setAttribute('aria-pressed', String(on));
+  }
   el.classList.toggle('on', !!(state.settings.autoZoom && !nav.autoZoomPaused));
 }
 
 /* ---------- navigation to a point ---------- */
-function startNav(target) {
+function startNav(target, { quiet = false } = {}) {
   unlockAudio();
   if (compassNeedsPermission() && !geo.compassOn) enableCompass(); // iOS asks here, inside the tap on «Вести»
   else if (!compassNeedsPermission()) geo.compassOn = true;
@@ -558,10 +565,11 @@ function startNav(target) {
   Object.assign(nav, {
     on: true, target: { lat: +target.lat, lon: +target.lon, title: target.title || 'Точка' }, start: null, d: null, arrived: false, hold: false,
     zSpeed: 17, zoomCand: null, autoZoomPaused: false, firstPlace: true, lastTouch: 0, followBefore: null,
-    offSince: 0, offCourse: null, hazard: null, banner: '', depth: null, depthT: 0, left: null, retrace: null,
+    offSince: 0, offCourse: null, hazard: null, banner: '', depth: null, depthT: 0, left: null, retrace: null, inReeds: false, reedsIn: 0, reedsOut: 0,
     trail: [], said: {},
   });
   store.set('ladoga-nav', { ...nav.target, t: Date.now() });
+  loadReeds();
   if (!again) openLayer({ kind: 'nav', guard: navGuard, onClose: stopNav }, { replace });
   state.navHide = true; applyOverlays();
   drawNavTarget();
@@ -572,10 +580,13 @@ function startNav(target) {
   wakeUpdate();
   navOnFix();
   updateNavFields(true);
-  updateZoomAuto(); updateCompassBtn(); refreshMeIcon();
-  if (!store.get('ladoga-nav-hint', false)) { store.set('ladoga-nav-hint', true); toast('Экран не будет гаснуть — навигатор расходует заряд, возьмите пауэрбанк', 6000); }
-  say(geo.me ? `Ведём к точке ${nav.target.title}. ${sayDist(distM(geo.me, nav.target))}` : `Ведём к точке ${nav.target.title}`, { force: true });
-  logEvent('nav_start', { d: geo.me ? Math.round(distM(geo.me, nav.target)) : null });
+  updateZoomAuto(); updateCompassBtn(); refreshMeIcon(); updateVoiceBtn();
+  // The way there is recorded by itself, so there is always a way back (owner, 26.09.2026: «вернуться по маршруту —
+  // наиважнейшая функция»; a forgotten «Трек» must not cost it). Settings → «Писать трек при навигации».
+  if (state.settings.autoTrack !== false && !trk.cur && !DEMO.on) startRec({ auto: true });
+  else if (!store.get('ladoga-nav-hint', false)) { store.set('ladoga-nav-hint', true); toast('Экран не будет гаснуть — навигатор расходует заряд, возьмите пауэрбанк', 6000); }
+  if (!quiet) say(geo.me ? `Ведём к точке ${nav.target.title}. ${sayDist(distM(geo.me, nav.target))}` : `Ведём к точке ${nav.target.title}`, { force: true });
+  logEvent('nav_start', { d: geo.me ? Math.round(distM(geo.me, nav.target)) : null, rec: !!trk.cur });
 }
 function stopNavState() {
   layers.nav.clearLayers(); layers.navHazards.clearLayers();
@@ -756,7 +767,8 @@ function navOnFix() {
     retraceStep(me);
     const aim = navAim();
     nav.brg = bearing(me, aim);
-    navLine.setLatLngs(nav.retrace ? [[me.lat, me.lon], ...nav.retrace.pts.slice(nav.retrace.j).map((q) => [q.lat, q.lon])] : [[me.lat, me.lon], [t.lat, t.lon]]);
+    // A thin line from the boat to what the arrow shows: the point itself, or on the way back the spot along the track.
+    navLine.setLatLngs([[me.lat, me.lon], [aim.lat, aim.lon]]);
     const fresh = Date.now() - me.t < 10000;
     // Arrival: the radius never smaller than the GPS error allows.
     const R = Math.max(+state.settings.arrivalR || 30, Math.min(100, 1.5 * me.acc));
@@ -764,22 +776,36 @@ function navOnFix() {
     else if (layers.nav.hasLayer(navArrive)) layers.nav.removeLayer(navArrive);
     if (fresh && !nav.arrived && nav.d <= R) {
       nav.arrived = true; nav.arriveT = Date.now(); nav.hold = false; nav.left = null;
-      logEvent('nav_arrived', { acc: Math.round(me.acc) });
+      logEvent('nav_arrived', { acc: Math.round(me.acc), retrace: !!nav.retrace });
       navigator.vibrate?.([200, 100, 200]);
       beep('arrive');
+      // «К машине» by the track: the track is done, the last metres to the car go straight.
+      const next = nav.retrace?.then;
+      if (next && distM(me, next) > R) {
+        setTimeout(() => {
+          if (!nav.on || nav.retrace?.then !== next) return;
+          startNav(next, { quiet: true });
+          say(`Трек пройден. Дальше ${next.title === 'Машина' ? 'к машине' : `к точке ${next.title}`} ${sayDist(distM(geo.me || next, next))} по прямой`, { force: true });
+        }, 2500);
+      }
     } else if (nav.arrived && nav.d > 2 * R) {
       nav.arrived = false; nav.hold = false; nav.left = nav.d; nav.leftT = Date.now();
     }
     if (nav.arrived && !nav.hold && Date.now() - nav.arriveT > 20000) nav.hold = true;
-    // Off course: moving, far from the point, heading more than 30° away for 10 s.
-    if (courseValid() && nav.d > 200 && !(nav.retrace && nav.retrace.off < 40)) {
+    // Off course: moving, far from the point, heading more than 30° away for 10 s. On the way back by the track the
+    // measure is the distance off the line instead (retraceStep).
+    updateReeds(me);
+    if (!nav.retrace && !nav.inReeds && courseValid() && nav.d > 200) {
       const diff = angleDiff(geo.cog, nav.brg);
       if (Math.abs(diff) > 30) { if (!nav.offSince) nav.offSince = Date.now(); if (Date.now() - nav.offSince > 10000) nav.offCourse = diff; }
       else if (Math.abs(diff) < 15) { nav.offSince = 0; nav.offCourse = null; }
       else if (nav.offCourse != null) nav.offCourse = diff;
     } else { nav.offSince = 0; nav.offCourse = null; }
-    // A shoal ahead — one at a time, the nearest; the sound no more than once in 5 minutes for the same one.
-    const hz = fresh ? hazardAhead(me) : null;
+    // A shoal ahead — one at a time, the nearest; the sound no more than once in 5 minutes for the same one. On the
+    // way back along the track the boat has passed there already: quiet while on the line (the shallow channels of
+    // the reeds would warn at every bend), told again as soon as it leaves the line.
+    const onTrack = !!nav.retrace && !nav.retrace.offTrack;
+    const hz = fresh && !onTrack ? hazardAhead(me) : null;
     if (hz) {
       const k = `${hz.lat},${hz.lon}`;
       if (!nav.hazardSeen[k] || Date.now() - nav.hazardSeen[k] > 300000) { nav.hazardSeen[k] = Date.now(); beep('hazard'); navigator.vibrate?.([100, 60, 100, 60, 100]); }
@@ -788,7 +814,7 @@ function navOnFix() {
     if (Date.now() - hazardsDrawnAt > 5000) { hazardsDrawnAt = Date.now(); drawNavHazards(); }
     if (Date.now() - (nav.shoalT || 0) > 3000) {
       nav.shoalT = Date.now();
-      nav.shoal = fresh ? shoalAhead(me) : null;
+      nav.shoal = fresh && !onTrack && !nav.inReeds ? shoalAhead(me) : null;
       if (nav.shoal && !nav.said[`shl${Math.round(nav.shoal.lat * 500)},${Math.round(nav.shoal.lon * 500)}`]) logEvent('shoal_ahead', { d: nav.shoal.d, depth: Math.round(nav.shoal.depth * 10) / 10 });
       const notes = fresh ? placeNotes(me) : [];
       nav.place = notes.find((n) => !nav.said[n.key]) || (nav.place && notes.some((n) => n.key === nav.place.key) ? nav.place : null);
@@ -824,7 +850,8 @@ function autoZoom() {
   // Standing (or drifting): the boat and the point together, so the way is seen — not 100 m of water around the boat
   // (owner, 26.09.2026: «увеличил и не могу вернуться к виду маршрута»).
   const moving = sog * 3.6 >= 3;
-  if (moving) nav.zSpeed = Math.floor(Math.log2(k * aheadPx / Math.max(150, sog * 120)));
+  // Two minutes of the way ahead; on the way back along the track one minute — the bends of a channel must be seen.
+  if (moving) nav.zSpeed = Math.floor(Math.log2(k * aheadPx / (nav.retrace || nav.inReeds ? Math.max(100, sog * 60) : Math.max(150, sog * 120))));
   else if (Number.isFinite(d) && nav.target) nav.zSpeed = Math.floor(Math.log2(k * roomToward(nav.target, fr) / Math.max(d, 60)));
   let z = nav.hold ? 18 : moving ? Math.max(nav.zSpeed, zd) : nav.zSpeed;
   z = Math.max(9, Math.min(18, z));
@@ -850,6 +877,7 @@ function roomToward(p, fr) {
 // Back to the boat. By the button — the navigator's own view again (its zoom too: «Ко мне» should give back the way);
 // by itself after the finger was lifted — the zoom the user chose stays.
 function recenter(auto) {
+  nav.wholeView = false;
   if (auto !== true && state.settings.autoZoom) nav.autoZoomPaused = false;
   nav.firstPlace = !nav.autoZoomPaused;
   setFollow(nav.followBefore || (state.settings.orient === 'course' ? 'course' : 'north'));
@@ -880,6 +908,8 @@ function toggleAutoZoom() {
 }
 function wholeRoute() {
   if (!nav.on) return;
+  if (nav.wholeView) { recenter(false); return; }
+  nav.wholeView = true;
   nav.followBefore = geo.follow === 'free' ? nav.followBefore : geo.follow;
   setFollow('free');
   map.setBearing(0);
@@ -887,44 +917,144 @@ function wholeRoute() {
   if (geo.me) pts.push([geo.me.lat, geo.me.lon]);
   map.fitBounds(L.latLngBounds(pts), fitPadding());
   nav.lastTouch = Date.now();
-  updateRecenter();
+  updateRecenter(); updateZoomAuto();
 }
 
 /* ---------- «Назад по треку»: the way home is the way you came ----------
-   The navigator leads along the recorded line back to its start: the arrow points at a spot ~150 m ahead on the
-   line, the distance is what is left along it. In fog or a blizzard on the ice this is the safe way back. */
-function startRetrace(t) {
-  const raw = t.segs.flat();
-  const pts = [];
-  for (let i = raw.length - 1; i >= 0; i -= 1) {
-    const q = { lat: raw[i][0], lon: raw[i][1] };
-    if (!pts.length || distM(pts[pts.length - 1], q) >= 12) pts.push(q);
-  }
-  if (pts.length < 2) { toast('В треке пока нет пройденного пути'); return; }
-  const cum = [0];
-  for (let i = 1; i < pts.length; i += 1) cum.push(cum[i - 1] + distM(pts[i - 1], pts[i]));
-  const end = pts[pts.length - 1];
-  startNav({ lat: end.lat, lon: end.lon, title: `Начало трека: ${t.name || fmtTime(t.start)}` });
-  nav.retrace = { pts, cum, i: 0, j: 0, left: cum[cum.length - 1] };
-  toast(`Назад по треку: ${fmtDist(cum[cum.length - 1])} до начала`, 4000);
+   The owner (26.09.2026): the way back along the channels in the reeds is the most important thing — miss the channel
+   and you are lost. The geometry is site/retrace.js: the line is the track reversed with the fishing loops cut out;
+   the arrow shows the farthest spot along it that a straight run reaches without leaving the channel (at a bend —
+   the bend); a step off the line, a turn ahead, a stretch not recorded are told on the screen and by voice. The way
+   already passed is passable: on the line, the shoal warnings keep quiet. */
+function startRetrace(t, { title, then, forward = false } = {}) {
+  const path = rtBuild(t.segs, { forward });
+  if (!path || path.len < 20) { toast('В треке пока нет пройденного пути'); return; }
+  const end = path.pts[path.pts.length - 1], name = t.name || fmtTime(t.start);
+  startNav({ lat: end.lat, lon: end.lon, title: title || (forward ? `Конец трека: ${name}` : `Начало трека: ${name}`) }, { quiet: true });
+  nav.retrace = { path, trackId: t.id, loc: null, aim: null, via: null, turn: null, gap: null, left: path.len, off: 0, offTrack: null, wrong: false, drawnFrom: -1, then: then || null };
+  drawRetrace();
+  const gapNote = path.gapLen > 30 ? `. ${fmtDist(path.gapLen)} не записано — там смотрите по карте` : '';
+  toast(`${forward ? 'По треку до конца' : 'Назад по треку до начала'}: ${fmtDist(path.len)}${gapNote}`, 6000);
+  say(`${forward ? 'Ведём по треку. До конца' : 'Ведём назад по треку. До начала'} ${sayDist(path.len)}${path.gapLen > 30 ? '. Часть пути не записана' : ''}`, { force: true });
+  logEvent('retrace_start', { len: Math.round(path.len), gap: Math.round(path.gapLen), n: path.pts.length, then: !!then, forward });
   navOnFix();
 }
-// Where the arrow points: the spot ahead on the track, or the target itself.
+// A saved track from its card: along it towards the end that is farther from the boat — from the launch to
+// yesterday's spot by the same channels, or from the spot back to the launch.
+function goByTrack(t) {
+  const flat = t.segs.flat();
+  if (flat.length < 2) { toast('В треке пока нет пройденного пути'); return; }
+  const a = { lat: flat[0][0], lon: flat[0][1] }, b = { lat: flat[flat.length - 1][0], lon: flat[flat.length - 1][1] };
+  const me = geo.me && Date.now() - geo.me.t < 120000 ? geo.me : null;
+  startRetrace(t, { forward: !!me && distM(me, a) < distM(me, b) });
+}
+// Where the arrow points: the spot along the track, or the target itself.
 const navAim = () => (nav.retrace?.via || nav.target);
 function retraceStep(me) {
   const r = nav.retrace;
   if (!r) return;
-  // The nearest point of the line from the last one reached on (never back), wider if we left the line.
-  let best = r.i, bd = Infinity;
-  const scan = (from, to) => { for (let i = from; i < to; i += 1) { const dd = distM(me, r.pts[i]); if (dd < bd) { bd = dd; best = i; } } };
-  scan(r.i, Math.min(r.pts.length, r.i + 120));
-  if (bd > 300) scan(0, r.pts.length);
-  r.i = best;
-  let j = best;
-  while (j < r.pts.length - 1 && r.cum[j] - r.cum[best] < 150) j += 1;
-  r.j = j; r.via = r.pts[j];
-  r.left = r.cum[r.cum.length - 1] - r.cum[best] + bd;
-  r.off = bd;
+  const loc = r.loc = rtLocate(r.path, me, r.loc);
+  if (!loc) return;
+  const acc = me.acc || 5, sog = geo.sog || 0;
+  r.aim = r.via = rtAim(r.path, loc, me, { sog, corridor: Math.max(4, Math.min(8, acc)) });
+  r.left = r.path.len - loc.along + loc.d;
+  r.off = loc.d;
+  r.turn = rtTurn(r.path, loc.along, Math.max(150, sog * 25));
+  r.gap = rtGapAhead(r.path, loc.along, 200);
+  // Off the line by more than the GPS error explains, for 4 s; back on it below 60 % of that.
+  const lim = Math.max(10, 1.5 * acc);
+  if (loc.d > lim) { if (!r.offSince) r.offSince = Date.now(); } else if (loc.d < lim * 0.6) r.offSince = 0;
+  r.offTrack = r.offSince && Date.now() - r.offSince > 4000 ? { d: loc.d, side: loc.off > 0 ? 'right' : 'left' } : null;
+  // The wrong way: going along the line away from its end for 6 s.
+  let against = false;
+  if (courseValid() && loc.d < 40) against = Math.abs(angleDiff(rtHeading(r.path, Math.max(0, loc.along - 10), Math.min(r.path.len, loc.along + 10)), geo.cog)) > 120;
+  if (against) { if (!r.wrongSince) r.wrongSince = Date.now(); } else r.wrongSince = 0;
+  r.wrong = !!r.wrongSince && Date.now() - r.wrongSince > 6000;
+  if (Math.abs(loc.seg - r.drawnFrom) >= 3) drawRetraceRest();
+}
+// The line home on the map: bright, with a white edge, over any base map; the stretches not recorded dashed; only
+// what is still ahead (the rest redrawn every few points).
+const rtCasing = L.polyline([], { color: '#fff', weight: 11, opacity: 0.85, interactive: false, lineCap: 'round', lineJoin: 'round' });
+const rtLine = L.polyline([], { color: '#c2255c', weight: 5, opacity: 1, interactive: false, lineCap: 'round', lineJoin: 'round' });
+const rtGaps = L.polyline([], { color: '#c2255c', weight: 4, opacity: 0.9, dashArray: '2 10', interactive: false, lineCap: 'round' });
+function drawRetrace() {
+  const r = nav.retrace;
+  if (!r) return;
+  for (const l of [rtCasing, rtLine, rtGaps]) if (!layers.nav.hasLayer(l)) l.addTo(layers.nav);
+  r.drawnFrom = -1;
+  drawRetraceRest();
+}
+function drawRetraceRest() {
+  const r = nav.retrace;
+  if (!r) return;
+  const from = Math.max(0, r.loc ? r.loc.seg : 0);
+  r.drawnFrom = from;
+  const pts = r.path.pts, gap = r.path.gap;
+  const solid = [], gaps = [];
+  let run = [];
+  for (let i = from; i < pts.length; i += 1) {
+    run.push([pts[i].lat, pts[i].lon]);
+    if (i < pts.length - 1 && gap[i]) { if (run.length > 1) solid.push(run); gaps.push([[pts[i].lat, pts[i].lon], [pts[i + 1].lat, pts[i + 1].lon]]); run = []; }
+  }
+  if (run.length > 1) solid.push(run);
+  rtCasing.setLatLngs(solid); rtLine.setLatLngs(solid); rtGaps.setLatLngs(gaps);
+}
+/* In the reeds: a channel the charts do not know. The charts show land or under half a metre where the boat goes at
+   speed, and the straight line to the point crosses the reeds — so «Мелко впереди» and «Поверните левее на 145°» went
+   on all the way along a channel (the angler's day test, 26.09.2026: 199 shoal banners in one channel). In the reeds
+   the navigator keeps quiet about the depth and the course until open water; the named dangers stay. «In the reeds»:
+   inside a reed bed of OpenStreetMap for 3 s, or going at speed where the charts say under half a metre for 10 s;
+   out: 1 m of water and more for 10 s. */
+function reedsAt(p) {
+  for (const q of REEDS.polys) {
+    if (p.lat < q.s || p.lat > q.n || p.lon < q.w || p.lon > q.e) continue;
+    let inside = false;
+    const r = q.ring;
+    for (let i = 0, j = r.length - 1; i < r.length; j = i++) {
+      const [xa, ya] = r[i], [xb, yb] = r[j];
+      if ((ya > p.lat) !== (yb > p.lat) && p.lon < ((xb - xa) * (p.lat - ya)) / (yb - ya) + xa) inside = !inside;
+    }
+    if (inside) return true;
+  }
+  return false;
+}
+function updateReeds(me) {
+  const now = Date.now(), sog = geo.sog || 0, lv = levelNow();
+  if (!nav.depth || now - nav.depthT > 3000) { nav.depth = depthAt(me); nav.depthT = now; }
+  const dep = nav.depth, d = dep ? (dep.value ?? dep.max) + lv : null;
+  const inPoly = reedsAt(me);
+  // A narrow channel: by the charts shallow (or land) 15 m to both sides of the course while the boat goes at speed —
+  // the shoal look-ahead's side lines lie in the reeds there, and warned at every bend (the angler's day test).
+  let narrow = false;
+  if (courseValid() && sog >= 1.5) {
+    const side = (b) => { const g = gridDepth(destPoint(me, (geo.cog + b) % 360, 15)); return g == null || g + lv < 0.5; };
+    narrow = side(90) && side(270);
+  }
+  const inside = inPoly || narrow || (sog >= 1.5 && (d == null || d < 0.5));
+  const open = !inPoly && !narrow && d != null && d >= 1;
+  if (inside) { if (!nav.reedsIn) nav.reedsIn = now; } else nav.reedsIn = 0;
+  if (open) { if (!nav.reedsOut) nav.reedsOut = now; } else nav.reedsOut = 0;
+  if (!nav.inReeds && nav.reedsIn && now - nav.reedsIn > (inPoly ? 3000 : 6000)) {
+    nav.inReeds = true; nav.shoal = null; nav.offSince = 0; nav.offCourse = null;
+    if (!nav.said.reedsTold) { nav.said.reedsTold = true; toast('Протока или тростник: карты глубин их не знают — о мели и курсе не подсказываю до открытой воды', 6000); }
+    logEvent('reeds_in', { poly: inPoly, narrow, d: d == null ? null : Math.round(d * 10) / 10 });
+  }
+  if (nav.inReeds && nav.reedsOut && now - nav.reedsOut > 10000) { nav.inReeds = false; logEvent('reeds_out'); }
+}
+// The track to go back by: the one being recorded, or the last one finished within 12 h.
+function retraceTrack() {
+  const t = trk.cur;
+  if (t && t.segs.flat().length > 1) return t;
+  const last = trk.list.find((x) => x.state === 'done' && x.segs?.flat().length > 1);
+  return last && Date.now() - (last.end || last.start) < 12 * 3600000 ? last : null;
+}
+// «К машине»: along the track when the track began at the car (a boat in the reeds cannot go «по прямой»), the
+// last metres straight.
+function carTrack() {
+  const c = state.car, t = retraceTrack();
+  if (!c || !t) return null;
+  const first = t.segs.flat()[0];
+  return first && distM({ lat: first[0], lon: first[1] }, c) <= 400 ? t : null;
 }
 
 /* ---------- the navigation screen ---------- */
@@ -970,7 +1100,10 @@ function updateNavFields(force = false) {
       if (vmg * 3.6 >= 1) { const ms = (d / vmg) * 1000; eta = `в ${fmtTime(now + ms)} (${fmtDur(ms)})`; }
       else if (vmg < -0.3) eta = 'удаляетесь';
     }
-    setText('#ntLine2', `${nav.retrace ? 'по треку · ' : ''}на ${Math.round(brg)}° ${rumb(brg)}${eta ? ` · ${eta}` : ''}`);
+    // On the way back: the next turn of the channel instead of the bearing (the bearing of a spot 20 m ahead says little).
+    const tr = nav.retrace?.turn;
+    const where = tr && tr.d <= 300 ? `${turnWords(tr.angle)} через ${fmtDist(tr.d)}` : `на ${Math.round(brg)}° ${rumb(brg)}`;
+    setText('#ntLine2', `${nav.retrace ? 'по треку · ' : ''}${where}${eta ? ` · ${eta}` : ''}`);
   }
   // GPS quality: colour and words, not colour alone.
   gpsDot.className = `gps-dot ${stale ? 'r' : me.acc <= 10 ? 'g' : me.acc <= 30 ? 'y' : 'r'}`;
@@ -1001,28 +1134,44 @@ function updateNavFields(force = false) {
   updateRecenter();
   updateTrackUi();
 }
-// One banner at a time: GPS lost > shoal ahead > arrival > off course.
+// «налево», «резко направо», «разворот налево» — the size of a turn of the track in words.
+function turnWords(angle) {
+  const a = Math.abs(angle), side = angle > 0 ? 'направо' : 'налево';
+  return a >= 150 ? `разворот ${side}` : a >= 100 ? `резко ${side}` : side;
+}
+// One banner at a time: GPS lost > the way back (wrong way, off the track) > shoal ahead > a gap in the track > arrival > off course.
 function navBanner() {
   const me = geo.me;
   let b = null;
   const age = me ? Date.now() - me.t : 0;
+  const r = nav.retrace;
   if (me && age > 60000) b = { cls: 'danger', key: `gps${Math.floor(age / 1000)}`, html: `Нет сигнала GPS ${fmtClock(age)}. Выйдите на открытое место, не закрывайте приложение.` };
-  else if (nav.hazard && !(nav.shoal && nav.shoal.d < nav.hazard.d)) {
+  else if (r?.wrong && !nav.arrived) b = { cls: 'danger', key: 'rtwrong', html: `${ic('restart-alt')} Не туда: трек ведёт в другую сторону — разворачивайтесь` };
+  else if (r?.offTrack && !nav.arrived) {
+    const o = r.offTrack, back = o.side === 'right' ? 'левее' : 'правее';
+    b = { cls: o.d > 25 ? 'danger' : 'warn', key: `rtoff${o.side}${Math.round(o.d / 5)}`, html: `${ic(o.side === 'right' ? 'chevron-left' : 'chevron-right')} Вы ${o.side === 'right' ? 'правее' : 'левее'} трека на ${Math.round(o.d)} м — возьмите ${back}` };
+  } else if (nav.hazard && !(nav.shoal && nav.shoal.d < nav.hazard.d)) {
     const h = nav.hazard;
     const where = courseValid() ? 'впереди' : 'рядом';
     b = { cls: h.d < 150 ? 'danger' : '', key: `hz${h.lat}${Math.round(h.d / 10)}`, html: `${ic('warning')} ${esc(h.name)} — ${fmtDist(h.d)} ${where}` };
   } else if (nav.shoal) {
     const s = nav.shoal;
     b = { cls: s.d < 150 || s.depth < 1 ? 'danger' : '', key: `sh${Math.round(s.d / 30)}${Math.round(s.depth * 10)}`, html: `${ic('warning')} Мелко впереди: ${s.depth < 0.5 ? 'меньше 0,5' : fmtM(s.depth)} м через ${fmtDist(s.d)}` };
+  } else if (r?.gap && r.gap.d < 150 && !nav.arrived) {
+    const g = r.gap;
+    b = { cls: 'warn', key: `rtgap${g.seg}`, html: `${ic('warning')} ${g.d < 15 ? 'Здесь' : `Через ${fmtDist(g.d)}`} трек не записан: ${fmtDist(g.len)} по прямой — смотрите по карте` };
   } else if (nav.place && !nav.arrived) {
     b = { cls: '', key: `pl${nav.place.key}`, html: `${ic('warning')} ${esc(nav.place.text)}` };
   } else if (nav.arrived) {
-    b = { cls: 'ok', key: `arr${nav.hold}`, html: `<span>${ic('check-circle')} ${nav.hold ? 'Держу точку' : 'Вы на месте'} · ${esc(nav.target.title)}</span><span class="nbb"><button type="button" data-act="nav-end-ask">Завершить</button><button type="button" data-act="nav-mark">Отметить</button>${nav.hold ? '' : '<button type="button" data-act="nav-hold">Держать точку</button>'}</span>` };
+    b = { cls: 'ok', key: `arr${nav.hold}`, html: `<span>${ic('check-circle')} ${nav.hold ? 'Держу точку' : 'Вы на месте'} · ${esc(nav.target.title)}</span><span class="nbb"><button type="button" data-act="nav-end-ask">Завершить</button><button type="button" data-act="nav-mark">Метка</button>${nav.hold ? '' : '<button type="button" data-act="nav-hold">Держать точку</button>'}</span>` };
   } else if (nav.left != null && Date.now() - nav.leftT < 10000) {
     b = { cls: '', key: `left${Math.round(nav.left)}`, html: `Ушли с точки на ${fmtDist(nav.left)}` };
   } else if (nav.offCourse != null) {
     const a = Math.round(Math.abs(nav.offCourse) / 5) * 5;
     b = { cls: '', key: `off${a}${nav.offCourse > 0}`, html: `${ic(nav.offCourse > 0 ? 'chevron-right' : 'chevron-left')} Поверните ${nav.offCourse > 0 ? 'правее' : 'левее'} на ${a}°` };
+  } else if (guard.on) {
+    // «Сторож места» on in navigation: its chip is put away with the others — say here that it watches.
+    b = { cls: '', key: `guard${guard.anchor ? Math.round((guard.d || 0) / 5) : 'w'}`, html: `${ic('warning')} Сторож места: ${guard.anchor ? `${Math.round(guard.d || 0)} м от места, тревога дальше ${guard.r} м` : 'запоминаю место'}` };
   }
   setBanner(b);
 }
@@ -1097,17 +1246,18 @@ function openNavMore() {
   openModal({
     key: 'nav-more', title: 'Навигация',
     body: () => `
+      ${retraceTrack() && !nav.retrace ? listRow({ icon: 'restart-alt', title: 'Назад по своему треку', sub: 'той же дорогой, что пришли: по протокам, в туман и в пургу', attrs: 'data-act="retrace"' }) : ''}
+      ${state.car && nav.target?.title !== 'Машина' ? listRow({ icon: 'directions-car', title: 'К машине', sub: carTrack() ? 'по треку, последние метры по прямой' : geo.me ? `${fmtDist(distM(geo.me, state.car))} по прямой` : 'отмеченная машина', attrs: 'data-act="car-go"' }) : ''}
+      ${listRow({ icon: 'warning', title: '<span style="color:var(--danger)">Человек за бортом</span>', sub: 'отметить место и сразу вести к нему', attrs: 'data-act="mob"' })}
       ${listRow({ icon: 'route', title: 'Весь путь', sub: 'я и точка на одном экране', attrs: 'data-act="nav-whole"' })}
-      ${state.car && nav.target?.title !== 'Машина' ? listRow({ icon: 'directions-car', title: 'К машине', sub: geo.me ? `${fmtDist(distM(geo.me, state.car))} по прямой` : 'отмеченная машина', attrs: 'data-act="car-go"' }) : ''}
-      ${trk.cur && trk.cur.segs.flat().length > 1 && !nav.retrace ? listRow({ icon: 'restart-alt', title: 'Назад по своему треку', sub: 'та же дорога, что пришли: в туман и в пургу', attrs: 'data-act="retrace"' }) : ''}
-      ${listRow({ icon: 'dark-mode', title: 'Тёмный экран', sub: 'навигация, трек и голос идут, заряд почти не тратится; двойное касание — назад. Не блокируйте телефон кнопкой: тогда iPhone останавливает приложение', attrs: 'data-act="saver"' })}
-      ${listRow({ icon: 'layers', title: 'Карта', sub: 'спутник, карты глубин, схема', attrs: 'data-act="nav-layers"' })}
-      ${listRow({ icon: 'warning', title: 'Человек за бортом', sub: 'отметить место и сразу вести к нему', attrs: 'data-act="mob"' })}
+      ${listRow({ icon: 'dark-mode', title: 'Тёмный экран', sub: 'навигация, трек и голос идут, заряд почти не тратится; вернуть карту — нажмите и держите секунду. Не блокируйте телефон кнопкой: тогда iPhone останавливает приложение', attrs: 'data-act="saver"' })}
+      ${listRow({ icon: 'layers', title: 'Слои карты', sub: 'спутник, карты глубин, протоки, схема', attrs: 'data-act="nav-layers"' })}
       ${guard.on ? listRow({ icon: 'warning', title: 'Сторож места включён', sub: 'настроить или выключить', attrs: 'data-act="guard-sheet"' }) : listRow({ icon: 'warning', title: 'Сторож места', sub: 'скажу, если место относит: льдина, якорь', attrs: 'data-act="guard-on"' })}
       ${listRow({ icon: 'warning', title: 'Сообщить о проблеме', sub: 'что работает не так — с журналом за 40 минут', attrs: 'data-act="report-problem"' })}
+      <details style="margin-top:8px"><summary><b>Настройки навигатора</b></summary>
       <h3>Карта</h3>
       <div class="seg">${[['north', 'Север'], ['course', 'По курсу'], ['compass', 'По компасу']].map(([k, t]) => `<button type="button" data-act="nav-orient" data-val="${k}" class="${cur === k ? 'on' : ''}">${t}</button>`).join('')}</div>
-      ${sw('autoZoom', 'Автомасштаб', 'по скорости и расстоянию до точки')}
+      <label class="check switch"><span>Автомасштаб<br><span class="small muted">по скорости и расстоянию до точки — то же, что «Авто» у «+ −»</span></span><input type="checkbox" data-setting="autoZoom" ${state.settings.autoZoom && !nav.autoZoomPaused ? 'checked' : ''}></label>
       ${sw('navShowPoints', 'Показать точки рыбаков')}
       <label class="check switch"><span>Ночная палитра</span><input type="checkbox" data-night ${document.documentElement.dataset.theme === 'night' ? 'checked' : ''}></label>
       ${sw('sound', 'Звук прибытия и опасности')}
@@ -1117,6 +1267,7 @@ function openNavMore() {
       ${seg('arrivalR', [[15, '15 м'], [30, '30 м'], [50, '50 м'], [100, '100 м']], state.settings.arrivalR)}
       <div class="small muted" style="margin-top:8px">Скорость</div>
       ${seg('units', [['kmh', 'км/ч'], ['kn', 'узлы']], state.settings.units)}
+      </details>
       <p class="small muted">Цель: ${esc(nav.target.title)} · ${fmtDM(nav.target.lat, nav.target.lon)}</p>`,
   });
 }
@@ -1135,9 +1286,11 @@ function openDepthInfo() {
   });
 }
 function onSettingChange(key) {
+  if (key === 'voice') updateVoiceBtn();
+  if (key === 'voiceName' || key === 'voiceRate') say('Через 60 метров налево. Впереди мелко: полтора метра', { force: true, test: true });
   if (key === 'boat') refreshPage('today');
   if (key === 'units') updateNavFields(true);
-  if (key === 'autoZoom') { updateZoomAuto(); if (nav.on) { nav.firstPlace = true; navOnFix(); } }
+  if (key === 'autoZoom') { if (state.settings.autoZoom) nav.autoZoomPaused = false; updateZoomAuto(); if (nav.on) { nav.firstPlace = true; navOnFix(); } }
   if (key === 'orient' && nav.on && geo.follow !== 'free') setFollow(state.settings.orient === 'course' ? 'course' : 'north');
   if (key === 'guardR') { guard.r = +state.settings.guardR || 50; renderChips(); }
 }
@@ -1171,23 +1324,86 @@ function beep(kind) {
    The browser's own speech (speechSynthesis): the first phrase is said inside the tap on «Вести» — iPhone lets a
    page speak only after that. A phrase is not repeated within a minute. */
 const voiceState = { last: '', lastT: 0 };
-function say(text, { force = false } = {}) {
-  if (!state.settings.voice || !('speechSynthesis' in window) || !text) return;
+/* Which of the phone's Russian voices speaks. The first Russian voice in the list was often a compressed or a male
+   one — «голос очень противный… какой-нибудь хороший, приятный женский» (owner, 26.09.2026). By default the best
+   female voice the phone has: an improved/premium one first (iPhone: «Милена (улучшенный)» once downloaded), one that
+   needs the internet only while online. Settings → «Голос» lets the person pick any of them and hear it. */
+const VOICE_FEMALE = /milena|милена|irina|ирина|svetlana|светлана|dariya|darya|дарья|дария|katya|катя|alena|alyona|алёна|алена|anna\b|анна|ekaterina|екатерина|tatyana|татьяна|google русский|female|женск/i;
+const VOICE_MALE = /yuri|юрий|pavel|павел|dmitr|дмитрий|maxim|максим|aleksandr|александр|\bmale\b|мужск/i;
+const VOICE_RU = { Milena: 'Милена', Yuri: 'Юрий', Irina: 'Ирина', Pavel: 'Павел', Svetlana: 'Светлана', Dmitry: 'Дмитрий', Dariya: 'Дарья', Katya: 'Катя' };
+function ruVoices() {
+  try { return speechSynthesis.getVoices().filter((v) => /^ru/i.test(v.lang)); } catch { return []; }
+}
+function voiceScore(v) {
+  const n = `${v.name} ${v.voiceURI || ''}`;
+  let s = 0;
+  if (VOICE_FEMALE.test(n)) s += 30;
+  if (VOICE_MALE.test(n)) s -= 30;
+  if (/premium|премиум/i.test(n)) s += 25; else if (/enhanced|natural|neural|улучш/i.test(n)) s += 20;
+  if (v.localService === false) s += navigator.onLine ? 5 : -100;
+  if (v.default) s += 1;
+  return s;
+}
+function pickVoice() {
+  const list = ruVoices();
+  if (!list.length) return null;
+  const want = state.settings.voiceName;
+  if (want) { const v = list.find((x) => x.name === want); if (v && (v.localService !== false || navigator.onLine)) return v; }
+  return list.slice().sort((a, b) => voiceScore(b) - voiceScore(a))[0];
+}
+// «Милена · женский, улучшенный» — a voice as a person reads it in the list.
+function voiceLabel(v) {
+  let n = v.name.replace(/^Microsoft\s+/i, '').replace(/\s*-\s*Russian.*$/i, '').replace(/\s*\((Russian|Russia|русский)[^)]*\)\s*$/i, '').trim();
+  const base = n.split(/[\s(]/)[0];
+  if (VOICE_RU[base]) n = n.replace(base, VOICE_RU[base]);
+  n = n.replace(/\(enhanced\)/i, '').replace(/\(premium\)/i, '').replace(/online|\(natural\)/ig, '').replace(/\s+/g, ' ').trim();
+  const nm = `${v.name} ${v.voiceURI || ''}`;
+  const tags = [VOICE_FEMALE.test(nm) ? 'женский' : VOICE_MALE.test(nm) ? 'мужской' : '',
+    /premium/i.test(nm) ? 'премиум' : /enhanced|улучш/i.test(nm) ? 'улучшенный' : /natural|neural/i.test(nm) ? 'естественный' : '',
+    v.localService === false ? 'нужен интернет' : ''].filter(Boolean);
+  return `${n || v.name}${tags.length ? ` · ${tags.join(', ')}` : ''}`;
+}
+function say(text, { force = false, test = false } = {}) {
+  if ((!state.settings.voice && !test) || !('speechSynthesis' in window) || !text) return;
   const now = Date.now();
   if (!force && text === voiceState.last && now - voiceState.lastT < 60000) return;
-  voiceState.last = text; voiceState.lastT = now;
+  if (!test) { voiceState.last = text; voiceState.lastT = now; }
   try {
     const u = new SpeechSynthesisUtterance(text);
-    u.lang = 'ru-RU'; u.rate = 1.05;
-    const v = speechSynthesis.getVoices().find((x) => /^ru/i.test(x.lang));
+    u.lang = 'ru-RU'; u.rate = Math.max(0.7, Math.min(1.4, +state.settings.voiceRate || 1)); u.pitch = 1;
+    const v = pickVoice();
     if (v) u.voice = v;
     speechSynthesis.cancel();
     speechSynthesis.speak(u);
-    logEvent('voice', { text });
+    if (!test) logEvent('voice', { text });
   } catch { /* no speech on this phone */ }
 }
+// The voice on the navigation screen: one tap, and it is seen at once whether it speaks (owner, 26.09.2026: «не нашёл
+// кнопки голосовых команд, включить-выключить»; the switch lived only in the settings).
+function toggleVoice() {
+  unlockAudio();
+  setSetting('voice', !state.settings.voice);
+  if (state.settings.voice) say('Голос включён', { force: true });
+  else { try { speechSynthesis.cancel(); } catch { /* no speech */ } }
+  toast(state.settings.voice ? 'Голос включён' : 'Голос выключен — подсказки только на экране');
+}
+function updateVoiceBtn() {
+  const b = $('#ntVoice');
+  if (!b) return;
+  const on = !!state.settings.voice;
+  b.classList.toggle('on', on);
+  b.setAttribute('aria-pressed', String(on));
+  b.setAttribute('aria-label', on ? 'Голосовые подсказки включены — выключить' : 'Голосовые подсказки выключены — включить');
+  const use = b.querySelector('use'), icon = on ? '#i-volume-up' : '#i-volume-off';
+  if (use.getAttribute('href') !== icon) use.setAttribute('href', icon);
+  const cap = b.querySelector('span');
+  if (cap) cap.textContent = on ? 'Голос' : 'Тихо';
+}
+// Voices come a moment after the page (Chrome, Android): the list in the settings is filled when they do.
+try { speechSynthesis.addEventListener?.('voiceschanged', () => { if ($('#voiceSel')) refreshPage('me'); }); } catch { /* no speech */ }
 // «1 километр 200 метров» reads better than «1,2 км»; metres rounded the way a person would say them.
 function sayDist(m) {
+  if (m >= 975 && m < 1000) m = 1000;
   if (m >= 10000) return `${Math.round(m / 1000)} километр${plural(Math.round(m / 1000), '', 'а', 'ов')}`;
   if (m >= 1000) { const all = Math.round(m / 100) * 100, km = Math.floor(all / 1000), r = all % 1000; return `${km} километр${plural(km, '', 'а', 'ов')}${r ? ` ${r} метров` : ''}`; }
   const r = m >= 200 ? Math.round(m / 50) * 50 : Math.round(m / 10) * 10;
@@ -1218,6 +1434,37 @@ function navVoice() {
   const diff = moving ? angleDiff(geo.cog, nav.brg) : null;
   if (nav.arrived) { if (!said.arrived) { said.arrived = true; say(`Вы на месте. ${nav.target.title}`, { force: true }); } return; }
   said.arrived = false;
+  // The way back along the track: the wrong way, off the line, a stretch not recorded, the turns of the channel.
+  const r = nav.retrace;
+  if (r) {
+    const now = Date.now();
+    if (r.wrong) { if (now - (said.rtWrongT || 0) > 20000) { said.rtWrongT = now; beep('hazard'); say('Не туда! Трек в другую сторону, разворачивайтесь', { force: true }); } return; }
+    if (r.offTrack) {
+      if (now - (said.rtOffT || 0) > 15000) {
+        said.rtOffT = now; said.rtOff = true;
+        const o = r.offTrack;
+        say(`Вы ${o.side === 'right' ? 'правее' : 'левее'} трека на ${sayDist(o.d)}. Возьмите ${o.side === 'right' ? 'левее' : 'правее'}`, { force: true });
+      }
+      return;
+    }
+    if (said.rtOff) { said.rtOff = false; say('Снова на треке', { force: true }); return; }
+    if (r.gap && r.gap.d < 120 && said.rtGap !== r.gap.seg) {
+      said.rtGap = r.gap.seg;
+      say(`Внимание: дальше ${sayDist(r.gap.len)} трек не записан. Смотрите по карте`, { force: true });
+      return;
+    }
+    // A turn once, a minute ahead at most (12 s of the speed, at least 60 m); a sharp one again close to it. Not more
+    // often than every 8 s — a winding channel must not talk without a break.
+    const tr = r.turn;
+    if (tr && moving && now - (said.rtTurnT || 0) > 8000) {
+      const sog = geo.sog || 0;
+      const key = said.rtTurnAt != null && Math.abs(tr.at - said.rtTurnAt) < 35 ? said.rtTurnKey : Math.round(tr.at);
+      if (key !== said.rtTurnKey) { said.rtTurnKey = key; said.rtTurnAt = tr.at; }
+      const far = Math.max(60, sog * 12), near = Math.max(20, sog * 4), sharp = Math.abs(tr.angle) >= 100;
+      if (tr.d <= far && tr.d > near && said.rtTurnFar !== key) { said.rtTurnFar = key; said.rtTurnT = now; say(`Через ${sayDist(tr.d)} ${turnWords(tr.angle)}`, { force: true }); return; }
+      if (tr.d <= near && said.rtTurnNear !== key && (sharp || said.rtTurnFar !== key)) { said.rtTurnNear = key; said.rtTurnFar = key; said.rtTurnT = now; const w = turnWords(tr.angle); say(w[0].toUpperCase() + w.slice(1), { force: true }); return; }
+    }
+  }
   // Distance marks: once each, on the way in.
   for (const mark of SAY_MARKS) {
     if (d <= mark && d > mark * 0.6 && !said[`d${mark}`]) {
@@ -1251,7 +1498,7 @@ function navVoice() {
   const dep = nav.depth, lv = levelNow(), lim = +state.settings.shallow || 1.5;
   const now = dep ? (dep.value ?? dep.max) + lv : null;
   if (now != null && now > lim + 0.5) said.shallowAt = null;
-  if (now != null && now >= 0.2 && !onIceNow() && moving && now <= lim && (said.shallowAt == null || now <= said.shallowAt - 0.7)
+  if (now != null && now >= 0.2 && !onIceNow() && moving && now <= lim && !(r && !r.offTrack) && !nav.inReeds && (said.shallowAt == null || now <= said.shallowAt - 0.7)
       && Date.now() - (said.shallowSaidT || 0) > 30000) {
     said.shallowAt = now; said.shallowSaidT = Date.now();
     // Just announced as the shoal ahead: coming onto it needs no second word.

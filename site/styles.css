@@ -93,7 +93,8 @@ body:not([data-layout="compact"]) .mu-top { right: auto; width: min(420px, calc(
 .schip.offline { background: #343a40; color: #fff; border-color: #343a40; }
 .schip.offline.warn { background: var(--warn-bg); color: var(--warn-ink); border-color: var(--warn-bg); }
 .schip.gps, .schip.warn { background: var(--warn-bg); color: var(--warn-ink); border-color: var(--warn-bg); }
-.schip .x { margin-left: 2px; font-size: 18px; opacity: .8; }
+/* The ✕ that clears the filter: a finger-sized target (it was 15×22 px), without making the chip taller. */
+.schip .x { display: inline-grid; place-items: center; min-width: 40px; min-height: 44px; margin: -8px -12px -8px 0; font-size: 18px; opacity: .8; }
 .wx-arrow { display: inline-grid; place-items: center; font-weight: 800; line-height: 1; }
 
 .fab { width: 48px; height: 48px; border-radius: 24px; border: 1px solid var(--fab-line); background: var(--fab-bg); color: var(--ink); box-shadow: var(--fab-shadow);
@@ -137,9 +138,12 @@ body[data-mode="full"] .fab.compass { left: calc(12px + var(--safe-l)); }
 @keyframes blink { 50% { opacity: .2; } }
 .fab.compass { position: absolute; left: max(12px, var(--safe-l)); top: calc(130px + var(--safe-t)); width: 48px; height: 60px; border-radius: 16px; display: flex; flex-direction: column; gap: 0; align-items: center; justify-content: center; }
 .fab.compass svg.i { transition: transform .25s linear; }
-.fab.compass span { font-size: 10px; font-weight: 700; line-height: 1; }
+.fab.compass span { font-size: 11px; font-weight: 700; line-height: 1; }
 /* --nt-h: the real height of the navigation panel (geo.js), safe area included. */
 body[data-mode="nav"] .fab.compass { top: calc(var(--nt-h, calc(124px + var(--safe-t))) + 16px); display: flex; }
+/* «Курс» / «Компас» (the map turns with the boat) and «Путь» (the whole way on the screen): filled while on. */
+.fab.compass.on { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+.fab.compass span { font-size: 12px; font-weight: 800; }
 /* «Путь» under «Курс» (both are how the map is looked at): the boat and the point on one screen. Only the navigator. */
 body[data-mode="nav"] .fab.compass.route { top: calc(var(--nt-h, calc(124px + var(--safe-t))) + 84px); }
 body[data-mode="nav"]:not([data-layout="compact"]) .fab.compass.route { top: calc(136px + var(--safe-t)); }
@@ -160,6 +164,8 @@ body:not([data-layout="compact"]) .hint-card { bottom: calc(112px + var(--safe-b
 .cursor-info { position: absolute; left: 16px; bottom: 112px; background: rgba(10, 15, 20, .82); color: #fff; border-radius: 8px; padding: 4px 8px; font: 600 13px/1.3 var(--mono); pointer-events: none; white-space: nowrap; }
 body[data-mode="nav"] .cursor-info, body[data-layout="compact"] .cursor-info { display: none; }
 .attr-line { position: absolute; left: 50%; transform: translateX(-50%); bottom: 2px; font-size: 10px; color: #fff; text-shadow: 0 0 3px #000; white-space: nowrap; pointer-events: none; opacity: .85; }
+/* A phone: the sources on up to two lines instead of running off both edges. */
+body[data-layout="compact"] .attr-line { white-space: normal; width: max-content; max-width: calc(100vw - 24px); text-align: center; line-height: 1.25; }
 
 /* What is visible in each state (§5.9) */
 body[data-mode="nav"] .map-ui .mu-top, body[data-mode="nav"] .map-ui .mu-bl, body[data-mode="nav"] .map-ui .mu-br,
@@ -183,12 +189,15 @@ body.panel-open[data-layout="compact"] .map-ui { visibility: hidden; }
 .nav-bar > button { flex: 1; border: 0; background: transparent; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; color: var(--ink-2); padding: 0; min-width: 0; }
 .nav-bar .ind { width: 44px; height: 24px; border-radius: 12px; display: grid; place-items: center; }
 .nav-bar .ind svg.i { width: 20px; height: 20px; }
-.nav-bar .lbl { font-size: 10px; font-weight: 600; white-space: nowrap; line-height: 1.1; }
+/* 11,5 px: the section names were 10 px — too small in the sun and for older eyes (26.09.2026). */
+.nav-bar .lbl { font-size: 11.5px; font-weight: 600; white-space: nowrap; line-height: 1.1; }
 body:not([data-layout="compact"]) .nav-bar .ind { width: 56px; height: 32px; border-radius: 16px; }
 body:not([data-layout="compact"]) .nav-bar .ind svg.i { width: 24px; height: 24px; }
 body:not([data-layout="compact"]) .nav-bar .lbl { font-size: 12px; }
-.nav-bar button[aria-current="page"] { color: var(--ink); }
-.nav-bar button[aria-current="page"] .ind { background: var(--accent-bg); color: var(--accent); }
+/* The open section: a filled pill and its name in bold (the pale pill was 1,26:1 against the bar — not seen in the sun). */
+.nav-bar button[aria-current="page"] { color: var(--accent); }
+.nav-bar button[aria-current="page"] .ind { background: var(--accent); color: var(--on-accent); }
+.nav-bar button[aria-current="page"] .lbl { font-weight: 800; }
 .nav-bar .rail-extra { display: none; }
 body[data-layout="land"] .nav-bar, body[data-layout="medium"] .nav-bar, body[data-layout="expanded"] .nav-bar {
   top: 0; bottom: 0; right: auto; width: calc(var(--rail-w) + var(--safe-l)); height: auto; padding: calc(12px + var(--safe-t)) 0 12px var(--safe-l);
@@ -198,7 +207,7 @@ body[data-layout="land"] .nav-bar { gap: 0; padding-top: calc(4px + var(--safe-t
 body[data-layout="land"] .nav-bar > button { height: 50px !important; }
 body[data-layout="land"] .nav-bar .ind { width: 40px; height: 24px; border-radius: 12px; }
 body[data-layout="land"] .nav-bar .ind svg.i { width: 20px; height: 20px; }
-body[data-layout="land"] .nav-bar .lbl { font-size: 10px; }
+body[data-layout="land"] .nav-bar .lbl { font-size: 11px; }
 body:not([data-layout="compact"]) .nav-bar > button { flex: none; height: 64px; }
 body[data-layout="expanded"] .nav-bar .rail-extra { display: flex; flex-direction: column; margin-top: auto; gap: 4px; }
 .rail-extra button { flex: none; height: 64px; border: 0; background: transparent; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; color: var(--ink-2); }
@@ -239,8 +248,9 @@ body:not([data-layout="compact"]) .card-head .grip { display: none; }
 .card-actions { display: flex; gap: 8px; align-items: stretch; margin: 10px 0; }
 .card-actions .main { flex: 1 1 auto; min-width: 136px; min-height: 56px; font-size: 17px; }
 .tile-btn { width: 56px; height: 56px; border: 0; border-radius: 14px; background: var(--surface); color: var(--ink); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; flex: none; padding: 0; text-decoration: none; }
-.tile-btn span { font-size: 10px; font-weight: 700; }
-.tile-btn.on { color: #d18b00; }
+.tile-btn span { font-size: 11.5px; font-weight: 700; }
+/* «Сохранено», «Мой район»: filled — only the amber word was not seen (2,6:1 on the same tile). */
+.tile-btn.on { background: var(--accent); color: var(--on-accent); border-radius: 12px; }
 body:not([data-layout="compact"]) .more-toggle { display: none !important; }
 .more-toggle { width: 100%; min-height: 48px; border: 0; background: transparent; color: var(--accent); font-weight: 700; display: flex; align-items: center; justify-content: center; gap: 4px; }
 .fromme { font-size: 15px; margin: 2px 0 6px; }
@@ -276,6 +286,12 @@ html[data-theme="night"] .nt-arrow { background: #1f1f1f; }
 .nt-line2 { font-size: 16px; font-weight: 600; }
 .nt-target { font-size: 14px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .nt-gps { position: absolute; top: calc(8px + var(--safe-t)); right: 12px; display: flex; align-items: center; gap: 5px; font-size: 13px; font-weight: 700; }
+/* The voice switch under the GPS: filled — it speaks; white with a crossed speaker and «Тихо» — silent. */
+.nt-voice { position: absolute; right: 10px; top: calc(32px + var(--safe-t)); width: 52px; height: 52px; border-radius: 14px; border: 2px solid var(--line); background: var(--bg); color: var(--muted);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; padding: 0; font: 800 11px/1 var(--font); }
+.nt-voice svg.i { width: 24px; height: 24px; }
+.nt-voice.on { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.nav-top .nt-main { padding-right: 58px; }
 .gps-dot { width: 12px; height: 12px; border-radius: 50%; background: #9aa5ad; }
 .gps-dot.g { background: #2b8a3e; } .gps-dot.y { background: #e0a800; } .gps-dot.r { background: #c92a2a; }
 .nav-banner { position: fixed; z-index: 1100; left: calc(12px + var(--safe-l)); right: calc(12px + var(--safe-r)); top: calc(var(--nt-h, calc(124px + var(--safe-t))) + 12px); min-height: 44px; border-radius: 12px; padding: 8px 12px;
@@ -303,8 +319,11 @@ body[data-layout="compact"] .nav-banner .nbb button { flex: 1 1 0; min-width: 0;
 .nbtn svg.i { width: 26px; height: 26px; }
 .nbtn.end { background: var(--danger-bg); color: var(--danger); border: 2px solid var(--danger); }
 .nbtn.rec { background: #c92a2a; color: #fff; }
-.nbtn.rec svg.i { color: #fff; }
+.nbtn.paused { background: #e8590c; color: #fff; }
 #navTrack svg.i { color: #c92a2a; }
+/* Recording: a white dot and «Запись 0:31» on red; paused: «Пауза» on orange (the red icon on the red button was not
+   seen at all — 26.09.2026). */
+#navTrack.rec svg.i, #navTrack.paused svg.i { color: #fff; }
 /* navigation data on the left beside the map: phone on its side, tablet, desktop */
 body[data-mode="nav"]:not([data-layout="compact"]) { --navw: 340px; }
 @media (min-width: 1024px) and (min-height: 480px) { body[data-mode="nav"]:not([data-layout="compact"]) { --navw: 400px; } }
@@ -365,8 +384,9 @@ p { margin: 6px 0; }
 button.card { display: block; width: 100%; text-align: left; border: 0; color: var(--ink); font: inherit; }
 .list-row { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 56px; border: 0; border-bottom: 1px solid var(--line); background: transparent; color: var(--ink); text-align: left; padding: 8px 0; font: inherit; }
 .list-row .lr-main { flex: 1; min-width: 0; }
-.list-row .lr-title { font-weight: 700; }
-.list-row .lr-sub { font-size: 14px; color: var(--muted); }
+/* The title and its explanation on two lines: inline they ran together («Весь путья и точка на одном экране»). */
+.list-row .lr-title { display: block; font-weight: 700; }
+.list-row .lr-sub { display: block; font-size: 14px; color: var(--muted); }
 .list-row svg.i { color: var(--ink-2); }
 a.list-row { text-decoration: none; }
 .track-row { display: flex; align-items: center; border-bottom: 1px solid var(--line); }
@@ -406,7 +426,9 @@ hr { border: 0; border-top: 1px solid var(--line); margin: 14px 0; }
 label.check { display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 4px 0; }
 label.check input { width: 22px; height: 22px; accent-color: var(--accent); flex: none; }
 label.check.switch { justify-content: space-between; border-bottom: 1px solid var(--line); min-height: 56px; }
-label.check.switch input { appearance: none; -webkit-appearance: none; width: 52px; height: 32px; border-radius: 16px; background: var(--line); position: relative; cursor: pointer; transition: background .15s; margin: 0; }
+label.check.switch input { appearance: none; -webkit-appearance: none; width: 52px; height: 32px; border-radius: 16px; background: var(--line); position: relative; cursor: pointer; transition: background .15s; margin: 0;
+  box-shadow: inset 0 0 0 1.5px var(--muted); } /* off: an outlined track, not a lone white dot */
+label.check.switch input:checked { box-shadow: none; }
 label.check.switch input::after { content: ""; position: absolute; top: 3px; left: 3px; width: 26px; height: 26px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, .4); transition: transform .15s; }
 label.check.switch input:checked { background: var(--accent); }
 label.check.switch input:checked::after { transform: translateX(20px); }
@@ -489,6 +511,9 @@ button.card.today-wx { display: flex; gap: 12px; align-items: center; }
 .cond-cap { font-size: 11.5px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
 .ice-places { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
 .v-ok { color: var(--ok); } .v-warn { color: #a34f00; } .v-bad { color: var(--danger); }
+/* «Сегодня» in three lines: going out, what is closed, what bites. */
+.today-sum > div { margin: 3px 0; line-height: 1.35; }
+.today-sum > div > b:first-child { display: inline-block; min-width: 4.8em; }
 html[data-theme="night"] .v-warn { color: var(--warn-ink); }
 .boat-seg button { min-height: 44px; padding: 0 12px; font-size: 14px; }
 .today-wx .wx-arrow { font-size: 24px; color: var(--accent); }
@@ -547,6 +572,10 @@ html[data-theme="night"] .v-warn { color: var(--warn-ink); }
 .mb-row button { flex: none; border: 0; border-radius: 12px; min-width: 48px; height: 48px; background: rgba(255, 255, 255, .14); color: #fff; display: grid; place-items: center; }
 .mb-row .mb-exit { display: flex; gap: 4px; padding: 0 10px; font-weight: 700; }
 .mb-month { flex: 1; min-width: 0; text-align: center; font-size: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* A phone: the month whole («Сентябрь», not «Сентя…») — a smaller figure and slimmer arrows. */
+body[data-layout="compact"] .mb-month { font-size: clamp(15px, 4.4vw, 19px); letter-spacing: -.2px; }
+body[data-layout="compact"] .mb-row button { min-width: 44px; }
+body[data-layout="compact"] .mb-row { gap: 3px; }
 body[data-layout="compact"] .mb-row .mb-exit span { display: none; }
 .mb-fish { font-size: 14px; opacity: .92; padding: 4px 6px 0; line-height: 1.3; }
 
@@ -573,7 +602,10 @@ body[data-mode="nav"]:not([data-layout="compact"]) .demo-tag { left: calc(var(--
 /* A hidden toast is also out of the Tab order (visibility), after its fade. */
 .toast { position: fixed; left: 50%; bottom: calc(var(--nav-total) + 16px); transform: translateX(-50%) translateY(20px); background: #0a0f14; color: #fff; padding: 10px 16px;
   border-radius: 12px; z-index: 2000; opacity: 0; visibility: hidden; transition: opacity .2s, transform .2s, visibility 0s .2s; pointer-events: none; max-width: min(92vw, 520px); font-size: 15px; display: flex; gap: 12px; align-items: center; }
-.toast.show { opacity: 1; visibility: visible; transform: translateX(-50%); pointer-events: auto; transition: opacity .2s, transform .2s; }
+/* A message never takes a tap meant for the button under it (26.09.2026: a tap on «Запись» hit «Пишу трек…» for 6 s):
+   only its own action («Отменить», «Показать») is pressable. */
+.toast.show { opacity: 1; visibility: visible; transform: translateX(-50%); pointer-events: none; transition: opacity .2s, transform .2s; }
+.toast.show button { pointer-events: auto; }
 .toast button { border: 0; background: transparent; color: #74c0fc; font-weight: 800; min-height: 44px; }
 body[data-mode="nav"] .toast { bottom: calc(200px + var(--safe-b)); }
 body:not([data-layout="compact"]) .toast { bottom: 24px; }

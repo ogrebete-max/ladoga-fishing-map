@@ -84,25 +84,27 @@ function trackBounds(t) {
 async function saveCurTrack(force = false) {
   const t = trk.cur;
   if (!t) return;
-  if (!force && trk.dirty < 20 && Date.now() - trk.lastSave < 30000) return;
+  // A point a second now: the whole track goes to the phone's storage every 60 points or 30 s, not every 20 points.
+  if (!force && trk.dirty < 60 && Date.now() - trk.lastSave < 30000) return;
   t.dur = trackDur(t);
   trk.dirty = 0; trk.lastSave = Date.now();
   try { await trackStore.put(t); } catch { /* storage full or blocked */ }
 }
 window.addEventListener('pagehide', () => saveCurTrack(true));
-function startRec() {
-  if (trk.cur) { openRecSheet(); return; }
+function startRec({ auto = false } = {}) {
+  if (trk.cur) { if (!auto) openRecSheet(); return; }
   const now = Date.now();
-  trk.cur = { id: `t${now}`, name: '', state: 'rec', start: now, end: now, dist: 0, dur: 0, moving: 0, vmax: 0, segs: [[]], color: TRACK_COLOR };
+  trk.cur = { id: `t${now}`, name: '', state: 'rec', start: now, end: now, dist: 0, dur: 0, moving: 0, vmax: 0, segs: [[]], color: TRACK_COLOR, auto };
   trk.durBefore = 0; trk.activeSince = now; trk.lastFixT = 0;
   trk.list.unshift(trk.cur);
   saveCurTrack(true);
   geoStart({});
   wakeUpdate();
-  toast('Пишу трек. Держите приложение открытым — в фоне браузер трек не пишет', 5000);
-  if (!state.car || now - state.car.t > 12 * 3600000) {
-    showNotice({ text: 'Отметить здесь машину? Потом кнопка «К машине» приведёт обратно — и в туман, и в пургу.', actions: [['Отметить машину', () => markCarHere(), true], ['Не надо', () => {}]] });
-  }
+  // Started by «Вести»: said once, short — the navigator speaks already.
+  toast(auto ? 'Пишу трек — по нему можно вернуться назад («Ещё» → «Назад по своему треку»). Не блокируйте телефон кнопкой' : 'Пишу трек. Держите приложение открытым — в фоне браузер трек не пишет', 6000);
+  logEvent('rec_start', { auto });
+  // The car is offered by the «🚗 Отметить машину» chip over the map while GPS is on; a big card here as well was a
+  // third message at once over the buttons (26.09.2026).
   try { navigator.storage?.persist?.(); } catch { /* not supported */ }
   if (geo.me) trackOnFix(geo.me);
   drawCurTrack(); updateTrackUi(); refreshPage('me');
@@ -111,7 +113,10 @@ function newSegment() {
   const t = trk.cur;
   if (t && t.segs[t.segs.length - 1].length) t.segs.push([]);
 }
-// Every fix while recording: a point when accuracy ≤ 50 m, ≥ 5 s and ≥ 5 m from the last one (as OsmAnd does).
+// Every fix while recording: a point when accuracy ≤ 50 m and it is ≥ 1 s and ≥ 4 m from the last one (half the
+// GPS error at worst) — every 5–11 m at 18–40 km/h, so the bends of a channel in the reeds are in the track and the
+// way back can follow them (the first version wrote a point every 5 s: 56 m apart at 40 km/h cut the bends).
+// Slow or standing (fishing, drifting): ≥ 10 m and the GPS error, so a still boat does not scribble.
 function trackOnFix(me) {
   if (geo.carPending && me.acc <= 60) { geo.carPending = false; setCar(me); toast('Машина отмечена — «К машине» над картой', 4000); }
   const t = trk.cur;
@@ -125,7 +130,8 @@ function trackOnFix(me) {
   if (last) {
     const dt = now - last[2];
     const d = distM({ lat: last[0], lon: last[1] }, me);
-    if (dt < 5000 || d < 5) return;
+    const slow = geo.sog != null && geo.sog < 1;
+    if (dt < 1000 || d < Math.max(slow ? 10 : 4, me.acc * (slow ? 1 : 0.5))) return;
     t.dist += d;
     if (d / (dt / 1000) >= 0.5) t.moving += dt;
   }
@@ -193,12 +199,13 @@ function deleteTrack(id) {
 }
 
 /* ---------- on the map ---------- */
-function drawCurTrack() {
+// A point a second makes ~10 000 points in three hours: the whole line is redrawn on every fix only while it is short,
+// a long one every 3 s (a weak phone must not spend each second on the line behind the boat).
+function drawCurTrack(force = false) {
   const t = trk.cur;
   if (!t) { layers.trackCur.clearLayers(); trk.line = null; return; }
-  const ll = trackLatLngs(t);
-  if (!trk.line) { layers.trackCur.clearLayers(); trk.line = L.polyline(ll, { color: TRACK_COLOR, weight: 4, opacity: 0.95, interactive: false }).addTo(layers.trackCur); }
-  else trk.line.setLatLngs(ll);
+  if (!trk.line) { layers.trackCur.clearLayers(); trk.line = L.polyline(trackLatLngs(t), { color: TRACK_COLOR, weight: 4, opacity: 0.95, interactive: false }).addTo(layers.trackCur); trk.drawT = Date.now(); }
+  else if (force || Date.now() - (trk.drawT || 0) >= 3000 || t.segs.reduce((a, s) => a + s.length, 0) < 2500) { trk.line.setLatLngs(trackLatLngs(t)); trk.drawT = Date.now(); }
   // Marks of this track stay visible even in navigation, when my other points are put away.
   const n = trackMarks(t).length;
   if (trk.marksDrawn !== n) {
@@ -249,9 +256,10 @@ function updateTrackUi() {
   }
   const nb = $('#navTrack');
   if (nb) {
-    nb.classList.toggle('rec', rec);
-    const txt = t ? fmtClock(trackDur(t)) : 'Трек';
-    const icon = rec ? 'pause' : paused ? 'play-arrow' : 'fiber-manual-record';
+    nb.classList.toggle('rec', rec); nb.classList.toggle('paused', paused);
+    const txt = rec ? `Запись ${fmtClock(trackDur(t))}` : paused ? `Пауза ${fmtClock(trackDur(t))}` : 'Трек';
+    nb.setAttribute('aria-label', rec ? 'Идёт запись трека — управление' : paused ? 'Запись на паузе — управление' : 'Записать трек');
+    const icon = paused ? 'pause' : 'fiber-manual-record';
     if (nb.dataset.icon !== icon) { nb.dataset.icon = icon; nb.querySelector('use').setAttribute('href', `#i-${icon}`); }
     if ($('#navTrackText').textContent !== txt) $('#navTrackText').textContent = txt;
   }
@@ -280,10 +288,10 @@ function openRecSheet(opts = {}) {
         <button type="button" data-act="rec-mark">${ic('flag')}Метка</button>
         <button type="button" data-act="rec-stop" style="color:var(--danger)">${ic('stop')}Закончить</button>
       </div>
-      <button type="button" class="btn ghost" data-act="saver" style="width:100%">${ic('restart-alt')}Погасить экран — запись продолжится</button>
+      <button type="button" class="btn ghost" data-act="saver" style="width:100%">${ic('dark-mode')}Тёмный экран — запись продолжится</button>
       <div class="btns">${state.car ? `<button type="button" class="btn ghost" data-act="car-go">🚗 К машине${geo.me ? ` · ${fmtDist(distM(geo.me, state.car))}` : ''}</button>` : '<button type="button" class="btn ghost" data-act="car-here">🚗 Отметить машину здесь</button>'}
         ${t.segs.flat().length > 1 ? '<button type="button" class="btn ghost" data-act="retrace">Назад по треку</button>' : ''}</div>
-      <p class="small muted">Сайт пишет трек, только пока открыт: не блокируйте телефон кнопкой и не сворачивайте приложение. Чтобы беречь заряд — «Погасить экран»: чёрный экран почти не тратит батарею, двойное касание возвращает карту. Все треки — в «Моё › Треки».</p>`,
+      <p class="small muted">Сайт пишет трек, только пока открыт: не блокируйте телефон кнопкой и не сворачивайте приложение. Чтобы беречь заряд — «Тёмный экран» (кнопка с луной): чёрный экран почти не тратит батарею; вернуть карту — нажмите и держите секунду. Все треки — в «Моё › Треки».</p>`,
   }, opts);
 }
 function openSaveSheet(opts = {}) {
@@ -309,7 +317,7 @@ function openTrackCard(id, opts = {}) {
     body: () => `${statsHtml(t)}
       <div class="card-actions">
         <button type="button" class="btn main" data-act="track-share" data-id="${esc(id)}">${ic('share')}GPX</button>
-        <button type="button" class="tile-btn" data-act="track-nav-start" data-id="${esc(id)}">${ic('navigation')}<span>К началу</span></button>
+        <button type="button" class="tile-btn" data-act="track-go" data-id="${esc(id)}">${ic('route')}<span>По треку</span></button>
         <button type="button" class="tile-btn" data-act="track-menu" data-id="${esc(id)}">${ic('more-horiz')}<span>Ещё</span></button>
       </div>
       ${trackMarks(t).length ? `<h3>Метки</h3>${trackMarks(t).map((p) => listRow({ icon: '', title: `<span class="tag-dot" style="background:${(TAGS[p.tag] || TAGS.other).color}"></span> ${esc(p.name)}`, sub: `${(TAGS[p.tag] || TAGS.other).label} · ${fmtTime(p.t)}`, attrs: `data-act="mine-open" data-id="${esc(p.id)}"` })).join('')}` : ''}`,
@@ -329,6 +337,9 @@ function openTrackMenu(id) {
   openModal({
     title: t.name || 'Трек',
     body: () => `
+      ${listRow({ icon: 'route', title: 'По треку к концу', sub: 'той же дорогой ещё раз: по протокам к месту', attrs: `data-act="track-go-end" data-id="${esc(id)}"` })}
+      ${listRow({ icon: 'restart-alt', title: 'По треку назад, к началу', sub: 'та же дорога обратно', attrs: `data-act="track-go-start" data-id="${esc(id)}"` })}
+      ${listRow({ icon: 'navigation', title: 'К началу по прямой', sub: 'только по открытой воде: через тростник прямой дороги нет', attrs: `data-act="track-nav-start" data-id="${esc(id)}"` })}
       ${listRow({ icon: 'map', title: 'Показать на карте', attrs: `data-act="track-show" data-id="${esc(id)}"` })}
       ${listRow({ icon: 'share', title: 'Поделиться GPX', sub: 'в Navionics, OsmAnd, мессенджер', attrs: `data-act="track-share" data-id="${esc(id)}"` })}
       ${t === trk.cur ? '' : listRow({ icon: 'edit', title: 'Переименовать', attrs: `data-act="track-rename" data-id="${esc(id)}"` })}
@@ -373,6 +384,16 @@ function tracksPageHtml() {
         <button type="button" class="btn danger" data-act="rec-stop">${ic('stop')}Закончить</button>
       </div>
     </div>` : `<button type="button" class="btn" data-act="rec-start" style="width:100%;min-height:56px">${ic('fiber-manual-record')}Начать запись трека</button>`}
+    <details class="card"><summary><b>Как вернуться по своему треку</b></summary>
+      <ol class="small" style="padding-left:18px;margin:8px 0 0">
+        <li>Нажали «Вести» — трек пишется сам. Можно и кнопкой «Трек» на карте.</li>
+        <li>Назад: в навигации «Ещё» → «Назад по своему треку». Сохранённый трек — «По треку» в его карточке: от начала ведёт к концу, от конца — обратно.</li>
+        <li>Лиловая линия — дорога. Стрелка показывает поворот протоки, а не прямую через тростник; повороты подсказываются заранее, голосом тоже.</li>
+        <li>Сошли с линии дальше 10 м — «Вы правее трека… возьмите левее». Пунктир — кусок, который не записался.</li>
+        <li>Не блокируйте телефон кнопкой: трек перестанет писаться. Заряд берегите «Тёмным экраном» (кнопка с луной).</li>
+        <li>GPS телефона ошибается на 3–5 м: в узкой протоке смотрите и на воду.</li>
+      </ol>
+    </details>
     ${done.length ? done.map((x) => `<div class="track-row">
         <button type="button" class="list-row" data-act="track-open" data-id="${esc(x.id)}">${trackThumb(x)}<span class="lr-main"><span class="lr-title">${esc(x.name || defaultTrackName(x))}</span><span class="lr-sub">${esc(trackMeta(x))}</span></span></button>
         <button type="button" class="icon-btn" data-act="track-menu" data-id="${esc(x.id)}" aria-label="Действия с треком">${ic('more-vert')}</button>
@@ -493,7 +514,10 @@ function handleTrackAction(act, el) {
     case 'car-here': markCarHere(); if (topLayer()?.key === 'rec') renderModalBody(topLayer()); else refreshCard(); break;
     case 'car-go': goToCar(); break;
     case 'car-del': setCar(null); closeAll(); toast('Отметка машины убрана'); break;
-    case 'retrace': { const tr = trk.cur || trk.list.find((x) => x.id === d.id); if (tr) startRetrace(tr); break; }
+    case 'retrace': { const tr = d.id ? trk.list.find((x) => x.id === d.id) : retraceTrack(); if (tr) startRetrace(tr); else toast('Нет трека, по которому вернуться: запишите путь кнопкой «Трек»'); break; }
+    case 'track-go': if (t) goByTrack(t); break;
+    case 'track-go-end': if (t) startRetrace(t, { forward: true }); break;
+    case 'track-go-start': if (t) startRetrace(t); break;
     case 'track-continue': closeTop(); resumeRec(); break;
     case 'track-discard': { const id = trk.cur?.id; closeTop(); if (id) deleteTrack(id); break; }
     case 'track-open': if (t) openTrackCard(t.id); break;
@@ -550,8 +574,15 @@ function markCarHere() {
   geoStart({});
   toast('Отмечу машину, как только GPS найдёт место', 4000);
 }
+// To the car: along the track when it began at the car and the boat is not next to it — through the reeds there is
+// no straight way (owner, 26.09.2026) — and the last metres straight; otherwise straight.
 function goToCar() {
-  if (state.car) startNav({ lat: state.car.lat, lon: state.car.lon, title: 'Машина' });
+  const c = state.car;
+  if (!c) return;
+  const car = { lat: c.lat, lon: c.lon, title: 'Машина' };
+  const t = carTrack();
+  if (t && !(geo.me && distM(geo.me, c) < 300)) startRetrace(t, { title: 'К машине по треку', then: car });
+  else startNav(car);
 }
 function openCarCard(opts = {}) {
   const c = state.car;

@@ -35,7 +35,8 @@ SCREENS = [  # name, width, height, UA
     ("iPhone 13 on its side", 750, 340, IOS),
     ("Android on its side", 780, 360, AND),
 ]
-IDS = ["btnCompass", "zoomRoute", "btnLayers", "btnDark", "btnSos", "zoomIn", "zoomOut", "zoomAuto", "recenter", "navBanner"]
+IDS = ["btnCompass", "zoomRoute", "btnLayers", "btnDark", "btnSos", "zoomIn", "zoomOut", "zoomAuto", "recenter", "navBanner", "ntVoice", "ntGps"]
+TEXT_IDS = ["ntDist", "ntLine2", "ntTarget"]  # the navigation panel's words: the voice switch must not lie over them
 MEASURE = """(ids) => {
   const out = {};
   for (const id of ids) {
@@ -48,7 +49,16 @@ MEASURE = """(ids) => {
     out[id] = [b.left, b.top, b.right, b.bottom];
   }
   const nb = document.getElementById('navBottom').getBoundingClientRect(), nt = document.getElementById('navTop').getBoundingClientRect();
-  return { rects: out, row: document.body.classList.contains('nav-row'), layout: document.body.dataset.layout,
+  const text = {};
+  for (const id of ['ntDist', 'ntLine2', 'ntTarget']) {
+    const el = document.getElementById(id); if (!el) continue;
+    const range = document.createRange(); range.selectNodeContents(el);
+    // what is seen: the words clipped by their own box (a long name ends in «…» before the voice switch)
+    const b = range.getBoundingClientRect(), e = el.getBoundingClientRect();
+    const l = Math.max(b.left, e.left), r = Math.min(b.right, e.right);
+    if (r > l) text[id] = [l, Math.max(b.top, e.top), r, Math.min(b.bottom, e.bottom)];
+  }
+  return { rects: out, text, row: document.body.classList.contains('nav-row'), layout: document.body.dataset.layout,
     vw: innerWidth, vh: innerHeight, panels: { top: [nt.left, nt.top, nt.right, nt.bottom], bottom: [nb.left, nb.top, nb.right, nb.bottom] } };
 }"""
 
@@ -72,11 +82,16 @@ def problems(m):
                 continue
             if A[0] < B[2] + 4 and B[0] < A[2] + 4 and A[1] < B[3] + 4 and B[1] < A[3] + 4:
                 bad.append(f"{a} × {b}")
-        # nothing of the map's own buttons under the navigation panels
-        if a != "navBanner":
+        # nothing of the map's own buttons under the navigation panels (the panel's own voice switch and GPS are in it)
+        if a not in ("navBanner", "ntVoice", "ntGps"):
             for pn, P in m["panels"].items():
                 if P[2] - P[0] > 0 and A[0] < P[2] and P[0] < A[2] and A[1] < P[3] - 1 and P[1] + 1 < A[3]:
                     bad.append(f"{a} under the {pn} panel")
+    for tid, T in m.get("text", {}).items():
+        for a in ("ntVoice", "ntGps"):
+            A = r.get(a)
+            if A and A[0] < T[2] and T[0] < A[2] and A[1] < T[3] and T[1] < A[3]:
+                bad.append(f"{a} over the text {tid}")
     return bad
 
 
@@ -94,7 +109,8 @@ with sync_playwright() as pw:
         # the startup GPS check answers late (after startNav here): its iPhone tip would cover the map
         page.evaluate("store.set('ladoga-hint-v2', true); store.set('ladoga-ios-geo-tip', Date.now()); updateHint()")
         page.evaluate("navigator.geolocation.watchPosition = () => 42; navigator.geolocation.getCurrentPosition = () => {}; navigator.geolocation.clearWatch = () => {};")
-        page.evaluate("startNav({ lat: 59.953, lon: 31.035, title: 'Начало: Шлиссельбург' })")
+        # a long name and a long second line: the worst case for the words beside the voice switch
+        page.evaluate("state.settings.autoTrack = false; startNav({ lat: 59.953, lon: 31.035, title: 'Начало трека: Шлиссельбург, Кошкинский фарватер' })")
         t0 = int(time.time() * 1000)
         for i in range(3):
             page.evaluate(f"onFix({{ coords: {{ latitude: 60.03, longitude: 31.20, accuracy: 7, speed: 0, heading: -1 }}, timestamp: {t0 + i * 1000} }})")
