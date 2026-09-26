@@ -396,7 +396,9 @@ function renderChips() {
   if (!el) return;
   const chips = [];
   const wx = state.wx;
-  if (wx?.fc?.current) {
+  // The simple view (simple.js): one line of the day — can one go out, the bans, the ice — instead of the weather chip.
+  if (typeof isSimple === 'function' && isSimple()) chips.push(dayChipHtml());
+  else if (wx?.fc?.current) {
     const warns = wxWarnings(wx);
     const danger = warns.find((w) => w.level === 'danger'), warn = warns.find((w) => w.level === 'warn');
     const c = wx.fc.current;
@@ -423,7 +425,7 @@ function renderChips() {
   // With a depth layer on but the map too far out for the digits: one tap brings them.
   const o = state.overlays;
   // Only for the paper charts, whose figures need z14: the shading and isolines on by default speak at any zoom.
-  if (o.charts && map.getZoom() >= 11 && map.getZoom() < 14 && !nav.on) chips.push(`<button type="button" class="schip" data-chip="zoom-depth">${ic('add')}Приблизить: цифры глубин</button>`);
+  if (o.charts && map.getZoom() >= 11 && map.getZoom() < 14 && !nav.on && !(typeof isSimple === 'function' && isSimple())) chips.push(`<button type="button" class="schip" data-chip="zoom-depth">${ic('add')}Приблизить: цифры глубин</button>`);
   const af = activeFilters();
   if (af.length && !ui.stack.some((l) => l.kind === 'months')) chips.push(`<button type="button" class="schip" data-chip="filter">${ic('tune')}${esc(af.map((x) => x[1]).join(' · ').slice(0, 42))}<span class="x" data-chip="filter-clear" role="button" aria-label="Сбросить фильтр">✕</span></button>`);
   const html = chips.join('');
@@ -443,7 +445,8 @@ function updateHint() {
   if (!el) return;
   const free = !ui.stack.length;
   const n = ui.notices[0];
-  if (!n && free && !store.get('ladoga-hint-v2', false)) {
+  // (Not in the simple view: its big button says what to do, and the hint names «⌂», which it has put away.)
+  if (!n && free && !store.get('ladoga-hint-v2', false) && !(typeof isSimple === 'function' && isSimple())) {
     // Once, and without a card to dismiss: the owner found the big card in the way (24.09.2026).
     store.set('ladoga-hint-v2', true);
     setTimeout(() => toast('Нажмите на точку — подробности и «Вести». ◎ — где я, ⌂ — ваш район', 6000), 1500);
@@ -538,7 +541,8 @@ $('#statusChips').addEventListener('click', (e) => {
   const c = e.target.closest('[data-chip]');
   if (!c) return;
   const k = c.dataset.chip;
-  if (k === 'wx') { showPage('today'); if (!c.classList.contains('danger') && !c.classList.contains('warn')) setTimeout(() => document.getElementById('wx')?.scrollIntoView({ block: 'start' }), 80); }
+  if (k === 'day') openDaySheet();
+  else if (k === 'wx') { showPage('today'); if (!c.classList.contains('danger') && !c.classList.contains('warn')) setTimeout(() => document.getElementById('wx')?.scrollIntoView({ block: 'start' }), 80); }
   else if (k === 'offline') showPage('me', 'offline');
   else if (k === 'gps') toast(`Точность GPS ±${Math.round(geo.me?.acc || 0)} м. На открытом месте, подальше от стен и мостов, будет точнее`, 5000);
   else if (k === 'filter-clear') { resetFilters(); toast('Фильтр сброшен'); }

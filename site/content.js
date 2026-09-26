@@ -390,7 +390,9 @@ function todaySummaryHtml(bans) {
     const boat = state.settings.boat, place = wxPlace();
     const wave = boat && typeof shoreWave === 'function' ? shoreWave(place.lat, place.lon, o.dir, o.wind, o.k) : null;
     const v = boat ? boatVerdict(boat, o.wind, o.gust, wave?.hs) : null;
-    rows.push(`<div><b>Ветер</b> ${rumb(o.dir)} ${o.wind} м/с, порывы ${o.gust}${v ? ` — <b class="${['v-ok', 'v-warn', 'v-bad'][v.level]}">${BOATS[boat].of} ${v.word}</b>` : ' <span class="muted">(лодку — в «Условиях дня»)</span>'}</div>`);
+    const simple = typeof isSimple === 'function' && isSimple();
+    rows.push(`<div><b>Ветер</b> ${rumb(o.dir)} ${o.wind} м/с, порывы ${o.gust}${v ? ` — <b class="${['v-ok', 'v-warn', 'v-bad'][v.level]}">${BOATS[boat].of} ${v.word}</b>` : simple ? '' : ' <span class="muted">(лодку — в «Условиях дня»)</span>'}</div>`);
+    if (simple && !boat) rows.push(`<div class="small">На чём вы выходите? Скажу, можно ли:</div><div class="seg boat-seg">${Object.entries(BOATS).map(([k, b]) => `<button type="button" data-set="boat" data-val="${k}">${b.name}</button>`).join('')}</div>`);
   } else rows.push(`<div class="muted">${navigator.onLine ? 'Прогноз загружается…' : 'Прогноз загрузится, когда появится интернет'}</div>`);
   const fish = [...new Set(bans.filter((b) => !isMotorBan(b)).map((b) => String(b.species || 'все виды').replace(/\s*\(.*?\)\s*/g, ' ').trim().toLowerCase()).filter(Boolean))];
   const motor = motorBanParts(bans.filter(isMotorBan)).seasonal.size > 0;
@@ -411,16 +413,15 @@ function todayHtml() {
   const { installed } = platformInfo();
   const later = (k) => Date.now() < store.get(k, 0);
   const warnings = state.wx?.fc ? wxWarnings(state.wx) : [];
-  return `
+  const head = `
     <p class="muted" style="margin-top:0">${esc(date[0].toUpperCase() + date.slice(1))} · ${ice ? '❄ лёд' : '🌊 открытая вода'}</p>
     ${!navigator.onLine ? `<div class="card small warn-card">Нет сети${state.wx?.at ? ` · прогноз от ${fmtTime(state.wx.at)} ${fmtDay(state.wx.at)}` : ''}. Карта, точки, справочники и навигатор работают${regionSaved() ? '' : ' там, где карта уже была открыта'}.</div>` : ''}
     ${warnings.map((w) => `<div class="card small wx-${w.level}">${w.level === 'danger' ? `${ic('warning')} <b>Опасно.</b> ` : `${ic('warning')} `}${esc(w.text)}</div>`).join('')}
     ${officialWarnings().map((w) => `<details class="card small wx-${w.emergency ? 'danger' : 'warn'}"><summary>${ic('warning')} <b>МЧС: ${esc(w.title)}</b></summary><p>${esc(w.text)}</p>${safeUrl(w.url) ? `<a href="${esc(w.url)}" target="_blank" rel="noopener">источник</a>` : ''}</details>`).join('')}
     ${todaySummaryHtml(bans)}
-    ${bansTodayCard(bans)}
-    ${conditionsHtml()}
-    ${weatherBlock()}
-    ${typeof waterIceHtml === 'function' ? waterIceHtml(ice) : ''}
+    ${bansTodayCard(bans)}`;
+  const water = typeof waterIceHtml === 'function' ? waterIceHtml(ice) : '';
+  const rest = `
     ${freshHtml()}
     ${zones.length ? `<h3>Где искать сейчас</h3>${zones.map(({ z, open }) => listRow({ icon: 'location-on', title: esc(z.name), sub: `${open.slice(0, 3).map((s) => esc(shortName(s))).join(', ')}${z.depth_m ? ` · ${esc(z.depth_m)} м` : ''}`, attrs: `data-act="zone-open" data-zone-id="${esc(z.id)}"` })).join('')}` : ''}
     ${hydro ? `<h3>Ладога в ${MONTHS_IN[mo - 1]}</h3><p class="small">${esc(hydro.events || '')}</p>` : ''}
@@ -428,7 +429,8 @@ function todayHtml() {
       <button type="button" class="btn" data-act="month-filter">${ic('play-arrow')}Отчёты за ${MONTHS_FULL[mo - 1]} на карте (${n})</button>
       <button type="button" class="btn ghost" data-page-link="guide" data-sub="places">Места</button>
       <button type="button" class="btn ghost" data-act="depth-help">Глубины и эхолот</button>
-    </div>
+    </div>`;
+  const cards = `
     ${navigator.onLine && !regionSaved() && !later('ladoga-later-download') ? `<div class="card">
       <b>Скачайте район для работы без сети</b>
       <p class="small">На воде связь пропадает. ~${PACKS[0].estMB() + (PACKS[1].estMB() || 30)} МБ, лучше по Wi‑Fi.</p>
@@ -439,6 +441,12 @@ function todayHtml() {
       <p class="small">Иконка на экране, карта во весь экран, работа без интернета.</p>
       <div class="btns" style="margin-bottom:0"><button type="button" class="btn" data-act="install">Установить</button><button type="button" class="btn ghost" data-act="later" data-key="ladoga-later-install">Позже</button></div>
     </div>` : ''}`;
+  // The simple view (simple.js): the day, the bans, the weather (on the ice — the ice) first; the rest folded.
+  if (typeof isSimple === 'function' && isSimple()) {
+    return `${head}${weatherBlock()}${ice ? water : ''}${cards}
+      <details class="more-all"><summary>Ещё о дне: клёв по часам, ${ice ? '' : 'вода, '}свежие отчёты, где искать</summary>${conditionsHtml()}${ice ? '' : water}${rest}</details>`;
+  }
+  return `${head}${conditionsHtml()}${weatherBlock()}${water}${rest}${cards}`;
 }
 // «Свежие отчёты»: what anglers reported this week (the map has them with a green ring), and when the server looked.
 function freshHtml() {
@@ -833,6 +841,7 @@ function rulesHtml() {
       ${species.map((sp) => { const sz = sizes.find((x) => x.species === sp); const bg = bags.find((x) => x.species === sp); return `<tr><td>${esc(sp)}</td><td>${sz ? `${esc(sz.min_cm)} см` : '—'}</td><td>${bg ? esc(bg.limit) : '—'}</td></tr>`; }).join('')}
     </table>
     ${bags.filter((b) => b.note).map((b) => `<p class="small muted">${esc(b.species)}: ${esc(b.note)}</p>`).join('')}
+    ${typeof isSimple === 'function' && isSimple() ? '<details class="more-all"><summary>Все правила: сроки, запретные места, снасти, лодка, лёд</summary>' : ''}
     <h3 id="r-seasons">Запретные сроки</h3>
     ${seasons.map((c) => `<div class="card small"><b>${esc(c.species)}</b>: ${esc(c.dates)}<br><span class="muted">${esc(c.area || '')}${c.article ? ` · ${esc(c.article)}` : ''}</span>${c.note ? `<br><span class="muted">${esc(c.note)}</span>` : ''}</div>`).join('')}
     ${forbidden.length ? `<h3>Ловить нельзя никогда</h3>${forbidden.map((c) => `<div class="small" style="margin:4px 0">• ${esc(c.species)} <span class="muted">(${esc(c.area || '')})</span></div>`).join('')}<p class="small muted">Случайно пойманную рыбу запрещённых видов и меньше разрешённого размера сразу отпускают.</p>` : ''}
@@ -847,7 +856,8 @@ function rulesHtml() {
     <h3 id="r-ice">Лёд</h3>
     ${(state.ctx.practical?.ice_rules_general || []).map((b) => `<details class="card small"><summary>${esc(b.title)}</summary><p>${esc(b.text)}</p>${safeUrl(b.source_url) ? `<a href="${esc(b.source_url)}" target="_blank" rel="noopener">источник</a>` : ''}</details>`).join('')}
     ${ice.map((b) => `<details class="card small"><summary>${esc(b.title || b.type || '')}</summary><p>${esc(b.description || b.summary || '')}</p>${safeUrl(b.source_url) ? `<a href="${esc(b.source_url)}" target="_blank" rel="noopener">источник</a>` : ''}</details>`).join('')}
-    ${(state.ctx.ice_zones || []).length ? `<p class="small">${state.ctx.ice_zones.length} ${plural(state.ctx.ice_zones.length, 'место', 'места', 'мест')}, где за 2005–2026 проваливались под лёд и отрывало льдины (сводки МЧС, спасателей, рыбаков), — на карте слоем «Опасный лёд»: <button type="button" class="btn small ghost" data-act="icez-show">${ic('map')}показать на карте</button></p>` : ''}`;
+    ${(state.ctx.ice_zones || []).length ? `<p class="small">${state.ctx.ice_zones.length} ${plural(state.ctx.ice_zones.length, 'место', 'места', 'мест')}, где за 2005–2026 проваливались под лёд и отрывало льдины (сводки МЧС, спасателей, рыбаков), — на карте слоем «Опасный лёд»: <button type="button" class="btn small ghost" data-act="icez-show">${ic('map')}показать на карте</button></p>` : ''}
+    ${typeof isSimple === 'function' && isSimple() ? '</details>' : ''}`;
 }
 
 /* ---------- Моё › Точки, Без сети, Ещё ---------- */
@@ -980,16 +990,28 @@ function moreHtml() {
   const sources = state.ctx.sources || [];
   const used = sources.filter((x) => x.status === 'used');
   const { installed } = platformInfo();
-  return `
+  const simple = typeof isSimple === 'function' && isSimple();
+  // The trial of the simple view (simple.js): the switch shows only for those who opened the trial link.
+  const view = typeof viewTrial === 'function' && viewTrial() ? `<div class="card">
+      <b>Вид приложения</b> <span class="small muted">— проба</span>
+      ${seg('view', [['simple', 'Простой'], ['full', 'Все функции']], s.view || 'full')}
+      <p class="small muted" style="margin:6px 0 0">Простой: на карте только нужное на выезде, остальное — на своих местах, на одно нажатие глубже. SOS, «Назад по треку», «К машине» — в обоих.</p>
+    </div>` : '';
+  const demo = `
     <div class="card">
       <b>Попробовать навигатор дома</b>
       <p class="small">Демо: лодка сама идёт к Варецким банкам — видно скорость, курс, глубину под лодкой, предупреждение о мели, уход с курса и прибытие. Геопозиция не нужна; завершить — кнопкой «Завершить».</p>
       <button type="button" class="btn" data-act="demo">${ic('navigation')}Запустить демо</button>
-    </div>
+    </div>`;
+  const screen = `
     <h3>Экран</h3>
     <div class="small muted">Тема</div>
     ${seg('theme', [['system', 'Как в системе'], ['sun', 'По солнцу'], ['day', 'День'], ['night', 'Ночь']], s.theme)}
-    ${sw('keepAwake', 'Не гасить экран', 'Пока приложение открыто. В навигации и при записи трека экран не гаснет всегда.')}
+    ${sw('keepAwake', 'Не гасить экран', 'Пока приложение открыто. В навигации и при записи трека экран не гаснет всегда.')}`;
+  const voice = `
+    ${sw('voice', 'Голосовые подсказки', 'Сколько до точки, «правее/левее», повороты на обратном пути, мель впереди, «вы на месте» — можно не смотреть на экран. В навигации — кнопка «Голос» справа вверху')}
+    ${voiceSettingsHtml()}`;
+  const rest = `
     <h3>Навигатор</h3>
     <div class="small muted">Карта в навигации</div>
     ${seg('orient', [['course', 'По курсу'], ['north', 'Север вверх']], s.orient)}
@@ -1004,8 +1026,7 @@ function moreHtml() {
     ${seg('shallow', [[1, '1 м'], [1.5, '1,5 м'], [2, '2 м'], [3, '3 м']], s.shallow)}
     ${sw('autoZoom', 'Автомасштаб', 'Масштаб по скорости и расстоянию до точки')}
     ${sw('sound', 'Звук прибытия и опасности')}
-    ${sw('voice', 'Голосовые подсказки', 'Сколько до точки, «правее/левее», повороты на обратном пути, мель впереди, «вы на месте» — можно не смотреть на экран. В навигации — кнопка «Голос» справа вверху')}
-    ${voiceSettingsHtml()}
+    ${simple ? '' : voice}
     ${sw('autoTrack', 'Писать трек при навигации', 'Нажали «Вести» — путь записывается сам, и по нему всегда можно вернуться теми же протоками: «Ещё» → «Назад по своему треку»')}
     ${sw('navShowPoints', 'Точки рыбаков в навигации', 'Места ловли и ваши метки остаются на карте')}
     <h3>Мой район</h3>
@@ -1045,6 +1066,13 @@ function moreHtml() {
     </details>
     ${sources.length ? `<details><summary class="small">Что проверено при сборе: использовано ${used.length}, без данных ${sources.length - used.length}</summary>${sources.map((x) => `<div class="small" style="margin:4px 0">${safeUrl(x.url) ? `<a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.name || x.url)}</a>` : esc(x.name)} <span class="muted">— ${esc(x.status)}${x.note ? `: ${esc(x.note)}` : ''}</span></div>`).join('')}</details>` : ''}
     <p class="small muted">Карта: Leaflet (BSD), leaflet-rotate (GPL-3.0), Leaflet.markercluster (MIT), Leaflet.heat (BSD). Подложки: Esri World Imagery, OpenStreetMap, OpenTopoMap, nakarte.me; снимок дня — NASA EOSDIS GIBS. Навигационные карты ГУНиО МО, Генштаб — сканы из открытых архивов. Волна у берега — формулы SPM-1984, глубины озера вне карт — GLDB v2 (Choulga et al., CC BY). Уровень и сводки — Волго-Балт, G-REALM (NASA/USDA), ГУ МЧС по ЛО, Северо-Западное УГМС, температура воды — MUR SST (NASA JPL). Не для судовождения.</p>`;
+  // The simple view: the screen, the voice, «Сообщить о проблеме», the demo; the rest folded.
+  if (simple) {
+    return `${view}${screen}<h3>Голос</h3>${voice}
+      <button type="button" class="btn small" data-act="report-problem" style="margin-top:12px">${ic('warning')}Сообщить о проблеме</button>
+      ${demo}<details class="more-all"><summary>Все настройки: навигатор, геопозиция, журнал, экспорт, о данных</summary>${rest}</details>`;
+  }
+  return `${view}${demo}${screen}${rest}`;
 }
 
 /* ---------- Глубины и эхолот (help sheet) ---------- */
@@ -1084,9 +1112,11 @@ function shownLine() {
 }
 function openLayersSheet(tab = 'layers', opts = {}) {
   openModal({
-    key: 'layers', title: 'Слои и фильтр', tab,
-    body: (layer) => `${layersSheetTabs(layer.tab)}<p class="small muted" id="shownLine" style="margin:0 0 6px">${shownLine()}</p>${layer.tab === 'filter' ? filterTabHtml() : layersTabHtml()}`,
-    foot: () => `<button type="button" class="btn ghost" data-act="filters-reset">Сбросить всё</button><button type="button" class="btn" data-act="close-top">Готово</button>`,
+    key: 'layers', title: (layer) => (typeof isSimple === 'function' && isSimple() && !layer.all ? 'Вид карты' : 'Слои и фильтр'), tab,
+    // The simple view: three pictures of the map and five switches; «Все слои и фильтр» opens this very sheet whole.
+    body: (layer) => (typeof isSimple === 'function' && isSimple() && !layer.all && tab !== 'filter' ? simpleLayersHtml()
+      : `${layersSheetTabs(layer.tab)}<p class="small muted" id="shownLine" style="margin:0 0 6px">${shownLine()}</p>${layer.tab === 'filter' ? filterTabHtml() : layersTabHtml()}`),
+    foot: (layer) => `${typeof isSimple === 'function' && isSimple() && !layer.all && tab !== 'filter' ? '' : '<button type="button" class="btn ghost" data-act="filters-reset">Сбросить всё</button>'}<button type="button" class="btn" data-act="close-top">Готово</button>`,
   }, opts);
 }
 function layersTabHtml() {
@@ -1616,6 +1646,7 @@ function handleAction(act, el) {
     case 'later': store.set(d.key, Date.now() + 7 * 86400000); refreshPage('today'); break;
     case 'search-clear': { const i = $('#searchInput'); if (i) { i.value = ''; onSearchInput(''); i.focus(); } break; }
     default:
+      if (typeof simpleAction === 'function' && simpleAction(act, el)) break;
       if (typeof handleTrackAction === 'function' && handleTrackAction(act, el)) break;
       if (typeof handleNavAction === 'function') handleNavAction(act, el);
   }

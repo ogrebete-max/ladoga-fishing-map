@@ -1308,9 +1308,14 @@ function openDepthInfo() {
   });
 }
 function onSettingChange(key) {
+  if (key === 'view' && typeof applyView === 'function') { applyView(); if (typeof logEvent === 'function') logEvent('view', { v: state.settings.view }); }
   if (key === 'voice') updateVoiceBtn();
   if (key === 'voiceName' || key === 'voiceRate') say('Через 60 метров налево. Впереди мелко: полтора метра', { force: true, test: true });
-  if (key === 'boat') refreshPage('today');
+  if (key === 'boat') {
+    refreshPage('today');
+    renderChips();
+    if (topLayer()?.key === 'day') renderModalBody(topLayer(), true);
+  }
   if (key === 'units') updateNavFields(true);
   if (key === 'autoZoom') { if (state.settings.autoZoom) nav.autoZoomPaused = false; updateZoomAuto(); if (nav.on) { nav.firstPlace = true; navOnFix(); } }
   if (key === 'orient' && nav.on && geo.follow !== 'free') setFollow(state.settings.orient === 'course' ? 'course' : 'north');
