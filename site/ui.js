@@ -588,8 +588,13 @@ function onResize() {
   resizeTimer = setTimeout(() => {
     const before = document.body.dataset.layout;
     layoutClass();
-    if (before !== document.body.dataset.layout) { shown.card = 0; syncChrome(); }
+    const moved = before !== document.body.dataset.layout;
+    if (moved) { shown.card = 0; syncChrome(); }
     map.invalidateSize();
+    // The card went from the bottom to the side or back: its point into the room left for the map again — it was
+    // brought into view once, when the card opened, and after turning the phone stayed under the search (28.09.2026).
+    const s = surfaceLayer();
+    if (moved && s?.kind === 'card' && s.focus) requestAnimationFrame(() => requestAnimationFrame(() => focusCard(s)));
     if (geo.follow !== 'free') placeBoat(null);
   }, 80);
 }

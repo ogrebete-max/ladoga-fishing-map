@@ -218,6 +218,12 @@ body[data-mode="nav"] .nav-bar, body[data-mode="full"] .nav-bar, body.card-open[
   top: 0; left: 0; right: 0; bottom: var(--nav-total); padding-top: var(--safe-t); }
 body:not([data-layout="compact"]) .panel { bottom: 0; right: auto; left: calc(var(--rail-w) + var(--safe-l)); width: var(--panel-w); border-right: 1px solid var(--line); }
 body[data-layout="land"] .panel, body[data-layout="medium"] .panel { box-shadow: 8px 0 24px rgba(0, 0, 0, .25); max-width: 50vw; }
+/* The card at the side no wider than a page there: the buttons over the map count on half the screen at most (an
+   iPhone SE on its side: 360 px of card over the search field, 28.09.2026). */
+body[data-layout="land"] .fcard, body[data-layout="medium"] .fcard { max-width: 50vw; }
+/* An SE on its side with a card open leaves the map 277 px: «Трек» and «+ −» do not fit in a row there. Fingers
+   zoom, and closing the card gives the whole map back. */
+@media (max-width: 720px) { body.panel-open[data-layout="land"]:not([data-mode="nav"]) .mu-zoom { display: none; } }
 @media (min-width: 1280px) { body[data-layout="expanded"] { --panel-w: 400px; } }
 .panel-head { display: flex; align-items: center; gap: 4px; min-height: 56px; padding: 0 4px 0 16px; flex: none; }
 .panel-head h1 { flex: 1; margin: 0; font-size: 24px; font-weight: 800; }
