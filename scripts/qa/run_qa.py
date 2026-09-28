@@ -1247,7 +1247,7 @@ def s5_nav(r: Run):
     r.check('HUD: скорость ≈ 20 км/ч', sp is not None and 16 <= sp <= 24 and b['speedUnit'] == 'км/ч', f"«{b['speed']} {b['speedUnit']}»")
     cv = parse_num(b['course'])
     dev = abs(((cv or 0) - tgt['course'] + 540) % 360 - 180) if cv is not None else None
-    r.check('HUD: курс по GPS', cv is not None and dev <= 12 and 'по GPS' in b['courseSrc'], f"«{b['course']}» «{b['courseSrc']}», истинный {tgt['course']:.0f}°")
+    r.check('HUD: курс по GPS', cv is not None and dev <= 12 and 'GPS' in b['courseSrc'], f"«{b['course']}» «{b['courseSrc']}», истинный {tgt['course']:.0f}°")
     r.check('HUD: пеленг и время прибытия', bool(re.search(r'на \d+° .+ · в \d\d:\d\d \(', b['line2'])), f"«{b['line2']}»")
     r.check('HUD: глубина под лодкой', b['depth'] not in ('', '—'), f"«{b['depth']} {b['depthUnit']}»{' (оранжевое: мелко)' if b['shallow'] else ''}")
     r.check('HUD: точность GPS', '±5' in b['gps'], f"«{b['gps']}»", sev='мелочь')
@@ -2010,7 +2010,10 @@ def s12_rotate_night(r: Run):
         r.wait(1200)
         th = page.evaluate('() => ({ theme: document.documentElement.dataset.theme, bg: getComputedStyle(document.getElementById("navBottom")).backgroundColor, meta: document.querySelector("meta[name=theme-color]").content })')
         shot = r.shot(page, 'night-nav')
-        r.check('Ночная палитра по системной теме', th['theme'] == 'night' and th['bg'] in ('rgb(0, 0, 0)', 'rgba(0, 0, 0, 1)'), json.dumps(th, ensure_ascii=False), sev='мелочь', shot=shot)
+        # 28.09.2026: the navigator's panels are 90 % opaque (the map shows through a little): black, alpha ≥ 0.85
+        nums = [float(x) for x in re.findall(r'[\d.]+', th['bg'].split('(', 1)[-1])]
+        black = len(nums) >= 3 and max(nums[:3]) <= 0.01 and (len(nums) < 4 or nums[3] >= 0.85)
+        r.check('Ночная палитра по системной теме', th['theme'] == 'night' and black, json.dumps(th, ensure_ascii=False), sev='мелочь', shot=shot)
         r.tap(page, '#navEnd')
         page.wait_for_selector('#modal:not([hidden])', timeout=4000)
         r.wait(300)

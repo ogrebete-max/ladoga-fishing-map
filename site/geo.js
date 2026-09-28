@@ -1127,7 +1127,8 @@ function updateNavFields(force = false) {
   $('#nfSpeed').parentElement.classList.toggle('stale', stale);
   const hd = headingNow();
   setText('#nfCourse', hd ? `${Math.round(hd.h)}°` : '—');
-  setText('#nfCourseSrc', hd ? `${rumb(hd.h)} · ${hd.src === 'gps' ? 'по GPS' : 'компас'}` : (geo.sog != null && geo.sog * 3.6 < 3 ? 'стоим' : 'нет курса'));
+  // «ВСВ · GPS»: short enough for the low row of the navigator (28.09.2026: «ВСВ · по…»)
+  setText('#nfCourseSrc', hd ? `${rumb(hd.h)} · ${hd.src === 'gps' ? 'GPS' : 'компас'}` : (geo.sog != null && geo.sog * 3.6 < 3 ? 'стоим' : 'нет курса'));
   if (now - nav.depthT > 3000 || force) {
     nav.depthT = now;
     nav.depth = depthAt(me);
@@ -1204,17 +1205,23 @@ function setBanner(b) {
   if (on && el.offsetHeight) document.body.style.setProperty('--nb-h', `${el.offsetHeight}px`);
   navFit();
 }
-// The real heights of the navigation panel and the banner go to CSS (--nt-h, --nb-h): the banner, the compass
-// and SOS stand below them however the text wraps (a two-row arrival banner used to cover SOS).
-const navSizes = new ResizeObserver(() => {
-  for (const [id, prop] of [['navTop', '--nt-h'], ['navBanner', '--nb-h']]) {
+// The real heights of the navigation panels and the banner go to CSS (--nt-h, --nb-h, --nbot-h): the banner, the
+// compass and SOS stand below them however the text wraps (a two-row arrival banner used to cover SOS); «+ −», «Авто»,
+// «Ко мне» and the scale stand above the bottom panel whatever its height (28.09.2026: the panels got lower).
+function navMeasure() {
+  for (const [id, prop] of [['navTop', '--nt-h'], ['navBanner', '--nb-h'], ['navBottom', '--nbot-h']]) {
     const el = document.getElementById(id);
     if (!el.hidden && el.offsetHeight) document.body.style.setProperty(prop, `${el.offsetHeight}px`);
   }
+}
+const navSizes = new ResizeObserver(() => {
+  navMeasure();
   requestAnimationFrame(navFit); // the next frame: a change of the layout inside the observer would call it again at once
 });
 // The column grows when «Тёмный экран» shows up, «Авто» appears with the navigator: both count for navFit.
 for (const id of ['navTop', 'navBanner', 'zoomAuto']) navSizes.observe(document.getElementById(id));
+// The bottom panel through its rows: on its side the panel itself stretches with --nt-h, set right here.
+for (const el of document.querySelectorAll('#navBottom .nb-fields, #navBottom .nb-buttons')) navSizes.observe(el);
 navSizes.observe($('.mu-right'));
 // The right column (Слои, Тёмный экран, SOS) must not touch «+ − Авто»: where the height is short — iPhone SE in
 // Safari, or any phone once a banner pushes the column down — it becomes a row along the top (26.09.2026: «+» covered
@@ -1228,7 +1235,7 @@ function navFit() {
   const near = (a, b) => a.left < b.right + 8 && b.left < a.right + 8 && a.top < b.bottom + 8 && b.top < a.bottom + 8;
   if (col.some((a) => zoom.some((b) => near(a, b)))) body.classList.add('nav-row');
 }
-addEventListener('resize', () => requestAnimationFrame(navFit));
+addEventListener('resize', () => requestAnimationFrame(() => { navMeasure(); navFit(); }));
 // «Завершить»: the confirmation and the navigation leave together.
 function endNav() {
   const i = ui.stack.findIndex((l) => l.kind === 'nav');
