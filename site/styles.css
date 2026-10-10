@@ -57,7 +57,8 @@ body[data-layout="expanded"].panel-open #map { left: calc(var(--rail-w) + var(--
 body[data-mode="nav"] #map, body[data-mode="full"] #map { left: 0 !important; bottom: 0 !important; }
 body[data-layout="compact"].card-open #map { bottom: 0; }
 .leaflet-container { font: inherit; background: var(--map-bg, #1d3a47); }
-html[data-theme="night"] #map, html[data-theme="night"] .leaflet-container { background: #0e1d24; }
+/* At night the water between the tiles stays the base's own colour: the night layer (app.js «nightshade») darkens it
+   with the map. A dark navy here showed as black squares where a base has no tiles (10.10.2026). */
 .leaflet-control-attribution { display: none; }
 .leaflet-control-scale { margin: 0 0 76px 12px !important; }
 body:not([data-layout="compact"]) .leaflet-control-scale { margin: 0 0 calc(84px + var(--safe-b)) 16px !important; }

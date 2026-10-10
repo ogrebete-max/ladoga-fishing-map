@@ -1071,12 +1071,18 @@ function drawLines() {
       .addTo(layers.lines);
   }
 }
+// The detailed ГосГисЦентр sheets (1:25 000, 1:50 000) and the General Staff mosaic have no tiles over open water
+// and between the sheets: empty at zoom 8–9 over the lake, «no tile» from zoom 11. The whole 1:200 000 map lies under
+// them, so a gap shows the coarser map, not the background (10.10.2026: «вот эти чёрные квадраты везде» — at night
+// the background was dark navy).
 function addExtraTileLayers() {
+  const tiles = (t, top) => L.tileLayer(t.url, { maxZoom: 18, maxNativeZoom: +t.max_zoom || 14, tms: !!t.tms, subdomains: t.subdomains || 'abc', errorTileUrl: top ? CLEAR_TILE : NO_TILE });
+  const under = (state.ctx.tile_layers || []).find((t) => t.key === 'ggc2000' && t.url);
   for (const t of state.ctx.tile_layers || []) {
     if (!t.url || BASES[t.key]) continue;
     BASES[t.key] = {
       name: t.name.replace(/^Генштаб\s*/i, 'Генштаб ').replace(/\s*\(.*\)$/, ''), full: t.name, attr: t.attribution || 'nakarte.me', thumb: t.url, tms: !!t.tms,
-      make: () => L.tileLayer(t.url, { maxZoom: 18, maxNativeZoom: +t.max_zoom || 14, tms: !!t.tms, subdomains: t.subdomains || 'abc', errorTileUrl: NO_TILE }),
+      make: () => (under && t.key !== under.key ? L.layerGroup([tiles(under, false), tiles(t, true)]) : tiles(t, false)),
     };
   }
   if (!BASES[state.base]) state.base = 'sat';
