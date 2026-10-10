@@ -29,7 +29,10 @@ html[data-theme="night"] {
   --scrim: rgba(0, 0, 0, .6);
   color-scheme: dark;
 }
-html[data-theme="night"] .leaflet-tile-pane, html[data-theme="night"] .leaflet-charts-pane { filter: brightness(.5) saturate(.7); }
+/* Night: the map darkened by a black layer over the satellite and the charts (app.js, «nightshade»), not by a filter
+   on their panes — recomputed on every frame of a drag, it held an iPhone up to 1.2 s a frame (10.10.2026). */
+.night-shade { display: none; position: absolute; left: -50000px; top: -50000px; width: 100000px; height: 100000px; background: rgba(0, 0, 0, .5); }
+html[data-theme="night"] .night-shade { display: block; }
 @media (prefers-contrast: more) { :root { --ink-2: var(--ink); --muted: var(--ink); } }
 
 * { box-sizing: border-box; }

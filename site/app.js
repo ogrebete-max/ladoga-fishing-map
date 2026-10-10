@@ -375,6 +375,14 @@ map.getPane('charts').style.zIndex = 250;
 map.getPane('charts').style.pointerEvents = 'none';
 // «Протоки и тростник» above the charts, below points: turns with the map.
 map.createPane('reeds', map.getPane('rotatePane'));
+// Night: the satellite and the charts under a black layer at half strength (above them, below the reeds, the tracks and
+// the points) instead of a CSS filter on their panes. A filter over panes that move is worked out again on every
+// frame of a drag: WebKit — the iPhone — spent up to 1.2 s on a frame at night (10.10.2026: «карта постоянно
+// подвисает»); a plain layer moves with the map for nothing.
+map.createPane('nightshade', map.getPane('rotatePane'));
+map.getPane('nightshade').style.zIndex = 255;
+map.getPane('nightshade').style.pointerEvents = 'none';
+map.getPane('nightshade').innerHTML = '<div class="night-shade"></div>';
 map.getPane('reeds').style.zIndex = 260;
 
 const layers = {
@@ -488,12 +496,28 @@ map.on('zoomend', () => { applyReeds(); updateAttr(); });
 function updatePoiVisibility() {
   const onlyPoi = ![...state.f.kinds].some((k) => CATCH_KINDS.has(k));
   const show = (map.getZoom() >= 11 || onlyPoi) && !(state.navHide && !state.settings.navShowPoints);
-  if (show && !map.hasLayer(layers.pois)) layers.pois.addTo(map);
+  if (show && !map.hasLayer(layers.pois)) { layers.pois.addTo(map); syncPois(); }
   if (!show && map.hasLayer(layers.pois)) map.removeLayer(layers.pois);
   map.getContainer().classList.toggle('labels-on', map.getZoom() >= 13);
   declutterPoiLabels();
 }
 map.on('zoomend', () => updatePoiVisibility());
+// Only the points of interest near the view are on the page — the view and half a screen around it, so a drag shows
+// no gaps. All of them at once (about 450 slips, landmarks and hazards with 290 names) were ~1500 elements over the
+// map, each a layer of its own for the browser: dragging redrew them all, up to 230 ms a frame on a phone slowed 4×,
+// and after each move the names were measured again (10.10.2026, iPhone: «карта постоянно подвисает, плохо
+// подгружается и плохо листается»).
+state.poiAll = [];
+function syncPois() {
+  if (!map.hasLayer(layers.pois)) return;
+  const b = map.getBounds().pad(0.5);
+  for (const x of state.poiAll || []) {
+    const inside = b.contains(x.ll);
+    if (inside && !x.on) { layers.pois.addLayer(x.mk); x.on = true; }
+    else if (!inside && x.on) { layers.pois.removeLayer(x.mk); x.on = false; }
+  }
+}
+map.on('moveend zoomend', syncPois);
 // Names of banks, capes and islands never sit on top of each other: hazards and banks keep their place first,
 // then landmarks; a name that would overlap one already placed waits for a closer zoom.
 function declutterPoiLabels() {
@@ -583,8 +607,9 @@ function render() {
   layers.cluster.clearLayers();
   layers.plain.clearLayers();
   layers.pois.clearLayers();
-  pois.forEach((mk) => layers.pois.addLayer(mk));
+  state.poiAll = pois.map((mk) => ({ mk, ll: mk.getLatLng(), on: false }));
   updatePoiVisibility();
+  syncPois();
   if (state.overlays.cluster) layers.cluster.addLayers(markers); else markers.forEach((mk) => layers.plain.addLayer(mk));
   // Off the map the heat layer keeps the points for later (its redraw needs the map: 26.09.2026 «✕ не закрывает»).
   if (map.hasLayer(layers.heat)) layers.heat.setLatLngs(heat); else layers.heat._latlngs = heat;

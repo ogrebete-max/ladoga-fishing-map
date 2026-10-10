@@ -37,7 +37,12 @@ SHOTS.mkdir(parents=True, exist_ok=True)
 MEASURE = ROOT / "research" / "raw" / "ux_fisher" / "ux_measure.js"
 SLIP = (60.1255, 32.3120)  # the launch at Новая Ладога (the Волхов mouth)
 MPD = 111195.0
-SEASONS = {"sep": "2026-09-26T09:00:00+03:00", "jan": "2027-01-20T09:00:00+03:00"}
+# Open water: today, when today is open water — the forecast is fetched live and is only for the days ahead, so a
+# fixed past date left «Прогноз загружается…» and no verdict (10.10.2026, the date of 26.09 fixed here). The ice: a
+# January day; its dangers there do not need the forecast.
+_today = dt.date.today()
+SEASONS = {"water": f"{_today.isoformat()}T09:00:00+03:00" if _today.month in (5, 6, 7, 8, 9, 10, 11) else "2026-09-26T09:00:00+03:00",
+           "ice": "2027-01-20T09:00:00+03:00"}
 # In view = on the screen, not under a sheet, not scrolled away: the choices a person has in front of him.
 IN_VIEW = """(() => { const vh = innerHeight, vw = innerWidth;
   const els = [...document.querySelectorAll('button, a[href], summary, input:not([type=hidden]), select, [role=button], .leaflet-marker-icon.leaflet-interactive')];
@@ -120,7 +125,7 @@ def run(pw, view, season):
                     "go": page.evaluate("document.getElementById('btnGo').hidden ? null : document.getElementById('btnGo').textContent")})
     print(f"     [{view}/{season}] карта: {m['controls_view']} кнопок и чипов в кадре, точек {m['markers_view']}, слов {m['words_view']}")
     page.screenshot(path=str(SHOTS / f"task_{season}_{view}_map.png"))
-    ice = season == "jan"
+    ice = season == "ice"
 
     # T1 — can one go out today
     t = Task(page, view, season, "t1", "Можно ли выходить")
@@ -243,7 +248,7 @@ def run(pw, view, season):
 
 
 with sync_playwright() as pw:
-    for season in ("sep", "jan"):
+    for season in ("water", "ice"):
         for view in ("full", "simple"):
             run(pw, view, season)
 (OUT / "tasks.json").write_text(json.dumps(results, ensure_ascii=False, indent=1), encoding="utf-8")
