@@ -70,7 +70,7 @@ const state = {
   chartOpacity: store.get('ladoga-chart-opacity', 1),
   genshtabOpacity: store.get('ladoga-genshtab-opacity', 0.8),
   overlayOpacity: store.get('ladoga-overlay-opacity', 0.7),
-  settings: Object.assign({ theme: 'system', units: 'kmh', autoZoom: true, navShowPoints: true, keepAwake: false, sound: true, voice: true, voiceName: '', voiceRate: 1, autoTrack: true, sendLog: true, guardR: 50, arrivalR: 30, orient: 'course', autoReturn: 20, shallow: 1.5 }, store.get('ladoga-settings', {})),
+  settings: Object.assign({ theme: 'system', units: 'kmh', autoZoom: true, navShowPoints: true, keepAwake: false, sound: true, voice: true, voiceName: '', voiceRate: 1, autoTrack: true, sendLog: true, guardR: 50, arrivalR: 30, orient: 'course', autoReturn: 20, shallow: 1.5, levelHand: null, shallowShow: 0 }, store.get('ladoga-settings', {})),
   home: store.get('ladoga-home', null) || HOME_DEFAULT,
   car: store.get('ladoga-car', null), // {lat, lon, t}: «К машине»
   navHide: false,
@@ -435,6 +435,7 @@ function applyOverlays() {
   toggle(chartState.isoLayer, o.chartIso);
   if (o.chartIso) loadChartIsobaths();
   if (depthModel.shade) toggle(depthModel.shade, !!o.shade);
+  if (shallowOn() || SHALLOW.layer) toggle(shallowLayer(), shallowOn());
   if (o.gridIso && !depthModel.iso && map.getZoom() >= 11) loadGridIsolines(); // 800 KB: only when zoomed in
   if (depthModel.iso) toggle(depthModel.iso, !!o.gridIso && map.getZoom() >= 11); // a 1 m web over the whole south says nothing
   if (o.community && !depthModel.community) loadCommunityDepth();
@@ -829,12 +830,23 @@ function gridDepth(p) {
 // and every charted depth is that much shallower. The server brings a fresh value (data/live.json, the Волго-Балт
 // level at Сясьские Рядки); without it, the depth model's own figure for the year.
 function levelNow() {
+  // «Уровень воды» set by hand (Слои → Глубины): a surge after a storm, a level gauge of one's own, «what if».
+  if (Number.isFinite(state.settings.levelHand)) return state.settings.levelHand;
   const c = state.live?.level?.depth_correction?.m;
   if (Number.isFinite(+c) && Math.abs(c) < 3) return +c;
   return +(chartState.gridIndex?.level_2026_correction_m ?? -0.9);
 }
 // Where that figure comes from, for the small print: «Волго-Балт, Сясьские Рядки, 22.09» or «оценка на 2026 год».
 function levelSourceText() {
+  if (Number.isFinite(state.settings.levelHand)) return 'задан вручную';
+  return levelAutoText();
+}
+function levelAuto() {
+  const c = state.live?.level?.depth_correction?.m;
+  if (Number.isFinite(+c) && Math.abs(c) < 3) return +c;
+  return +(chartState.gridIndex?.level_2026_correction_m ?? -0.9);
+}
+function levelAutoText() {
   const c = state.live?.level?.depth_correction;
   if (c && Number.isFinite(+c.m)) return `${c.from || 'сводка'}${c.date ? `, ${fmtDate(String(c.date).slice(0, 10))}` : ''}`;
   return 'оценка на 2026 год';
@@ -1007,6 +1019,95 @@ function drawIsoLabels(force = true) {
   if (iso) for (const p of depthModel.labels) add(p, p.m <= 2 ? 'shallow' : '', String(p.m));
   if (com) for (const p of depthModel.communityIsoLabels) add(p, 'community', num(p.m));
   if (com && z >= 14) for (const p of depthModel.communityLabels) add(p, 'community sounding', num(p.m));
+}
+/* ---------- «Мелководье»: where the water is now shallower than the angler's figure, painted yellow ----------
+   Like a plotter's shallow-water shading, but from our own depth model and with today's level (levelNow()): set
+   «Мелководье 2 м» and every place with less than 2 m of water now turns yellow; where the water has gone altogether
+   at this level (a bank that dries) — brown. Drawn on canvas tile by tile from the 25–50 m grid, so it follows the
+   two sliders at once and works offline with the depth model. A tile drawn while its grid file was still loading
+   is drawn again in place when the file comes (no blinking redraw of the whole layer). */
+const SHALLOW = { layer: null, pending: new Set(), timer: null };
+const shallowOn = () => (+state.settings.shallowShow || 0) > 0 && !!state.ctx.depth?.grid;
+function shallowFilesIn(b) {
+  const out = [];
+  for (const f of chartState.gridIndex?.files || []) {
+    const [[S, W], [N, E]] = f.bounds;
+    if (S < b.n && N > b.s && W < b.e && E > b.w) out.push(f);
+  }
+  return out;
+}
+function drawShallowTile(canvas, coords) {
+  const size = 256, step = coords.z >= 15 ? 2 : 4, n = 256 * 2 ** coords.z;
+  const lonOf = (px) => (px / n) * 360 - 180;
+  const latOf = (py) => (Math.atan(Math.sinh(Math.PI * (1 - (2 * py) / n))) * 180) / Math.PI;
+  const x0 = coords.x * size, y0 = coords.y * size;
+  const b = { w: lonOf(x0), e: lonOf(x0 + size), n: latOf(y0), s: latOf(y0 + size) };
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, size, size);
+  if (!chartState.gridIndex) return false;
+  const files = shallowFilesIn(b);
+  if (!files.length) return true;
+  let complete = true;
+  for (const f of files) if (!gridFile(f)) complete = false;
+  const lim = +state.settings.shallowShow || 0, lv = levelNow();
+  const img = ctx.createImageData(size, size), px = img.data;
+  const lons = []; for (let i = 0; i < size; i += step) lons.push(lonOf(x0 + i + step / 2));
+  let any = false;
+  for (let j = 0; j < size; j += step) {
+    const lat = latOf(y0 + j + step / 2);
+    for (let i = 0, k = 0; i < size; i += step, k += 1) {
+      const d = gridDepth({ lat, lon: lons[k] });
+      if (d == null) continue;
+      const now = d + lv;
+      if (now >= lim) continue;
+      // yellow: shallower than the figure; brown: no water at this level
+      const [r, g, bl, a] = now <= 0.05 ? [150, 105, 40, 150] : [255, 212, 0, 150];
+      any = true;
+      for (let yy = j; yy < j + step; yy++) {
+        for (let xx = i; xx < i + step; xx++) {
+          const o = (yy * size + xx) * 4;
+          px[o] = r; px[o + 1] = g; px[o + 2] = bl; px[o + 3] = a;
+        }
+      }
+    }
+  }
+  if (any) ctx.putImageData(img, 0, 0);
+  return complete;
+}
+const ShallowTiles = L.GridLayer.extend({
+  createTile(coords) {
+    const c = L.DomUtil.create('canvas', 'shallow-tile');
+    c.width = c.height = 256;
+    if (!drawShallowTile(c, coords)) SHALLOW.pending.add({ c, coords });
+    return c;
+  },
+});
+function shallowLayer() {
+  if (!SHALLOW.layer) {
+    SHALLOW.layer = new ShallowTiles({ pane: 'charts', zIndex: 4, minZoom: 9, maxZoom: 18, bounds: regionBounds().pad(0.05), keepBuffer: 1, updateWhenIdle: true });
+    SHALLOW.layer.on('tileunload', (e) => { for (const p of SHALLOW.pending) if (p.c === e.tile) SHALLOW.pending.delete(p); });
+  }
+  return SHALLOW.layer;
+}
+// The sliders moved: the tiles on screen are drawn again in place, a moment after the finger stops.
+function shallowRefresh(delay = 120) {
+  clearTimeout(SHALLOW.timer);
+  SHALLOW.timer = setTimeout(() => {
+    const on = shallowOn();
+    if (!on) { if (SHALLOW.layer && map.hasLayer(SHALLOW.layer)) map.removeLayer(SHALLOW.layer); return; }
+    const l = shallowLayer();
+    if (!map.hasLayer(l)) { l.addTo(map); return; }
+    SHALLOW.pending.clear();
+    for (const key in l._tiles) {
+      const t = l._tiles[key];
+      if (!drawShallowTile(t.el, t.coords)) SHALLOW.pending.add({ c: t.el, coords: t.coords });
+    }
+  }, delay);
+}
+// A grid file has come: the tiles drawn without it are finished.
+function shallowOnDepthReady() {
+  if (!SHALLOW.pending.size || !SHALLOW.layer || !map.hasLayer(SHALLOW.layer)) return;
+  for (const p of [...SHALLOW.pending]) if (drawShallowTile(p.c, p.coords)) SHALLOW.pending.delete(p);
 }
 map.on('moveend zoomend', () => { if (state.overlays.gridIso || state.overlays.community || state.overlays.myDepth || state.overlays.vvp) drawIsoLabels(false); });
 map.on('zoomend', () => {

@@ -19,7 +19,7 @@ function updateCardLive() {
   const el = $('#cardFromMe');
   if (el && el.dataset.lat) el.innerHTML = cardFromMe({ lat: +el.dataset.lat, lon: +el.dataset.lon });
 }
-function onDepthReady() { updateCardLive(); if (typeof updateNavFields === 'function') updateNavFields(true); }
+function onDepthReady() { shallowOnDepthReady(); updateCardLive(); if (typeof updateNavFields === 'function') updateNavFields(true); }
 const fromMeLine = (p) => `<p class="fromme" id="cardFromMe" data-lat="${p.lat}" data-lon="${p.lon}">${cardFromMe(p)}</p>`;
 const moreToggle = () => `<button type="button" class="more-toggle" data-act="card-more">Подробнее ${ic('keyboard-arrow-down')}</button>`;
 const selectRing = (lat, lon) => {
@@ -1024,6 +1024,7 @@ function moreHtml() {
     <p class="small muted" style="margin:4px 0 0">Отсчёт — с момента, когда палец убран; пока открыта карточка точки, карта стоит.</p>
     <div class="small muted" style="margin-top:8px">Предупреждать о глубине меньше</div>
     ${seg('shallow', [[1, '1 м'], [1.5, '1,5 м'], [2, '2 м'], [3, '3 м']], s.shallow)}
+    <p class="small muted" style="margin:4px 0 0">С учётом уровня воды. Уровень и жёлтая подсветка мелководья — в «Слои» → «Глубины».</p>
     ${sw('autoZoom', 'Автомасштаб', 'Масштаб по скорости и расстоянию до точки')}
     ${sw('sound', 'Звук прибытия и опасности')}
     ${simple ? '' : voice}
@@ -1119,6 +1120,28 @@ function openLayersSheet(tab = 'layers', opts = {}) {
     foot: (layer) => `${typeof isSimple === 'function' && isSimple() && !layer.all && tab !== 'filter' ? '' : '<button type="button" class="btn ghost" data-act="filters-reset">Сбросить всё</button>'}<button type="button" class="btn" data-act="close-top">Готово</button>`,
   }, opts);
 }
+// «Уровень воды» and «Мелководье» (Слои → Глубины), like a plotter's: the level the depths are counted from, and
+// the depth under which the water is painted yellow.
+function levelNote(lv) {
+  return `${lv < 0 ? `ниже среднего многолетнего на ${fmtM(-lv)} м` : lv > 0 ? `выше среднего на ${fmtM(lv)} м` : 'как средний многолетний'} — глубины «сейчас», мель впереди и мелководье считаются так`;
+}
+const levelPill = (lv) => `${lv > 0 ? '+' : lv < 0 ? '−' : ''}${fmtM(Math.abs(lv))} м`;
+const shallowPill = (m) => (m > 0 ? `меньше ${fmtM(m)} м` : 'выкл.');
+function depthLevelHtml() {
+  if (!state.ctx.depth?.grid) return '';
+  const s = state.settings, lv = levelNow(), hand = Number.isFinite(s.levelHand), sh = +s.shallowShow || 0;
+  return `<div class="card depth-level">
+      <div class="lvl-row"><b>Уровень воды</b><span class="lvl-val" id="levelVal">${levelPill(lv)}</span></div>
+      <input type="range" id="levelHand" min="-2.5" max="2.5" step="0.1" value="${lv}" aria-label="Уровень воды, м">
+      <div class="lvl-scale small muted"><span>−2,5 м</span><span>средний</span><span>+2,5 м</span></div>
+      <p class="small muted" id="levelNote" style="margin:2px 0 0">${hand ? `Задан вручную: ${levelNote(lv)}. По сводке — ${levelPill(levelAuto())} (${esc(levelAutoText())}).` : `По сводке (${esc(levelAutoText())}): ${levelNote(lv)}.`}</p>
+      <button type="button" class="btn small ghost" data-act="level-auto" ${hand ? '' : 'hidden'}>Вернуть уровень по сводке</button>
+      <div class="lvl-row" style="margin-top:12px"><b>Мелководье</b><span class="lvl-val shallow" id="shallowVal">${shallowPill(sh)}</span></div>
+      <input type="range" id="shallowShow" min="0" max="6" step="0.5" value="${sh}" aria-label="Мелководье, м">
+      <div class="lvl-scale small muted"><span>выкл.</span><span>3 м</span><span>6 м</span></div>
+      <p class="small muted" style="margin:2px 0 0">Жёлтым — где воды сейчас меньше, коричневым — где при таком уровне её нет совсем. По модели дна с картами ГУНиО; камни и узкие мели смотрите на картах и эхолотом.</p>
+    </div>`;
+}
 function layersTabHtml() {
   const o = state.overlays;
   const extra = Object.entries(extraOverlays);
@@ -1136,6 +1159,7 @@ function layersTabHtml() {
       <div class="seg">${Object.keys(WB_YEARS).sort().reverse().map((y) => `<button type="button" data-act="wb-year" data-val="${y}" class="${wbYear() === +y ? 'on' : ''}">${y}</button>`).join('')}</div>
       <p class="small muted" style="margin:4px 0 0">Снимки выпуска сделаны в разные годы, чаще летом: где на свежем снимке весна или дымка, протоки в тростнике на летнем видны яснее. Протоки со временем зарастают — верьте свежему снимку и своим трекам. Только с интернетом.</p>` : ''}
     <h3>Глубины</h3>
+    ${depthLevelHtml()}
     ${hasCharts ? `<label class="check switch"><span><b>Навигационные карты ГУНиО</b><br><span class="small muted">цифры глубин, изобаты, камни, створы; цифры читаются при приближении</span></span><input type="checkbox" data-overlay="charts" ${o.charts ? 'checked' : ''}></label>
       <div class="small muted">Прозрачность карт</div>
       <input type="range" id="chartOpacity" min="0.3" max="1" step="0.05" value="${state.chartOpacity}">` : ''}
@@ -1601,6 +1625,7 @@ function handleAction(act, el) {
     case 'locate-retry': closeTop(); geoRestart(); break;
     case 'geo-off': geoStop(); store.set('ladoga-geo-on', false); toast('Геопозиция выключена'); break;
     case 'ios-geo-help': showLocationHelp('ios-once'); break;
+    case 'level-auto': state.settings.levelHand = null; saveSettings(); shallowRefresh(0); refreshLayersSheet(); onDepthReady(); break;
     case 'voice-test': unlockAudio(); say('Через 60 метров налево. Впереди мелко: полтора метра. Вы на месте', { force: true, test: true }); break;
     case 'icez-show': {
       state.overlays.iceZones = true; store.set('ladoga-icez-hand', true); applyOverlays();
@@ -1729,6 +1754,23 @@ function onContentInput(e) {
     state.f.yearMin = v > min ? v : 0;
     $('#yearLabel').textContent = state.f.yearMin ? `отчёты с ${state.f.yearMin} года` : 'все годы';
     clearTimeout(t._timer); t._timer = setTimeout(render, 150);
+  } else if (t.id === 'levelHand' || t.id === 'shallowShow') {
+    const v = Math.round(+t.value * 10) / 10;
+    if (t.id === 'levelHand') {
+      state.settings.levelHand = v;
+      $('#levelVal') && ($('#levelVal').textContent = levelPill(v));
+      $('[data-act="level-auto"]')?.removeAttribute('hidden');
+      $('#levelNote') && ($('#levelNote').textContent = `Задан вручную: ${levelNote(v)}. По сводке — ${levelPill(levelAuto())} (${levelAutoText()}).`);
+    } else {
+      state.settings.shallowShow = v;
+      $('#shallowVal') && ($('#shallowVal').textContent = shallowPill(v));
+    }
+    saveSettings();
+    shallowRefresh();
+    clearTimeout(t._timer);
+    t._timer = setTimeout(() => {
+      if (typeof onDepthReady === 'function') onDepthReady();
+    }, 500);
   } else if (t.id === 'chartOpacity') {
     state.chartOpacity = +t.value; store.set('ladoga-chart-opacity', state.chartOpacity); updateCharts();
   } else if (t.id === 'genshtabOpacity') {

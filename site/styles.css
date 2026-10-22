@@ -736,3 +736,12 @@ body[data-mode="nav"][data-layout="land"] .nbtn svg.i { width: 22px; height: 22p
 /* On its side with room enough (a phone's 390 px, not an SE's 331): speed, course and depth one under another —
    side by side the course read «ВСВ · G…». */
 @media (min-height: 380px) { body[data-mode="nav"][data-layout="land"] .nb-fields { grid-template-columns: minmax(0, 1fr); } }
+
+/* «Уровень воды» and «Мелководье» in Слои → Глубины */
+.depth-level .lvl-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.depth-level .lvl-val { font-variant-numeric: tabular-nums; font-weight: 700; padding: 3px 10px; border-radius: 8px; background: var(--accent); color: #fff; min-width: 56px; text-align: center; }
+.depth-level .lvl-val.shallow { background: #f2c200; color: #222; }
+.depth-level input[type="range"] { height: 36px; margin: 2px 0 0; }
+.depth-level .lvl-scale { display: flex; justify-content: space-between; margin-top: -4px; }
+.depth-level .btn { margin-top: 6px; }
+.depth-level .btn[hidden] { display: none; }
